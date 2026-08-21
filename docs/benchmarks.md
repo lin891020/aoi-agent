@@ -50,3 +50,21 @@ At the ≤0.5% budget (threshold 0.915):
 | copper | 464 | 2 | 0.43% |
 | pin-hole | 464 | 1 | 0.22% |
 
+### Routing — how much of the queue reaches the LLM
+
+Measured over 9070 stored candidates from 500 boards.
+
+| path | candidates | share | LLM involved |
+|---|---|---|---|
+| dismissed by the vision model | 5062 | 55.8% | no |
+| confirmed by the vision model | 2398 | 26.4% | no |
+| investigated | 1610 | 17.8% | yes |
+
+**82.2% of candidates never reach a language model.** They are dispositioned by the vision model in tens of milliseconds. The LLM is spent only on the fraction that is genuinely ambiguous, which is what makes a 20B model affordable at line rate.
+
+Escapes on the dismissal path: 15 (0.30% of dismissals).
+
+`open` is routed to investigation regardless of confidence, so it never
+appears on the confirm path -- WI-201 calls it the class hardest to separate
+from a registration artefact.
+
