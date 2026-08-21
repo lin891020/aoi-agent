@@ -29,10 +29,10 @@ from typing import Any
 
 import httpx
 
-from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
+from aoi_agent.graph.checkpoint import make_checkpointer
 from aoi_agent.graph.state import ReviewState
 from aoi_agent.llm.ollama import OllamaClient
 from aoi_agent.mcp_servers.classify import classify_defect
@@ -306,7 +306,12 @@ def record_human_node(state: ReviewState) -> dict[str, Any]:
 
 
 def build_graph(client: OllamaClient | None = None, checkpointer=None):
-    """Compile the flow. A checkpointer is required for interrupts to resume."""
+    """Compile the flow.
+
+    The checkpointer defaults to the durable one: an escalation that cannot
+    outlive the process is not a hand-off, it is a prompt. Tests pass an
+    ``InMemorySaver`` when they only need one run's worth of state.
+    """
     client = client or OllamaClient(DEFAULT_MODEL)
 
     graph = StateGraph(ReviewState)
@@ -333,4 +338,4 @@ def build_graph(client: OllamaClient | None = None, checkpointer=None):
     for terminal in ("dismiss", "confirm", "decide", "record_human"):
         graph.add_edge(terminal, END)
 
-    return graph.compile(checkpointer=checkpointer or InMemorySaver())
+    return graph.compile(checkpointer=checkpointer or make_checkpointer())

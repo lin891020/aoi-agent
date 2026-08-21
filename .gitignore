@@ -13,4 +13,5 @@ __pycache__/
 .DS_Store
 .pytest_cache/
 data/aoi_agent.db
+data/checkpoints.db*
 data/chroma/

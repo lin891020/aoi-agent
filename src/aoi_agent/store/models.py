@@ -7,6 +7,9 @@ rather than a rewrite.
 The ``ReviewDecision`` table is the feedback loop's landing point. Every
 verdict -- whether the model produced it or a human did -- is recorded from day
 one, so retraining on operator corrections later needs no schema change.
+
+``Escalation`` is the review station's work queue: which suspended runs are
+still waiting on a person, and which checkpointer thread each one resumes from.
 """
 
 from __future__ import annotations
@@ -113,6 +116,40 @@ class ReviewDecision(Base):
     decided_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     candidate: Mapped[CandidateRecord] = relationship(back_populates="decisions")
+
+
+class Escalation(Base):
+    """One candidate waiting for a person, and the thread it is suspended on.
+
+    The graph's checkpointer already holds everything needed to resume a
+    suspended run, but it is keyed by thread id and has no notion of "who is
+    still waiting". This table is that index and nothing more: the queue the
+    review station renders, and the pointer back into the checkpointer. Graph
+    state stays in the checkpointer -- duplicating it here would give two
+    answers to the same question.
+    """
+
+    __tablename__ = "escalations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    candidate_id: Mapped[int] = mapped_column(ForeignKey("candidates.id"), index=True)
+
+    thread_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    """The checkpointer key. Resuming means ``Command(resume=...)`` on this."""
+
+    reason: Mapped[str] = mapped_column(String(2048))
+    """Why the agent handed over -- shown to the operator as the question."""
+
+    agent_verdict: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    """What the agent leaned towards. A suggestion, never pre-selected."""
+
+    status: Mapped[str] = mapped_column(String(16), index=True, default="pending")
+    """``pending`` or ``resolved``."""
+
+    raised_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    candidate: Mapped[CandidateRecord] = relationship()
 
 
 def make_engine(url: str | None = None):

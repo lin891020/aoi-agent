@@ -87,6 +87,54 @@ handing uncertain cases to a person, not by the model being good enough. Take
 away the escalation edge and the budget has to be bought with review volume
 instead.
 
+## The review station
+
+The escalation edge has to end somewhere, and a CLI prompt is not it — the line
+does not stop to ask a question. Escalations go to a queue, and an operator
+answers them when they get to it.
+
+```bash
+uv run python -m aoi_agent board 20085294 --queue   # run a board, queue what it cannot settle
+uv run python -m aoi_agent station                  # http://127.0.0.1:8000
+```
+
+The station shows the operator exactly the evidence the agent had, and nothing
+else:
+
+- **the golden template, the board under test, and their difference**, side by
+  side at a legible scale with the flagged region marked. The difference alone
+  is what the AOI saw, and judging from it alone is what produces false calls in
+  the first place.
+- the model's class, confidence and P(false call), plus the 64 px window it
+  actually classified — if that window is off the region, a disagreement is a
+  cropping bug, not a classifier one.
+- the production context and the acceptance criteria the agent retrieved.
+- why the agent declined to decide.
+
+Two things it deliberately does not do. It **never shows the ground truth**: the
+operator's answer becomes a label in the next training round, and a label copied
+off the answer key is worth nothing. And it **never re-runs the flow to render a
+page** — the suspended state is already in the checkpointer, so reading it costs
+a disk seek rather than another 20B-model inference that could come back with a
+different rationale than the one on screen.
+
+Verdicts post as ordinary forms and redirect, so the station works with
+JavaScript off; number keys pick a verdict for the operators who live in it all
+shift.
+
+### Where an escalation lives between the two
+
+`interrupt()` checkpoints the run to SQLite, and a small `escalations` table
+records that someone still owes it an answer. Two stores, one question each:
+the checkpointer knows what the run's state was, the table knows whether anyone
+is still waiting. The verdict is written to `review_decisions` *before* the queue
+entry is closed — if the process dies in between, the region gets looked at
+again, whereas the other order drops an operator's answer silently.
+
+This is also what makes the graph honest. With an in-memory checkpointer the
+hand-off looks right inside a single CLI run and loses the queue the moment the
+process exits; `interrupt` is then a prompt wearing a graph's clothes.
+
 ### Why there is no text-to-SQL
 
 `query_production` exposes typed parameters over a fixed query set. The model

@@ -8,6 +8,7 @@
 | Re-verifier (PyTorch) | say what one flagged region is, with a calibrated probability | decide what happens to the board |
 | MCP tools | expose the model, the production store and the criteria as callable functions | choose which of themselves to call |
 | LangGraph flow | route on confidence, gather evidence, hand over to a person | contain domain rules that belong in the work instructions |
+| Review station | show a person the evidence the agent had, and take their answer | re-run the flow to render a page, or show the ground truth |
 | Local LLM | weigh evidence the vision model could not settle | classify pixels, or write SQL |
 
 ## The decision path
@@ -41,6 +42,44 @@
                                     next training round
 ```
 
+## Where an escalation waits
+
+``interrupt()`` suspends the run and checkpoints it. The operator may answer in
+a second or in two days, and almost certainly in a different process from the
+one that raised it -- the line does not stop to ask a question. So:
+
+```
+  flow run                    review station
+     │                              │
+  interrupt()                       │
+     │                              │
+     ├──> checkpoints.db  ──────────┤  graph state, resumed verbatim
+     │    (SqliteSaver)             │
+     │                              │
+     └──> escalations table ────────┤  the queue: who is still waiting
+          (status, thread_id)       │
+                                    ▼
+                            operator answers
+                                    │
+                    ┌───────────────┴───────────────┐
+                    ▼                               ▼
+            review_decisions                Command(resume=...)
+            (recorded first)                (run finishes)
+```
+
+Two stores, one question each. The checkpointer answers "what was this run's
+state"; the `escalations` table answers "is anyone still waiting on it". Putting
+the graph state in the table as well would give two answers to the same
+question, and they would drift.
+
+The decision is written *before* the queue entry is closed. If the process dies
+between the two, the region stays on the queue and gets looked at again; the
+other order drops an operator's verdict silently.
+
+The station reads the suspended state rather than re-running the flow. Re-running
+would spend another 20B-model inference and could hand back a different rationale
+than the one on the operator's screen.
+
 ## Thresholds and where they come from
 
 | constant | value | source |
@@ -63,6 +102,7 @@ Every branch that can fail fails towards a person:
 - the LLM unreachable or too slow → escalate
 - `open` at any confidence → investigate, never short-circuit
 - a candidate that fragments a real defect → held out of training, not labelled spurious
+- the process holding a suspended run dies → the run is on disk, the queue still lists it
 
 An escalation costs an operator a few seconds. The alternatives cost a shipped
 board or a silently mislabelled training set.
@@ -77,3 +117,4 @@ board or a silently mislabelled training set.
 | false calls | ✓ produced by the same algorithm | |
 | lot / line / machine / shift | | ✓ generated, with one planted signal |
 | acceptance criteria | | ✓ original documents, not a real standard |
+| operator identity | | ✓ a free-text field; the station has no auth yet |

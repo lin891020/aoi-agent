@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Re-verification station{% endblock %}</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+  <header class="bar">
+    <a class="brand" href="/">AOI <span class="dim">&middot;</span> re-verification station</a>
+    <span class="grow"></span>
+    <span class="badge">
+      <b hx-get="/queue-count" hx-trigger="every 10s" hx-swap="innerHTML">{{ waiting }}</b> waiting
+    </span>
+  </header>
+  <main>{% block content %}{% endblock %}</main>
+  {% block script %}{% endblock %}
+</body>
+</html>

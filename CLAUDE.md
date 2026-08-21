@@ -18,24 +18,37 @@ src/aoi_agent/
     vision/                 patches, dataset, ResNet-18, inference, operating point
     store/                  SQLAlchemy models, seeding, standards retrieval
     mcp_servers/            three MCP servers (classify, production, standards)
-    graph/                  LangGraph flow with the human escalation
+    graph/                  LangGraph flow with the human escalation,
+                            durable SQLite checkpointer
+    station/                the review station -- FastAPI + Jinja, the
+                            escalation queue, and the service layer the
+                            CLI shares with it
     cli.py
 scripts/                    gate_check, build_patches, train, report, seed_store, ...
-tests/                      54 tests; dataset-dependent ones behind `-m dataset`
+tests/                      71 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
+.claude/skills/             project skills -- procedures with gates, not notes
 ```
+
+Invoke the project skills; do not just read past them. `retraining-the-reverifier`
+before touching the training pipeline or regenerating a benchmark, and
+`measuring-llm-latency` before quoting any timing number. Both encode a failure
+that is silent -- a stale threshold, a contended GPU -- and neither shows up as
+an error.
 
 ## Commands
 
 ```bash
-uv run pytest                                    # 54 tests, no GPU needed
+uv run pytest                                    # 71 tests, no GPU needed
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
 uv run python scripts/routing_report.py          # how much never reaches the LLM
 uv run python scripts/check_mcp_servers.py       # servers start and advertise tools
-uv run python -m aoi_agent board 20085294        # run a board through the flow
+uv run python -m aoi_agent board 20085294 --queue  # run a board, queue what it cannot settle
+uv run python -m aoi_agent station               # review station on :8000
+uv run python -m aoi_agent queue                 # what is waiting on a person
 ```
 
 ## Invariants — do not quietly change these
@@ -46,6 +59,12 @@ uv run python -m aoi_agent board 20085294        # run a board through the flow
 - **Every failure path escalates to a human.** Unparseable verdict, LLM
   unreachable, `open` at any confidence -- all route to a person. Never guess to
   avoid escalating.
+- **An escalation must outlive the process.** The checkpointer is a SQLite file,
+  not `InMemorySaver`. An escalation that dies with the CLI run is a prompt
+  wearing a graph's clothes.
+- **The review station never shows `ground_truth`.** The operator's answer is
+  the next training round's label; showing them the answer key first collects an
+  echo, not a judgement. Enforced at the dict boundary, not by grepping HTML.
 - **No free-form text-to-SQL.** Typed parameters over a fixed query set. A valid
   but semantically wrong query returns a plausible number and gets acted on.
 - **Thresholds come from the sweep or the work instructions**, not from hand
@@ -72,6 +91,12 @@ uv run python -m aoi_agent board 20085294        # run a board through the flow
 
 ## Still open
 
-Review-station UI (escalation currently ends at a CLI prompt), agent-layer
-latency benchmarks, retraining from operator corrections, INT8/ONNX
+Agent-layer latency benchmarks, retraining from operator corrections, INT8/ONNX
 quantisation, demo video.
+
+On the station itself:
+
+- Corrections review page (the CLI command exists, the page does not).
+- Board browser, so the 82% the agent settled is visible and not just the queue.
+- Operator authentication. `reviewer` is a free-text field, so the corrections
+  that feed retraining carry no trustworthy identity.

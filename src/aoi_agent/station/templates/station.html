@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}{{ reference }} &middot; review{% endblock %}
+{% block content %}
+
+<section class="station">
+
+  <div class="head">
+    <h1 class="mono">{{ reference }}</h1>
+    <span class="dim">
+      lot {{ candidate.lot_id }} &middot; line {{ candidate.line_id }} &middot;
+      machine {{ candidate.machine_id }} &middot; {{ candidate.shift }} shift
+    </span>
+    <span class="grow"></span>
+    {% if escalation and escalation.status == 'pending' %}
+      <span class="chip warn">waiting on you</span>
+    {% elif escalation %}
+      <span class="chip done">already answered</span>
+    {% endif %}
+  </div>
+
+  {% if escalation %}
+  <div class="handover">
+    <span class="label">the agent handed this over because</span>
+    <p>{{ escalation.reason }}</p>
+    {% if escalation.agent_verdict %}
+      <span class="label">it leaned towards <b>{{ escalation.agent_verdict }}</b>, without confidence</span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <figure class="triptych">
+    <img src="/c/{{ stem }}/{{ index }}/triptych.png" alt="template, test and difference around the flagged region">
+    <figcaption>
+      <span>golden template</span><span>board under test</span><span>difference</span>
+    </figcaption>
+  </figure>
+
+  <div class="columns">
+
+    <div class="col">
+      <h2>What the model read</h2>
+      <dl class="kv">
+        <dt>class</dt><dd><span class="chip">{{ candidate.predicted_class }}</span></dd>
+        <dt>confidence</dt>
+        <dd>
+          {{ '%.3f'|format(candidate.confidence) }}
+          <span class="meter"><i style="width: {{ (candidate.confidence * 100)|round(1) }}%"></i></span>
+        </dd>
+        <dt>P(false call)</dt>
+        <dd>
+          {{ '%.3f'|format(candidate.false_call_probability) }}
+          <span class="meter"><i style="width: {{ (candidate.false_call_probability * 100)|round(1) }}%"></i></span>
+        </dd>
+        <dt>box</dt>
+        <dd class="mono dim">
+          {{ candidate.x1 }},{{ candidate.y1 }} &rarr; {{ candidate.x2 }},{{ candidate.y2 }}
+          ({{ candidate.area }} px)
+        </dd>
+      </dl>
+      <figure class="patch">
+        <img src="/c/{{ stem }}/{{ index }}/patch.png"
+             alt="the 64 px window the model classified">
+        <figcaption class="dim">
+          the 64&nbsp;px window the model actually classified &mdash; if it is off
+          the region, the disagreement is the crop, not the classifier
+        </figcaption>
+      </figure>
+    </div>
+
+    <div class="col">
+      <h2>Production context</h2>
+      {% set ctx = state.get('board_context') or {} %}
+      {% if ctx %}
+      <dl class="kv">
+        {% if ctx.get('lot_defects_per_board') is not none %}
+          <dt>lot average</dt><dd>{{ ctx.lot_defects_per_board }} defects / board</dd>
+        {% endif %}
+        {% if ctx.get('board_defect_count') is not none %}
+          <dt>this board</dt><dd>{{ ctx.board_defect_count }} flagged regions</dd>
+        {% endif %}
+        {% if ctx.get('inspected_at') %}
+          <dt>inspected</dt><dd class="dim">{{ ctx.inspected_at }}</dd>
+        {% endif %}
+      </dl>
+      {% endif %}
+
+      {% set stats = state.get('machine_stats') or {} %}
+      {% if stats.get('machines') %}
+        <h3>{{ stats.defect_type }} by machine, last {{ stats.get('days', 30) }} days</h3>
+        <table class="mini">
+          {% for m in stats.machines %}
+          <tr class="{{ 'this' if m.machine.endswith(candidate.machine_id|string) else '' }}">
+            <td class="mono">{{ m.machine }}</td>
+            <td class="num">{{ '%.1f'|format(m.share_of_defects * 100) }}%</td>
+          </tr>
+          {% endfor %}
+          <tr class="fleet">
+            <td>fleet</td>
+            <td class="num">{{ '%.1f'|format(stats.fleet_share_of_defects * 100) }}%</td>
+          </tr>
+        </table>
+      {% endif %}
+      <p class="sim">lot / line / machine / shift are simulated metadata</p>
+    </div>
+
+    <div class="col">
+      <h2>Acceptance criteria retrieved</h2>
+      {% for p in state.get('standards') or [] %}
+        <article class="passage">
+          <span class="label mono">{{ p.document }} &middot; {{ p.heading }}</span>
+          <p>{{ p.text }}</p>
+        </article>
+      {% else %}
+        <p class="dim">none retrieved for this region</p>
+      {% endfor %}
+      <p class="sim">original documents written for this project, not IPC-A-610</p>
+    </div>
+
+  </div>
+
+  {% if escalation and escalation.status == 'pending' %}
+  <form class="verdict" method="post" action="/c/{{ stem }}/{{ index }}/verdict">
+    <div class="verdict-head">
+      <h2>Your verdict</h2>
+      <label class="reviewer">
+        reviewer
+        <input type="text" name="reviewer" value="operator" autocomplete="off">
+      </label>
+    </div>
+    <div class="options">
+      {% for option in options %}
+      <button type="submit" name="verdict" value="{{ option }}"
+              class="option {{ 'dismiss' if option == 'false_call' else '' }}"
+              data-key="{{ loop.index }}">
+        <kbd>{{ loop.index }}</kbd>{{ option }}
+      </button>
+      {% endfor %}
+    </div>
+    <p class="sub dim">
+      Your answer resumes the suspended run and is recorded as a human decision.
+      It becomes a label in the next training round, which is why the ground
+      truth is not shown on this page.
+    </p>
+  </form>
+  {% else %}
+  <div class="verdict answered">
+    <h2>Already answered</h2>
+    <p class="dim">
+      This region is no longer waiting.
+      {% if next_reference %}<a class="go" href="/next">Next waiting region &rarr;</a>
+      {% else %}<a class="go" href="/">Back to the queue &rarr;</a>{% endif %}
+    </p>
+  </div>
+  {% endif %}
+
+  {% if state.get('trace') %}
+  <footer class="trace">
+    <span class="label">path</span>
+    <span class="mono">{{ state.trace|join(' &rarr; ')|safe }}</span>
+    {% if state.get('timings_ms') %}
+      <span class="label">timings</span>
+      <span class="mono dim">
+        {% for name, ms in state.timings_ms.items() %}{{ name }}&nbsp;{{ '%.0f'|format(ms) }}ms{% if not loop.last %} &middot; {% endif %}{% endfor %}
+      </span>
+    {% endif %}
+  </footer>
+  {% endif %}
+
+</section>
+{% endblock %}
+
+{% block script %}
+<script>
+  // Number keys pick a verdict. A review station is a throughput problem:
+  // the operator's hand should not have to find the mouse for every region.
+  document.addEventListener('keydown', function (event) {
+    if (event.target.tagName === 'INPUT' || event.metaKey || event.ctrlKey) return;
+    var button = document.querySelector('.option[data-key="' + event.key + '"]');
+    if (button) { event.preventDefault(); button.click(); }
+  });
+</script>
+{% endblock %}
