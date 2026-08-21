@@ -112,6 +112,36 @@ They call the model and the queries in-process rather than proxying to an HTTP
 backend, so the cost of the MCP layer can be measured rather than hidden under a
 network hop.
 
+Verify they start and advertise their tools:
+
+```bash
+uv run python scripts/check_mcp_servers.py
+```
+
+To use them from Claude Desktop, add to `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "aoi-classify": {
+      "command": "uv",
+      "args": ["--directory", "/path/to/aoi-agent", "run", "python",
+               "-m", "aoi_agent.mcp_servers.classify"]
+    },
+    "aoi-production": {
+      "command": "uv",
+      "args": ["--directory", "/path/to/aoi-agent", "run", "python",
+               "-m", "aoi_agent.mcp_servers.production"]
+    },
+    "aoi-standards": {
+      "command": "uv",
+      "args": ["--directory", "/path/to/aoi-agent", "run", "python",
+               "-m", "aoi_agent.mcp_servers.standards"]
+    }
+  }
+}
+```
+
 ## Running it
 
 ```bash
@@ -159,6 +189,16 @@ production line is a requirement rather than a preference.
 
 ## Not yet done
 
-Agent-layer latency benchmarks and a model comparison across `gpt-oss:20b`,
-`qwen3:14b` and `qwen2.5:14b`. A single tool decision measures ~1.5–2.9 s at
-22 tok/s when the GPU is free; the numbers worth publishing need it uncontended.
+- **Agent-layer latency benchmarks** and a model comparison across
+  `gpt-oss:20b`, `qwen3:14b` and `qwen2.5:14b`. A single tool decision measures
+  ~1.5–2.9 s at 22 tok/s on an uncontended GPU; the numbers worth publishing
+  need the machine to itself.
+- **The review station UI.** The escalation path currently ends at a CLI
+  prompt. `interrupt` is the architectural centrepiece and it deserves a screen
+  where an operator sees the template, the board, the flagged region and the
+  evidence side by side.
+- **Retraining from operator corrections.** The decision history records them
+  (`uv run python -m aoi_agent corrections`); nothing consumes them yet.
+- **Quantisation and edge inference** — INT8, ONNX, and the size/latency/accuracy
+  trade-off. A re-verification station is an edge deployment and latency is a
+  hard constraint there.
