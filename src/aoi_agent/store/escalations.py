@@ -12,8 +12,6 @@ the graph itself. ``interrupt`` re-runs its node on resume, so a write inside
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from sqlalchemy import func, select
 
 from aoi_agent.store.boards import session_factory
@@ -101,7 +99,12 @@ def resolve_escalation(thread_id: str) -> bool:
         if row is None:
             return False
         row.status = "resolved"
-        row.resolved_at = datetime.now()
+        # ``func.now()``, not ``datetime.now()``. Every other timestamp in the
+        # schema is stamped by the database, which for SQLite is UTC; a Python
+        # local-time value here would put two columns of one row eight hours
+        # apart on this machine and read as an escalation resolved before it was
+        # raised. These are quality records -- the clock has to be one clock.
+        row.resolved_at = func.now()
         session.commit()
     return True
 

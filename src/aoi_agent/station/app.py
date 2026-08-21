@@ -34,7 +34,7 @@ from aoi_agent.graph.flow import DEFAULT_MODEL, build_graph
 from aoi_agent.llm.ollama import OllamaClient
 from aoi_agent.station import images, service
 from aoi_agent.store import escalations
-from aoi_agent.store.boards import resolve_candidate
+from aoi_agent.store.boards import correction_summary, corrections, resolve_candidate
 
 HERE = Path(__file__).parent
 
@@ -184,3 +184,30 @@ def patch_png(stem: str, index: int):
 def queue_count():
     """Polled by the station header so an operator sees work arriving."""
     return HTMLResponse(str(len(escalations.pending())))
+
+@app.get("/corrections", response_class=HTMLResponse)
+def corrections_page(request: Request):
+    """Where operators overruled the model.
+
+    The project's claim is that these rows become the next training set, and a
+    claim you cannot see is a claim nobody believes. The aggregate is the part
+    worth having over the CLI listing: a class the operators overturn again and
+    again is a training-set or threshold problem, and that is invisible in a
+    chronological list past the first screenful.
+
+    Still no ``ground_truth`` here, even though this page is engineering-facing
+    rather than operator-facing. It is one link from the queue, and an operator
+    who reads the answers here carries them back to the region they are judging.
+    Whether the operators were themselves right is a question for the evaluation
+    scripts, which are not served over HTTP.
+    """
+    return templates.TemplateResponse(
+        request,
+        "corrections.html",
+        {
+            "rows": corrections(200),
+            "summary": correction_summary(),
+            "waiting": len(escalations.pending()),
+        },
+    )
+

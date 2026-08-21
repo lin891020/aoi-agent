@@ -10,6 +10,10 @@
 <body>
   <header class="bar">
     <a class="brand" href="/">AOI <span class="dim">&middot;</span> re-verification station</a>
+    <nav>
+      <a href="/">queue</a>
+      <a href="/corrections">corrections</a>
+    </nav>
     <span class="grow"></span>
     <span class="badge">
       <b hx-get="/queue-count" hx-trigger="every 10s" hx-swap="innerHTML">{{ waiting }}</b> waiting

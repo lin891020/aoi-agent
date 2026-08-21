@@ -171,3 +171,57 @@ def corrections(limit: int = 100) -> list[dict]:
             }
             for decision, candidate, board in rows
         ]
+
+
+def correction_summary(limit: int = 1000) -> dict:
+    """Where the model gets corrected, aggregated.
+
+    The list of corrections says what happened; this says what keeps happening.
+    A class the operators overturn again and again is a training-set problem or
+    a threshold problem, and it is invisible in a chronological list once there
+    are more than a screenful.
+
+    Counts human decisions only, so a class the model was never asked about
+    does not appear as a perfect score.
+    """
+    rows = corrections(limit)
+    pairs: dict[tuple[str, str], int] = {}
+    by_model_class: dict[str, dict[str, int]] = {}
+
+    for row in rows:
+        key = (row["model_said"], row["human_said"])
+        pairs[key] = pairs.get(key, 0) + 1
+        bucket = by_model_class.setdefault(
+            row["model_said"], {"total": 0, "overruled": 0}
+        )
+        bucket["total"] += 1
+        bucket["overruled"] += int(row["overruled"])
+
+    classes = sorted(
+        by_model_class,
+        key=lambda name: (-by_model_class[name]["overruled"], name),
+    )
+    return {
+        "total": len(rows),
+        "overruled": sum(1 for row in rows if row["overruled"]),
+        "pairs": pairs,
+        "by_model_class": [
+            {
+                "model_said": name,
+                "total": by_model_class[name]["total"],
+                "overruled": by_model_class[name]["overruled"],
+                "overruled_share": (
+                    by_model_class[name]["overruled"] / by_model_class[name]["total"]
+                ),
+                "corrected_to": sorted(
+                    (
+                        {"verdict": human, "count": count}
+                        for (model, human), count in pairs.items()
+                        if model == name and human != name
+                    ),
+                    key=lambda entry: -entry["count"],
+                ),
+            }
+            for name in classes
+        ],
+    }

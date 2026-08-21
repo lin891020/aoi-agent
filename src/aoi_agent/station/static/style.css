@@ -174,3 +174,22 @@ table.mini tr.fleet td { color: var(--dim); border-bottom: none; }
 @media (max-width: 1100px) {
   .columns { grid-template-columns: 1fr; }
 }
+
+/* ---- nav and corrections ---- */
+
+.bar nav { display: flex; gap: 1rem; margin-left: 0.5rem; }
+.bar nav a { color: var(--dim); font-size: 0.9rem; }
+.bar nav a:hover { color: var(--ink); text-decoration: none; }
+
+.stats { display: flex; gap: 2.5rem; margin: 1.25rem 0 0.5rem;
+         padding: 1rem 1.25rem; background: var(--bg);
+         border: 1px solid var(--line); border-radius: 8px; }
+.stat { display: flex; flex-direction: column; gap: 0.15rem; }
+.stat b { font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.stat b.warn { color: var(--warn); }
+.stat span { font-size: 0.78rem; color: var(--dim); text-transform: uppercase;
+             letter-spacing: 0.06em; }
+
+.chip.small { font-size: 0.72rem; padding: 0.05rem 0.4rem; }
+.dim.small { font-size: 0.72rem; }
+.meter i.hot { background: var(--warn); }

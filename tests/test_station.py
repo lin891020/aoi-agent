@@ -249,3 +249,100 @@ def test_the_model_patch_is_the_window_the_model_saw(client):
     image = Image.open(io.BytesIO(response.content))
     side = PATCH_SIZE * SCALE * 2
     assert image.size == (side * 3 + PANEL_GAP * 2, side)
+
+
+# ---- corrections -------------------------------------------------------
+
+
+def _answer(client, index: int, verdict: str, reviewer: str = "mike") -> None:
+    client.post(f"/c/{STEM}/{index}/verdict",
+                data={"verdict": verdict, "reviewer": reviewer},
+                follow_redirects=False)
+
+
+def test_the_corrections_page_says_so_when_nothing_is_recorded(client):
+    assert "No human decisions recorded yet" in client.get("/corrections").text
+
+
+def test_an_answered_region_appears_in_corrections(client, graph):
+    service.start_review(graph, REFERENCE)
+    _answer(client, 0, "copper")
+
+    page = client.get("/corrections").text
+    assert REFERENCE in page
+    assert "overruled" in page
+    assert "mike" in page
+
+
+def test_agreeing_with_the_model_is_recorded_but_not_counted_as_a_correction(
+    client, graph
+):
+    """Agreement is still a label, and still worth keeping -- it just is not a
+    correction, and conflating the two inflates the overrule rate."""
+    service.start_review(graph, REFERENCE)
+    _answer(client, 0, "open")  # the model also said `open`
+
+    summary = boards.correction_summary()
+    assert summary["total"] == 1
+    assert summary["overruled"] == 0
+
+
+def test_the_summary_groups_by_what_the_model_said(client, graph):
+    service.start_review(graph, REFERENCE)
+    _answer(client, 0, "copper")
+    service.start_review(graph, f"{STEM}#1")
+    _answer(client, 1, "spur")
+
+    summary = boards.correction_summary()
+    assert summary["total"] == 2
+    assert summary["overruled"] == 2
+
+    by_class = {entry["model_said"]: entry for entry in summary["by_model_class"]}
+    assert by_class["open"]["corrected_to"] == [{"verdict": "copper", "count": 1}]
+    assert by_class["short"]["corrected_to"] == [{"verdict": "spur", "count": 1}]
+    assert by_class["open"]["overruled_share"] == 1.0
+
+
+def test_the_summary_ranks_the_worst_class_first(store):
+    """The point of the aggregate is triage, so the class that keeps getting
+    overturned has to be the one at the top."""
+    from aoi_agent.store.boards import record_decision
+
+    record_decision(REFERENCE, "copper", "human", "mike")
+    record_decision(REFERENCE, "spur", "human", "mike")
+    record_decision(f"{STEM}#1", "short", "human", "mike")  # agrees with the model
+
+    summary = boards.correction_summary()
+    assert summary["by_model_class"][0]["model_said"] == "open"
+    assert summary["by_model_class"][0]["overruled"] == 2
+
+
+def test_the_corrections_page_does_not_serve_the_ground_truth(client, graph):
+    """Engineering-facing, but one link from the queue an operator is using."""
+    service.start_review(graph, REFERENCE)
+    _answer(client, 0, "copper")
+
+    for row in boards.corrections():
+        assert "ground_truth" not in row
+    assert "ground_truth" not in boards.correction_summary()
+
+
+def test_raised_and_resolved_are_stamped_by_the_same_clock(store, graph):
+    """One row, two timestamps, and they must be comparable.
+
+    The database stamps `raised_at`; if Python stamped `resolved_at` the two
+    would sit in different time zones and a resolved escalation could read as
+    having been answered before it was raised.
+    """
+    from sqlalchemy import select
+
+    from aoi_agent.store.models import Escalation
+
+    service.start_review(graph, REFERENCE)
+    service.resume_review(graph, REFERENCE, "copper", "mike")
+
+    with boards.session_factory()() as session:
+        row = session.execute(select(Escalation)).scalar()
+
+    assert row.resolved_at is not None
+    assert row.resolved_at >= row.raised_at

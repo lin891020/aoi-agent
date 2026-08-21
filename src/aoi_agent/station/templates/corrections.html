@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Corrections &middot; {{ summary.overruled }} overruled{% endblock %}
+{% block content %}
+<section class="panel">
+  <h1>Where operators overruled the model</h1>
+  <p class="sub">
+    Every row is a region a person judged after the agent handed it over. The
+    ones marked overruled are the next training round's corrections &mdash;
+    a region where the model's class and a person's verdict disagree is worth
+    more than a hundred it got right.
+  </p>
+
+  {% if not rows %}
+    <p class="empty">
+      No human decisions recorded yet.<br>
+      Answer something on the <a href="/">queue</a> and it appears here.
+    </p>
+  {% else %}
+
+  <div class="stats">
+    <div class="stat">
+      <b>{{ summary.total }}</b>
+      <span>human decisions</span>
+    </div>
+    <div class="stat">
+      <b class="warn">{{ summary.overruled }}</b>
+      <span>overruled the model</span>
+    </div>
+    <div class="stat">
+      <b>{{ '%.0f'|format(summary.overruled / summary.total * 100) }}%</b>
+      <span>overrule rate</span>
+    </div>
+  </div>
+
+  <h2>By what the model said</h2>
+  <table class="queue">
+    <thead>
+      <tr>
+        <th>model said</th>
+        <th class="num">reviewed</th>
+        <th class="num">overruled</th>
+        <th>corrected to</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for entry in summary.by_model_class %}
+      <tr>
+        <td><span class="chip">{{ entry.model_said }}</span></td>
+        <td class="num">{{ entry.total }}</td>
+        <td class="num">
+          {{ entry.overruled }}
+          <span class="meter"><i class="{{ 'hot' if entry.overruled_share >= 0.5 else '' }}"
+                                 style="width: {{ (entry.overruled_share * 100)|round(1) }}%"></i></span>
+        </td>
+        <td>
+          {% for correction in entry.corrected_to %}
+            <span class="chip small">{{ correction.verdict }} &times;{{ correction.count }}</span>
+          {% else %}
+            <span class="dim">&mdash;</span>
+          {% endfor %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <h2>Every decision, newest first</h2>
+  <table class="queue">
+    <thead>
+      <tr>
+        <th></th>
+        <th>region</th>
+        <th>model said</th>
+        <th class="num">conf</th>
+        <th>person said</th>
+        <th>reviewer</th>
+        <th>when</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      {% set stem, _, index = row.reference.partition('#') %}
+      <tr>
+        <td>
+          {% if row.overruled %}
+            <span class="chip warn small">overruled</span>
+          {% else %}
+            <span class="dim small">agreed</span>
+          {% endif %}
+        </td>
+        <td><a class="mono" href="/c/{{ stem }}/{{ index }}">{{ row.reference }}</a></td>
+        <td><span class="chip">{{ row.model_said }}</span></td>
+        <td class="num">{{ '%.3f'|format(row.model_confidence) }}</td>
+        <td>
+          {% if row.overruled %}
+            <span class="chip warn">{{ row.human_said }}</span>
+          {% else %}
+            <span class="chip">{{ row.human_said }}</span>
+          {% endif %}
+        </td>
+        <td class="dim">{{ row.reviewer or '&mdash;'|safe }}</td>
+        <td class="dim mono">{{ (row.decided_at or '')[:19]|replace('T', ' ') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <p class="sim">
+    The ground truth is not shown here either. Whether the operators were
+    themselves right is a question for the evaluation scripts, not for a page
+    one link away from the queue.
+  </p>
+  {% endif %}
+</section>
+{% endblock %}

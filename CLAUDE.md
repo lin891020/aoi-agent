@@ -25,7 +25,7 @@ src/aoi_agent/
                             CLI shares with it
     cli.py
 scripts/                    gate_check, build_patches, train, report, seed_store, ...
-tests/                      77 tests; dataset-dependent ones behind `-m dataset`
+tests/                      84 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -40,7 +40,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 77 tests, no GPU needed
+uv run pytest                                    # 84 tests, no GPU needed
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
@@ -104,7 +104,9 @@ On the station itself:
   behaviour is right -- fail towards a person -- but the queue stops being
   triageable, and the infrastructure batch could be re-run on recovery instead
   of spending operator time. One column on `Escalation`, plus a filter.
-- Corrections review page (the CLI command exists, the page does not).
 - Board browser, so the 82% the agent settled is visible and not just the queue.
+- **Timestamps are stored UTC and displayed UTC**, unlabelled. On a quality
+  record read at UTC+8 that is an eight-hour lie. Store UTC, render local, say
+  which -- pairs with the operator-identity gap below.
 - Operator authentication. `reviewer` is a free-text field, so the corrections
   that feed retraining carry no trustworthy identity.
