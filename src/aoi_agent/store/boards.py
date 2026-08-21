@@ -97,3 +97,77 @@ def sample_board_stems(limit: int = 10) -> list[str]:
             .scalars()
             .all()
         )
+
+
+def record_decision(
+    reference: str,
+    verdict: str,
+    source: str,
+    reviewer: str | None = None,
+    rationale: str | None = None,
+) -> bool:
+    """Append a verdict to a candidate's decision history.
+
+    Decisions accumulate rather than overwrite. A model call followed by an
+    operator's correction is two rows, and the pair is exactly what the next
+    training round needs -- an overwritten decision is a correction that never
+    happened.
+    """
+    from aoi_agent.store.models import ReviewDecision
+
+    if "#" not in reference:
+        return False
+    stem, _, index = reference.partition("#")
+    if not index.isdigit():
+        return False
+
+    with session_factory()() as session:
+        record = session.execute(
+            select(CandidateRecord)
+            .join(Board)
+            .where(Board.stem == stem, CandidateRecord.index_on_board == int(index))
+        ).scalar()
+        if record is None:
+            return False
+        session.add(
+            ReviewDecision(
+                candidate_id=record.id,
+                verdict=verdict,
+                source=source,
+                reviewer=reviewer,
+                rationale=rationale,
+            )
+        )
+        session.commit()
+    return True
+
+
+def corrections(limit: int = 100) -> list[dict]:
+    """Candidates where a human overruled the model.
+
+    These are the training set for the next revision.
+    """
+    from aoi_agent.store.models import ReviewDecision
+
+    with session_factory()() as session:
+        rows = session.execute(
+            select(ReviewDecision, CandidateRecord, Board)
+            .join(CandidateRecord, ReviewDecision.candidate_id == CandidateRecord.id)
+            .join(Board, CandidateRecord.board_id == Board.id)
+            .where(ReviewDecision.source == "human")
+            .order_by(ReviewDecision.decided_at.desc())
+            .limit(limit)
+        ).all()
+
+        return [
+            {
+                "reference": f"{board.stem}#{candidate.index_on_board}",
+                "model_said": candidate.predicted_class,
+                "model_confidence": candidate.confidence,
+                "human_said": decision.verdict,
+                "overruled": decision.verdict != candidate.predicted_class,
+                "reviewer": decision.reviewer,
+                "decided_at": decision.decided_at.isoformat() if decision.decided_at else None,
+            }
+            for decision, candidate, board in rows
+        ]
