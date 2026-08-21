@@ -25,6 +25,17 @@ import httpx
 BASE_URL = "http://localhost:11434"
 KEEP_ALIVE = "30m"
 
+#: Seconds one analysis may take before the region goes to an operator
+#: unanswered. WI-300 "Response budget", which derives it from QP-110: analysis
+#: that takes longer than an operator would have taken to look has already spent
+#: the saving it exists to make.
+#:
+#: This is a station policy, not a property of the model. If a model cannot meet
+#: it, WI-300 says to change the model, not the budget. httpx's own default is
+#: 5s and the previous value here was 600s -- neither was a number anyone chose,
+#: and 600s turned a contended GPU into a ten-minute blocked workstation.
+RESPONSE_BUDGET_S = 10.0
+
 Think = bool | Literal["low", "medium", "high"] | None
 
 
@@ -70,7 +81,7 @@ class OllamaClient:
         model: str,
         base_url: str = BASE_URL,
         keep_alive: str = KEEP_ALIVE,
-        timeout: float = 600.0,
+        timeout: float = RESPONSE_BUDGET_S,
     ):
         self.model = model
         self.base_url = base_url.rstrip("/")

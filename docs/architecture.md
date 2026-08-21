@@ -87,12 +87,20 @@ than the one on the operator's screen.
 | `DEFAULT_DISMISS_THRESHOLD` | 0.915 | the operating-point sweep, at the ≤0.5% escape budget |
 | `CONFIDENT` | 0.95 | WI-300 decision authority |
 | `LOW_CONFIDENCE` | 0.70 | WI-300 escalation triggers |
+| `RESPONSE_BUDGET_S` | 10.0 | WI-300 response budget, derived from QP-110 |
 | `IOU_THRESHOLD` | 0.33 | DeepPCB's own benchmark convention |
 | `FRAGMENT_GAP_PX` | 20 | measured: 6.1% of unmatched candidates touch a real defect |
 
 None of these are tuned by hand against the test set. The dismissal threshold
-comes out of the sweep; the two confidence thresholds are written down in the
-work instructions and the code reads them from there rather than the reverse.
+comes out of the sweep; the confidence thresholds and the response budget are
+written down in the work instructions and the code reads them from there rather
+than the reverse. `tests/test_response_budget.py` fails if the constant and
+WI-300 stop agreeing.
+
+The response budget is the one that most invites being quietly raised, so
+WI-300 states the direction explicitly: if the configured model cannot answer
+within it, the model is the wrong size for the line. Whether `gpt-oss:20b` fits
+inside 10s is an open measurement -- see docs/benchmarks.md.
 
 ## Failure directions
 

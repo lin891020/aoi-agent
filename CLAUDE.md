@@ -25,7 +25,7 @@ src/aoi_agent/
                             CLI shares with it
     cli.py
 scripts/                    gate_check, build_patches, train, report, seed_store, ...
-tests/                      71 tests; dataset-dependent ones behind `-m dataset`
+tests/                      77 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -40,7 +40,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 71 tests, no GPU needed
+uv run pytest                                    # 77 tests, no GPU needed
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
@@ -91,11 +91,19 @@ uv run python -m aoi_agent queue                 # what is waiting on a person
 
 ## Still open
 
-Agent-layer latency benchmarks, retraining from operator corrections, INT8/ONNX
-quantisation, demo video.
+Agent-layer latency benchmarks -- specifically, whether `gpt-oss:20b` answers
+inside WI-300's 10s response budget on a quiet machine. If it does not, WI-300
+says change the model, not the budget. Also: retraining from operator
+corrections, INT8/ONNX quantisation, demo video.
 
 On the station itself:
 
+- **Split escalations by kind.** `agent_uncertain` vs `infrastructure`. With a
+  10s budget, an Ollama outage escalates *every* candidate and buries the
+  genuinely ambiguous ones under a page of "the model did not answer". The
+  behaviour is right -- fail towards a person -- but the queue stops being
+  triageable, and the infrastructure batch could be re-run on recovery instead
+  of spending operator time. One column on `Escalation`, plus a filter.
 - Corrections review page (the CLI command exists, the page does not).
 - Board browser, so the 82% the agent settled is visible and not just the queue.
 - Operator authentication. `reviewer` is a free-text field, so the corrections

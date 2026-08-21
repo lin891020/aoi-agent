@@ -22,6 +22,21 @@ Escalate when any of the following holds:
 - the top two classes are within 0.15 of each other
 - the class is `open` and the evidence is not unambiguous
 - the same coordinates were escalated on the previous panel of the same lot
+- the automated analysis has not returned a verdict within the response budget
+
+## Response budget
+Automated analysis of one escalated region shall return a verdict within **10
+seconds**. On expiry the region is escalated to an operator unanswered.
+
+The budget follows from QP-110: retaining a false call costs an operator a few
+seconds, so analysis that takes longer than an operator would have taken to
+look has already spent the saving it exists to make. A station blocked waiting
+on analysis is worse than one that escalates, because the queue behind it
+continues to fill.
+
+The budget is a property of the station, not of the analysis method. If the
+configured model cannot meet it, the model is the wrong size for this line and
+is to be changed; the budget is not to be raised to accommodate it.
 
 ## Records
 Every disposition is recorded with its source -- model, agent or human -- and a
