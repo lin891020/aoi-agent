@@ -1,0 +1,14 @@
+# Dataset — clone it, don't vendor it (231 MB)
+data/DeepPCB/
+# Derived artefacts, rebuilt by scripts/build_patches.py
+data/patches/
+# Trained weights and predictions
+models/
+# Evaluation output
+eval/results/
+
+__pycache__/
+*.py[cod]
+.venv/
+.DS_Store
+.pytest_cache/
