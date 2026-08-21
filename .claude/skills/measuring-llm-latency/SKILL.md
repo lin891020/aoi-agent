@@ -36,11 +36,17 @@ to change the model, not the budget.
    result away. Benchmarking the first call benchmarks the loader.
 3. **Group by model.** Never interleave requests across models. `KEEP_ALIVE` is
    30m and set explicitly on every request; interleaving defeats it.
-4. **Report `eval_ms`.** From `Timing` in `src/aoi_agent/llm/ollama.py`.
+4. **Report service time, not `eval_ms`.** Service time is `total_duration`
+   less `load_duration`: prompt ingestion plus thinking plus generation, minus
+   the one component production never pays, because `KEEP_ALIVE` holds the model
+   resident. `scripts/latency_report.py` computes it. Report `eval_ms` alongside,
+   never as the headline — see the reasoning token trap below.
 5. **Check `Timing.was_reloaded` is False.** Use the codebase's own test —
-   `load_ms > 100` in `src/aoi_agent/llm/ollama.py` — rather than inventing a
-   threshold here. True means the model was evicted mid-run; discard that
-   measurement.
+   `load_ms > Timing.RELOAD_MS` in `src/aoi_agent/llm/ollama.py` — rather than
+   inventing a threshold here. True means the model was evicted mid-run; discard
+   that measurement. Note the threshold is not zero: measured, a warm resident
+   `gpt-oss:20b` reports a steady ~168ms of `load_duration`, so a gate at zero
+   discards every healthy request and the run silently reports nothing.
 6. **Split thermal phases.** Report "first 60s" and "steady state" as separate
    numbers. A single mean hides the throttle.
 7. **`ollama ps` after the run.** If `NAME` or `UNTIL` changed unexpectedly,
@@ -52,20 +58,43 @@ to change the model, not the budget.
 
 | Field | Meaning | Use it as latency? |
 |---|---|---|
-| `eval_ms` | token generation | **yes — this is the number** |
+| `total_duration` − `load_duration` | service time | **yes — this is the number** |
+| `eval_ms` | *visible* token generation | no — excludes thinking, see below |
 | `prompt_eval_ms` | prompt ingestion | yes, reported separately |
-| `load_ms` | model load | no — read it through `was_reloaded` (`> 100`), then discard the run |
-| `wall_ms` | client-side round trip | no — includes queueing and load |
-| `total_duration` (raw) | Ollama's own total | never |
+| `load_ms` | model load | no — read it through `was_reloaded`, then discard the run |
+| `wall_ms` | client-side round trip | no — but compare against `total_duration` to detect queueing |
+| `total_duration` alone | Ollama's own total | no — still includes load |
+
+## The reasoning token trap
+
+`eval_duration` does not account for a reasoning model's thinking tokens.
+Measured on `gpt-oss:20b`, the same request twice:
+
+| | `total_duration` | `eval_ms` | unaccounted |
+|---|---|---|---|
+| `think="low"` | 10722ms | 4671ms | **5435ms** |
+| `think=False` | 3254ms | 1921ms | 8ms |
+
+The gap is thinking, and it closes to nothing when thinking is off. The flow's
+reason node runs at `think="low"`, so `eval_ms` understates what the station
+waits for by about half — enough to turn "inside WI-300's 10s budget" into
+"over it". That is not hypothetical: it is what the first run of
+`scripts/latency_report.py` concluded before the method was corrected.
+
+Any model emitting reasoning tokens has this. Check `len(result.thinking)`
+before trusting `eval_ms` as a whole-request figure.
 
 ## Red Flags — the number is invalid
 
 - No `ollama ps` output recorded alongside it
 - `Timing.was_reloaded` True on a steady-state measurement
 - Reported as a single mean with no first-60s / steady-state split
-- `wall_ms` or `total_duration` quoted as "latency"
+- `eval_ms` quoted as the latency of a request that produced thinking tokens
+- Raw `wall_ms` or raw `total_duration` quoted as "latency"
 - Two models benchmarked in an interleaved loop
-- Wall time is a large multiple of `eval_ms` — that ratio is the contention tell
+- Wall time exceeds `total_duration` by more than a few percent — that gap is
+  the contention tell. The `wall_ms`/`eval_ms` ratio is **not**: it sits near 2x
+  on a perfectly healthy reasoning-model run.
 - A raised `RESPONSE_BUDGET_S`, or a per-call `timeout=` override, used to let a
   slow benchmark finish
 
@@ -87,7 +116,8 @@ raise an error. `scripts/check_skill_freshness.py` asserts every row below.
 |---|---|
 | `KEEP_ALIVE` | `"30m"` |
 | `RESPONSE_BUDGET_S` | `10.0` |
-| `Timing.was_reloaded` | exists; tests `load_ms > 100` |
+| `Timing.was_reloaded` | exists; tests `load_ms > Timing.RELOAD_MS` |
+| `Timing.RELOAD_MS` | `2000.0` |
 | `Timing.eval_ms` | exists |
 | `Timing.load_ms` | exists |
 | `Timing.wall_ms` | exists |

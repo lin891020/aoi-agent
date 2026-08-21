@@ -54,6 +54,13 @@ class Timing:
     def tokens_per_second(self) -> float:
         return self.eval_tokens / (self.eval_ms / 1000) if self.eval_ms else 0.0
 
+    #: Measured on this machine: a warm, resident `gpt-oss:20b` still reports
+    #: ``load_duration`` of a steady ~168ms, so zero is not the warm value and a
+    #: gate at 100ms flags every healthy request. Pulling 12GB back onto the GPU
+    #: takes seconds, so the two populations are orders of magnitude apart and
+    #: anything between them separates them safely.
+    RELOAD_MS = 2000.0
+
     @property
     def was_reloaded(self) -> bool:
         """True when the model had to be pulled back into memory.
@@ -61,7 +68,7 @@ class Timing:
         A reload means this request's latency is not comparable with a warm one
         and should be dropped from any benchmark.
         """
-        return self.load_ms > 100
+        return self.load_ms > self.RELOAD_MS
 
 
 @dataclass
@@ -95,13 +102,18 @@ class OllamaClient:
         think: Think = None,
         temperature: float = 0.0,
         response_format: dict | None = None,
+        max_tokens: int | None = None,
     ) -> ChatResult:
+        options: dict[str, Any] = {"temperature": temperature}
+        if max_tokens is not None:
+            options["num_predict"] = max_tokens
+
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
             "stream": False,
             "keep_alive": self.keep_alive,
-            "options": {"temperature": temperature},
+            "options": options,
         }
         if tools:
             payload["tools"] = tools
@@ -133,11 +145,21 @@ class OllamaClient:
         )
 
     def warm_up(self) -> Timing:
-        """Load the model and discard the result.
+        """Load the model into memory and generate as little as possible.
 
         Every benchmark should call this first and ignore what it returns.
+
+        The output is capped at one token deliberately. This previously sent a
+        bare "ok" with no cap, which is an unbounded prompt to a reasoning
+        model: it answered with an essay, took longer than the benchmark calls
+        it was meant to precede, and on one run exceeded a 180s ceiling. Warming
+        up means paying the load, not paying for tokens nobody reads.
         """
-        return self.chat([{"role": "user", "content": "ok"}], think=False).timing
+        return self.chat(
+            [{"role": "user", "content": "Reply with one word."}],
+            think=False,
+            max_tokens=1,
+        ).timing
 
     def resident_models(self) -> list[dict[str, Any]]:
         response = self._client.get(f"{self.base_url}/api/ps")

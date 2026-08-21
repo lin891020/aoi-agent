@@ -53,3 +53,26 @@ def test_expiry_reaches_the_flow_as_an_escalation_not_a_crash(error):
     leave a flagged board with no disposition at all.
     """
     assert isinstance(error, httpx.HTTPError)
+
+
+def test_a_warm_request_is_not_mistaken_for_a_reload():
+    """Measured: a warm, resident gpt-oss:20b reports ~168ms of load_duration.
+
+    A gate at zero -- or at 100ms -- marks every healthy request as evicted, and
+    a benchmark that drops every measurement reports nothing while looking like
+    it ran.
+    """
+    from aoi_agent.llm.ollama import Timing
+
+    warm = Timing(wall_ms=1500, load_ms=168, prompt_eval_ms=100,
+                  eval_ms=1150, prompt_tokens=200, eval_tokens=32)
+    assert not warm.was_reloaded
+
+
+def test_a_genuine_reload_is_still_caught():
+    """Pulling 12GB back onto the GPU takes seconds, not milliseconds."""
+    from aoi_agent.llm.ollama import Timing
+
+    reloaded = Timing(wall_ms=30000, load_ms=18000, prompt_eval_ms=100,
+                      eval_ms=1150, prompt_tokens=200, eval_tokens=32)
+    assert reloaded.was_reloaded

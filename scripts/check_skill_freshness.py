@@ -57,6 +57,23 @@ def _has_member(tree: ast.Module, cls: str, member: str) -> bool:
     return False
 
 
+def _class_assign(tree: ast.Module, cls: str, name: str):
+    """Value of a class-level `name = <literal>`, or None.
+
+    `_has_member` only sees annotated fields and methods, which is right for a
+    dataclass's columns but blind to a plain constant hung off the class.
+    """
+    node = _class(tree, cls)
+    if node is None:
+        return None
+    for item in node.body:
+        if isinstance(item, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == name for t in item.targets
+        ):
+            return ast.literal_eval(item.value)
+    return None
+
+
 def _source_of(tree: ast.Module, cls: str, member: str) -> str:
     node = _class(tree, cls)
     for item in node.body if node else []:
@@ -84,11 +101,27 @@ def check_measuring_llm_latency() -> list[str]:
             bad.append(f"{rel}: Timing.{member} is gone, skill still cites it")
 
     reloaded = _source_of(tree, "Timing", "was_reloaded")
-    if reloaded and "self.load_ms > 100" not in reloaded:
+    if reloaded and "self.load_ms > self.RELOAD_MS" not in reloaded:
         bad.append(
-            f"{rel}: Timing.was_reloaded no longer tests `load_ms > 100`, "
+            f"{rel}: Timing.was_reloaded no longer tests `load_ms > RELOAD_MS`, "
             "skill states that threshold"
         )
+
+    reload_ms = _class_assign(tree, "Timing", "RELOAD_MS")
+    if reload_ms != 2000.0:
+        bad.append(f"{rel}: Timing.RELOAD_MS is {reload_ms!r}, skill says 2000.0")
+
+    # The reasoning token trap turns on the reason node actually thinking. If
+    # the flow stops passing `think`, the skill's central warning describes a
+    # problem the code no longer has, and the latency method it prescribes is
+    # heavier than it needs to be.
+    flow = _module("src/aoi_agent/graph/flow.py")
+    if 'think="low"' not in (ROOT / "src/aoi_agent/graph/flow.py").read_text():
+        bad.append(
+            "src/aoi_agent/graph/flow.py: the reason node no longer requests "
+            "thinking, so the skill's reasoning token trap no longer applies"
+        )
+    del flow
 
     for member in ("warm_up", "resident_models"):
         if not _has_member(tree, "OllamaClient", member):

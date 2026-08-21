@@ -28,6 +28,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from check_skill_freshness import (  # noqa: E402
     _assign,
+    _class_assign,
     check_measuring_llm_latency,
     check_retraining_the_reverifier,
 )
@@ -55,3 +56,13 @@ def test_the_checker_notices_when_a_constant_moves():
     assert _assign(before, "RESPONSE_BUDGET_S") == 10.0
     assert _assign(after, "RESPONSE_BUDGET_S") == 30.0
     assert _assign(before, "NEVER_DEFINED") is None
+
+
+def test_the_checker_reads_a_class_level_constant():
+    """`_has_member` sees annotated fields and methods only, so a plain constant
+    hung off a class needs its own reader. Without one the check reports the
+    constant missing while it sits there in the file."""
+    tree = ast.parse("class Timing:\n    RELOAD_MS = 2000.0\n    other: float\n")
+    assert _class_assign(tree, "Timing", "RELOAD_MS") == 2000.0
+    assert _class_assign(tree, "Timing", "other") is None
+    assert _class_assign(tree, "Missing", "RELOAD_MS") is None

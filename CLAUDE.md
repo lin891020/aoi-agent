@@ -25,7 +25,7 @@ src/aoi_agent/
                             CLI shares with it
     cli.py
 scripts/                    gate_check, build_patches, train, report, seed_store, ...
-tests/                      84 tests; dataset-dependent ones behind `-m dataset`
+tests/                      90 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -40,7 +40,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 84 tests, no GPU needed
+uv run pytest                                    # 90 tests, no GPU needed
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
@@ -91,10 +91,15 @@ uv run python -m aoi_agent queue                 # what is waiting on a person
 
 ## Still open
 
-Agent-layer latency benchmarks -- specifically, whether `gpt-oss:20b` answers
-inside WI-300's 10s response budget on a quiet machine. If it does not, WI-300
-says change the model, not the budget. Also: retraining from operator
-corrections, INT8/ONNX quantisation, demo video.
+**`gpt-oss:20b` does not meet WI-300's 10s response budget.** Measured on a
+quiet machine: p90 service time 15.6s, 20 of 24 calls over. See
+docs/benchmarks.md. WI-300 says change the model, not the budget, so a decision
+is owed: `think=False` measured 3.3s on the same prompt but throws away the
+reasoning that justifies having an LLM in the loop at all; a smaller model is
+the other direction. Nothing downstream is settled until this is.
+
+Also open: retraining from operator corrections, INT8/ONNX quantisation, demo
+video.
 
 On the station itself:
 

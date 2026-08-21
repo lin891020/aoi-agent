@@ -68,3 +68,33 @@ Escapes on the dismissal path: 15 (0.30% of dismissals).
 appears on the confirm path -- WI-201 calls it the class hardest to separate
 from a registration artefact.
 
+
+### Agent-layer latency — does the reason node fit the response budget?
+
+`gpt-oss:20b` at `think="low"`, 24 real reason-node calls over candidates the router sends to the LLM. Budget is WI-300's 10s.
+
+Latency here is **service time**: Ollama's `total_duration` less `load_duration`. It is not `eval_ms`. Measured on this model, `eval_duration` does not account for thinking tokens at all, and reports under half the time the station waits.
+
+```
+ollama ps before the run
+NAME           ID              SIZE     PROCESSOR    CONTEXT    UNTIL               
+gpt-oss:20b    17052f91a42e    12 GB    100% GPU     32768      28 minutes from now
+
+ollama ps after the run
+NAME           ID              SIZE     PROCESSOR    CONTEXT    UNTIL               
+gpt-oss:20b    17052f91a42e    12 GB    100% GPU     32768      29 minutes from now
+```
+
+| | calls | median | mean | p90 | max |
+|---|---|---|---|---|---|
+| first 60s | 6 | 9.3s | 9.1s | 10.7s | 10.7s |
+| steady state | 18 | 12.5s | 13.2s | 15.6s | 21.1s |
+| all | 24 | 11.2s | 12.2s | 15.6s | 21.1s |
+
+**Over budget.** p90 is 15.6s against a 10s budget, and 20 of 24 calls exceeded it. WI-300 says the model is the wrong size for the line, not that the budget moves.
+
+Of that service time, `eval_duration` accounts for 6.4s and prompt ingestion for 0.1s on average. The remaining 5.7s is thinking tokens, which Ollama generates and bills to nobody. Reporting `eval_ms` as the latency would have understated this run by 47%.
+
+Queueing check: 0.0% of mean wall time is not load, prompt or generation — the request went straight to the GPU, so the run is not contended.
+
+No request was served after an eviction.
