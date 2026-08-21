@@ -79,3 +79,8 @@ uv run python scripts/report.py            # the operating-point table
 - DeepPCB ships pre-registered and binarised, which removes the two largest
   real-world sources of false calls. Numbers here are optimistic relative to a
   line running on raw camera output.
+- The simulator's 3x3 opening kernel erases the thin slivers misregistration
+  leaves along trace edges, so the false calls it produces come from other
+  causes. Measured: a 2 px template shift changes 456 pixels on a synthetic
+  board and yields zero candidates at the default settings. A real AOI is
+  noisier than this one.

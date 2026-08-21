@@ -65,7 +65,15 @@ class DetectorConfig:
     """Absolute grey-level difference above which a pixel is suspicious."""
 
     open_kernel: int = 3
-    """Morphological opening removes isolated speckle from JPEG artefacts."""
+    """Morphological opening removes isolated speckle from JPEG artefacts.
+
+    It also erases the one- and two-pixel slivers that misregistration leaves
+    along every trace edge, which is what keeps the candidate count workable.
+    The trade-off is that this detector tolerates misalignment better than a
+    real AOI does, so the false calls it produces come from other causes and
+    the counts are conservative. Set to ``0`` to see the registration
+    artefacts.
+    """
 
     dilate_kernel: int = 5
     """Dilation merges pixels of one defect into a single blob."""
