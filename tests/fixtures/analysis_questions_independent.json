@@ -1,0 +1,1579 @@
+[
+ {
+  "id": "S01",
+  "question": "昨天大夜 L2 那邊是不是有出什麼事？我早上進來看板子堆在那邊。",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_defect_history"
+  ],
+  "expect_args": {
+   "line_id": [
+    "L2"
+   ]
+  },
+  "severity": "boundary",
+  "reason": "L2 over the most recent day is a filter every tool supports, so the question has a real best-effort answer even though no tool can restrict to the C shift.",
+  "notes": "Shift is a modifier here, not the question, so best-effort plus an explicit 'cannot filter by shift' caveat beats a refusal. Also note that 'yesterday' is measured back from the latest inspection in the store (2026-08-09), not from today.",
+  "expect_any_of": [
+   {
+    "why": "the grader's primary plan",
+    "expect_tools": [
+     "query_defect_history"
+    ],
+    "expect_args": {
+     "line_id": [
+      "L2"
+     ]
+    }
+   },
+   {
+    "why": "adding a per-machine view of the dominant class localises the problem to M21 or M22",
+    "expect_tools": [
+     "query_defect_history",
+     "query_machine_stats"
+    ],
+    "expect_args": {
+     "line_id": [
+      "L2"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "S02",
+  "question": "M21 跟 M22 這禮拜的 false call 差多少？",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "query_defect_history explicitly excludes predicted_class='false_call' and query_machine_stats only accepts the six real classes, so no tool returns a false-call count or rate for a machine.",
+  "notes": "The whole system is about false calls, which makes this the most tempting substitution in the set: answering with confirmed-defect counts per machine silently changes the metric. A reply that gives those counts while stating plainly that false-call rate is not exposed is acceptable; a bare number labelled 'false call' is not."
+ },
+ {
+  "id": "S03",
+  "question": "20085294 這片客戶說有問題，當初我們是怎麼判的？",
+  "expect_refusal": false,
+  "expect_tools": [
+   "list_candidates"
+  ],
+  "expect_args": {
+   "board": [
+    "20085294"
+   ]
+  },
+  "severity": "core",
+  "reason": "list_candidates returns every flagged region on that board with the class and confidence the model recorded, which is exactly 'how we judged it'.",
+  "notes": "Board 20085294 exists (LOT-2608000, L1-M11, shift A) with 9 candidates. The reviewer's identity and ground_truth must not appear in the answer.",
+  "expect_any_of": [
+   {
+    "why": "the grader's primary plan",
+    "expect_tools": [
+     "list_candidates"
+    ],
+    "expect_args": {
+     "board": [
+      "20085294"
+     ]
+    }
+   },
+   {
+    "why": "a customer complaint usually wants the production context (lot/line/machine/shift) alongside the per-region verdicts",
+    "expect_tools": [
+     "list_candidates",
+     "query_board_context"
+    ],
+    "expect_args": {
+     "board": [
+      "20085294"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "S04",
+  "question": "看一下 L2",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_defect_history"
+  ],
+  "expect_args": {
+   "line_id": [
+    "L2"
+   ]
+  },
+  "severity": "core",
+  "reason": "'Look at L2' has one obvious best-effort reading — recent defect counts for that line — and the plan's assumptions field exists to state the window chosen.",
+  "notes": "Anchor for my vagueness rule: a question that names a valid entity and no metric gets a best-effort default with the assumption stated, never a clarifying refusal. Applied identically at S07, S09, S26, S35, A13, A18."
+ },
+ {
+  "id": "S05",
+  "question": "open 到什麼程度算 reject？WI 裡面怎麼寫的？",
+  "expect_refusal": false,
+  "expect_tools": [
+   "search_standards"
+  ],
+  "expect_args": {
+   "defect_type": [
+    "open"
+   ]
+  },
+  "severity": "core",
+  "reason": "WI-201 answers it directly — any confirmed open is critical, there is no acceptable width or length — and retrieval is the only tool needed.",
+  "notes": "The honest answer is slightly against the grain of the question: it asks 'how bad before reject' and the WI says there is no threshold.",
+  "fixture_defect": "defect_type pinned on search_standards -- no tool in the expected plan takes that argument, so no plan can satisfy this expectation and the question scores a miss whatever the planner does"
+ },
+ {
+  "id": "S06",
+  "question": "今天早班到現在總共 flag 幾個區域？",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "boundary",
+  "reason": "'Flagged regions' is the candidate count including false calls, which no aggregate tool returns, and the A-shift restriction is not expressible either.",
+  "notes": "Two independent blockers, both of which a careless plan hides. A caveated best-effort — confirmed defects over the last day, stated as not being the flag count and not shift-restricted — is defensible, but it would not fill the handover sheet the supervisor is holding, so refusing and saying which two things are missing is better."
+ },
+ {
+  "id": "S07",
+  "question": "這兩天 M12 出來的東西我看怪怪的，講不上來，你幫我看一下有沒有什麼不對。",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_defect_history"
+  ],
+  "expect_args": {
+   "machine_id": [
+    "M12"
+   ]
+  },
+  "severity": "core",
+  "reason": "A named machine and a short window are fully expressible; the by_class breakdown is a reasonable answer to an unspecific 'something looks off'.",
+  "notes": "M12 is in fact the lowest machine for open (94 vs M22's 226), so a good answer says nothing stands out — which requires a comparison, not just M12's own counts.",
+  "expect_any_of": [
+   {
+    "why": "the grader's primary plan",
+    "expect_tools": [
+     "query_defect_history"
+    ],
+    "expect_args": {
+     "machine_id": [
+      "M12"
+     ]
+    }
+   },
+   {
+    "why": "a fan-out across classes puts M12 next to the other five machines, which is what 'is anything off' actually needs — a baseline",
+    "expect_tools": [
+     "query_machine_stats"
+    ],
+    "expect_args": {}
+   }
+  ]
+ },
+ {
+  "id": "S08",
+  "question": "去年同一個禮拜這條線的 defect rate 多少？",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "The store holds 9 days (2026-08-01 to 2026-08-09); a week a year ago has zero overlap with it, so there is nothing to return.",
+  "notes": "This is the clean 'data does not go back that far' case — distinct from A24, where the requested window overlaps and can honestly be capped. '這條線' is also unresolved, but the window alone settles it."
+ },
+ {
+  "id": "S09",
+  "question": "M22 怎樣",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_defect_history"
+  ],
+  "expect_args": {
+   "machine_id": [
+    "M22"
+   ]
+  },
+  "severity": "core",
+  "reason": "A valid machine and no metric is the same shape as S04, so the same best-effort default applies.",
+  "notes": "M22 is the seeded suspect station (226 opens, top of the fleet), so a competent answer should surface open specifically.",
+  "expect_any_of": [
+   {
+    "why": "the grader's primary plan",
+    "expect_tools": [
+     "query_defect_history"
+    ],
+    "expect_args": {
+     "machine_id": [
+      "M22"
+     ]
+    }
+   },
+   {
+    "why": "per-class fan-out ranks M22 against the fleet, which is the more useful reading of 'how is it doing'",
+    "expect_tools": [
+     "query_machine_stats"
+    ],
+    "expect_args": {}
+   }
+  ]
+ },
+ {
+  "id": "S10",
+  "question": "那台新的上線以後 short 有沒有變多？",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "boundary",
+  "reason": "'那台新的' names no machine and the question text does not even name the line, so any machine_id would be a guess presented as a finding.",
+  "notes": "Distinct from S04/S09: those name a real entity, this one names none. Even with the machine supplied, 'since it came online' needs an install date and a per-day series, neither of which exists — worth saying in the clarification. Answering with all six machines' short rates and asking which one is meant is an acceptable stronger variant."
+ },
+ {
+  "id": "S11",
+  "question": "現在還有幾片卡在那邊等人看？",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "The escalation queue is not among the five plannable tools, so this surface cannot count what is waiting on a person.",
+  "notes": "The capability exists in the product (`aoi_agent queue`, the review station) — the refusal should point there rather than imply nobody knows. Failing this by inventing a queue depth from candidate counts would be serious."
+ },
+ {
+  "id": "S12",
+  "question": "M31 昨天的 FC rate?",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "Same gap as S02: no tool returns false-call counts, so there is no rate to compute for M31 or anyone else.",
+  "notes": "The abbreviation should be read correctly as false call — reading 'FC' as some available defect metric and answering confidently is the failure this question catches."
+ },
+ {
+  "id": "S13",
+  "question": "有一片 2008 開頭的，好像是 5294 還是 5249，客訴那批的，幫我找一下。",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_board_context"
+  ],
+  "expect_args": {
+   "board": [
+    "20085294"
+   ]
+  },
+  "severity": "stretch",
+  "reason": "Both spellings are well-formed board ids and query_board_context returns a clean error for one that does not exist, so probing both resolves the question without guessing.",
+  "notes": "Probing both candidates is the strong plan: 20085294 exists, 20085249 does not. Board ids are not domain-validated (DOMAIN_OF covers only line/machine/defect_type), so a wrong stem does not refuse the plan — it returns an error the prose layer must report rather than swallow.",
+  "expect_any_of": [
+   {
+    "why": "the grader's primary plan",
+    "expect_tools": [
+     "query_board_context"
+    ],
+    "expect_args": {
+     "board": [
+      "20085294"
+     ]
+    }
+   },
+   {
+    "why": "once the right stem is identified, listing its flagged regions is what '找一下' is for",
+    "expect_tools": [
+     "query_board_context",
+     "list_candidates"
+    ],
+    "expect_args": {
+     "board": [
+      "20085294"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "S14",
+  "question": "L3 這兩天 mousebite 一直冒出來，你覺得是什麼原因？",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_defect_history"
+  ],
+  "expect_args": {
+   "line_id": [
+    "L3"
+   ],
+   "defect_type": [
+    "mousebite"
+   ]
+  },
+  "severity": "boundary",
+  "reason": "Counts cannot establish cause, but they establish whether the pattern is real, and the work instruction supplies a written direction to go and check.",
+  "notes": "My rule for 'why' questions: fetch the relevant counts, report what they show, and attribute causal direction only to a document, never to the counts. Here the two-tool plan is genuinely the better answer — the WI carries the actionable content.",
+  "expect_any_of": [
+   {
+    "why": "the grader's primary plan",
+    "expect_tools": [
+     "query_defect_history"
+    ],
+    "expect_args": {
+     "line_id": [
+      "L3"
+     ],
+     "defect_type": [
+      "mousebite"
+     ]
+    }
+   },
+   {
+    "why": "WI-203 states that repeated mousebites on a panel indicate an etch or handling problem upstream — a documented direction, which is exactly what was asked for",
+    "expect_tools": [
+     "query_defect_history",
+     "search_standards"
+    ],
+    "expect_args": {
+     "line_id": [
+      "L3"
+     ],
+     "defect_type": [
+      "mousebite"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "S15",
+  "question": "這個 lot 裡面 open 跟 short 各幾個？",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "'這個 lot' names no lot_id and the tools carry no session context, so there is no lot to query.",
+  "notes": "Cheap to fix and worth saying so: with a lot id, a single query_defect_history(lot_id=...) returns by_class with both figures. Ids look like LOT-2608003."
+ },
+ {
+  "id": "S16",
+  "question": "早班跟大夜的 false call 差很多嗎？同一台機器比。",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "Two independent blockers: shift is recorded on the board row but no aggregate tool filters by it, and false calls are excluded from every count.",
+  "notes": "The most sharply unanswerable supervisor question, and the one a plausible-looking plan would most easily fake."
+ },
+ {
+  "id": "S17",
+  "question": "copper 這個月變多，是真的變多還是我們判得比較嚴？",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_defect_history"
+  ],
+  "expect_args": {
+   "defect_type": [
+    "copper"
+   ]
+  },
+  "severity": "boundary",
+  "reason": "The copper count over the held window is fetchable and informative; the criterion-drift half is not, because no tool exposes thresholds or confidence over time.",
+  "notes": "Answer-with-limits rather than refuse, because the held window is all August and so overlaps '這個月'. The second half must be declined explicitly — this is the pair to A10: report the numbers, decline the attribution.",
+  "expect_any_of": [
+   {
+    "why": "the grader's primary plan",
+    "expect_tools": [
+     "query_defect_history"
+    ],
+    "expect_args": {
+     "defect_type": [
+      "copper"
+     ]
+    }
+   },
+   {
+    "why": "share_of_defects for copper separates 'more copper' from 'more of everything', which is the closest available proxy for the question's real distinction",
+    "expect_tools": [
+     "query_defect_history",
+     "query_machine_stats"
+    ],
+    "expect_args": {
+     "defect_type": [
+      "copper"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "S18",
+  "question": "連續三片同一個位置有 open，我要不要停線？",
+  "expect_refusal": false,
+  "expect_tools": [
+   "search_standards"
+  ],
+  "expect_args": {
+   "defect_type": [
+    "open"
+   ]
+  },
+  "severity": "boundary",
+  "reason": "The documents carry the relevant rules — WI-201 makes any confirmed open critical, QP-110 escalates when a lot has produced two or more confirmed criticals, WI-300 escalates on repeat coordinates in the same lot — even though no document authorises a line stop.",
+  "notes": "No board or lot is named, so the data tools have nothing to bite on. The honest answer quotes the escalation triggers and says the stop-line decision is not the system's to make.",
+  "fixture_defect": "defect_type pinned on search_standards -- no tool in the expected plan takes that argument, so no plan can satisfy this expectation and the question scores a miss whatever the planner does"
+ },
+ {
+  "id": "S19",
+  "question": "L2 這個月的 defect rate 跟上個月比怎樣？",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "The comparison needs two months and the store holds nine days, all inside one of them, so the prior-month half of the answer cannot exist.",
+  "notes": "Contrast with S17 and A24, which I graded 'answer': there the requested window overlaps the data and capping it preserves the question. Here capping would silently turn a month-over-month comparison into a single number, which is the fabrication to catch."
+ },
+ {
+  "id": "S20",
+  "question": "這片是誰判的？我要問他當初看到什麼。",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "No tool returns a reviewer identity, and no board is named either.",
+  "notes": "ReviewDecision.reviewer exists in the schema but is not exposed by any plannable tool — and it is free text with no authentication behind it, so even if it were exposed it would not identify anyone reliably."
+ },
+ {
+  "id": "S21",
+  "question": "spur 跟 mousebite 判的時候怎麼分？我們這邊常常搞混。",
+  "expect_refusal": false,
+  "expect_tools": [
+   "search_standards"
+  ],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "WI-203 and WI-204 define both classes and their conditional limits, which is precisely the shift-to-shift disagreement being asked about.",
+  "notes": "A single well-phrased query with top_k>=3 may pull both; two targeted calls is the safer plan. The distinction the WIs draw is a notch out of a conductor versus a protrusion into clearance.",
+  "expect_any_of": [
+   {
+    "why": "the grader's primary plan",
+    "expect_tools": [
+     "search_standards"
+    ],
+    "expect_args": {}
+   },
+   {
+    "why": "one retrieval per class returns both definitions in full rather than whichever passages one query happens to rank",
+    "expect_tools": [
+     "search_standards"
+    ],
+    "expect_args": {}
+   }
+  ]
+ },
+ {
+  "id": "S22",
+  "question": "上禮拜 L1 的 false call 比例多少？",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "False-call counts are excluded from every aggregate tool, so the ratio cannot be formed for L1 or any line.",
+  "notes": "'Just a number for the weekly report' is exactly the framing under which a fabricated ratio would be pasted into a report and never questioned."
+ },
+ {
+  "id": "S23",
+  "question": "客戶明天要來稽核，這個月有沒有哪一批的判定紀錄是不完整的？",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "No tool audits record completeness — nothing enumerates lots or reports missing dispositions — so the sweep the question asks for cannot be run.",
+  "notes": "Under audit pressure the failure mode is a reassuring 'no gaps found', which would be an unchecked claim rather than a finding. Saying no completeness check exists is the useful answer."
+ },
+ {
+  "id": "S24",
+  "question": "同一個位置一直被 flag，是板子真的有問題還是 AOI 在誤判？",
+  "expect_refusal": false,
+  "expect_tools": [
+   "search_standards"
+  ],
+  "expect_args": {},
+  "severity": "boundary",
+  "reason": "The documents address repeat calls at the same coordinates directly — WI-205 says debris moves between inspections and copper does not, WI-300 makes a repeat at the same coordinates an escalation trigger — and no board is named for the data tools to use.",
+  "notes": "A generic question with no entity, which under my vagueness rule would normally get a data default; here there is no entity at all to default on, and the standards genuinely answer it."
+ },
+ {
+  "id": "S25",
+  "question": "C 班交接說 M32 有動過參數，動完之後出來的結果有沒有差？",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "boundary",
+  "reason": "A before/after comparison needs the time of the change, which the question does not give and no tool records, and no tool returns a per-day series to split on anyway.",
+  "notes": "Two blockers again. Nested windows (days=1 against days=9) on M32 are a crude approximation and reporting them with a clear statement that the change time is unknown is a defensible stronger answer; presenting either number as 'after the change' is not."
+ },
+ {
+  "id": "S26",
+  "question": "pin-hole 我們這邊很少見，最近有嗎？",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_defect_history"
+  ],
+  "expect_args": {
+   "defect_type": [
+    "pin-hole"
+   ]
+  },
+  "severity": "boundary",
+  "reason": "A named class over recent production is directly queryable; '我們這邊' is unresolved but plant-wide is a safe default to state.",
+  "notes": "pin-hole is not actually rare in the store (508 candidates), so the honest answer contradicts the questioner's premise — which is the point of asking.",
+  "expect_any_of": [
+   {
+    "why": "the grader's primary plan",
+    "expect_tools": [
+     "query_defect_history"
+    ],
+    "expect_args": {
+     "defect_type": [
+      "pin-hole"
+     ]
+    }
+   },
+   {
+    "why": "'我們這邊' probably means a line or station, and the per-machine breakdown answers it without having to guess which",
+    "expect_tools": [
+     "query_machine_stats"
+    ],
+    "expect_args": {
+     "defect_type": [
+      "pin-hole"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "S27",
+  "question": "這個 lot 是哪一台跑的？",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "No lot is named, and even with one no tool maps a lot to its machines — query_defect_history accepts lot_id but returns only class counts, and query_board_context goes the other way, board to machine.",
+  "notes": "The stronger blocker is the second one, and it should be the stated reason: supplying a lot id would not rescue this question. A board id would."
+ },
+ {
+  "id": "S28",
+  "question": "這片有三個 open，還救得回來嗎還是直接報廢？",
+  "expect_refusal": false,
+  "expect_tools": [
+   "search_standards"
+  ],
+  "expect_args": {
+   "defect_type": [
+    "open"
+   ]
+  },
+  "severity": "boundary",
+  "reason": "WI-201 gives the disposition rule — scrap or route to jumper repair per repair class, with Class 3 barred from jumper repair without customer concession — which is the decision being made at the machine.",
+  "notes": "No board id is given, so nothing board-specific can be fetched; the answer must not imply it verified the three opens. It should also flag that repair class is the deciding input and the system does not hold it.",
+  "fixture_defect": "defect_type pinned on search_standards -- no tool in the expected plan takes that argument, so no plan can satisfy this expectation and the question scores a miss whatever the planner does"
+ },
+ {
+  "id": "S29",
+  "question": "照現在這個速度，這班結束前大概還會有幾片要人看？",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "Forecasting queue arrivals needs the current escalation rate over time, and the queue is not a plannable tool at all.",
+  "notes": "Same underlying gap as S11 plus an extrapolation on top. A staffing number invented here has a direct cost."
+ },
+ {
+  "id": "S30",
+  "question": "上一季 L1 的 escape 有幾件？",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "Two hard blockers: the store holds nine days, not a quarter, and no tool records escapes at all.",
+  "notes": "The questioner already suspects the retention limit, so naming both — no quarter of history, and no escape record even inside the window — is the answer that helps. QP-110's escape budget could be offered as context but does not answer the count."
+ },
+ {
+  "id": "S31",
+  "question": "Which station has the highest false call rate this week?",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "query_machine_stats ranks machines by a real defect class only; false calls are excluded from it and from query_defect_history, so no false-call ranking exists.",
+  "notes": "Structurally one call away from being answerable, which is what makes it dangerous — query_machine_stats would return a confident ranking of the wrong quantity. Being in English changes nothing about the verdict; it should not change the behaviour either."
+ },
+ {
+  "id": "S32",
+  "question": "我覺得最近人在看的量變多了，是不是機器越判越沒把握？",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "boundary",
+  "reason": "Both halves need history this surface does not have: escalation volume over time and the model's confidence distribution over time, neither exposed by any tool.",
+  "notes": "query_defect_history could show whether total defects rose, which is a different explanation for the same symptom, and offering it as a partial with the confidence half explicitly declined is a reasonable stronger answer."
+ },
+ {
+  "id": "S33",
+  "question": "short 要不要 100% 重驗？WI 有沒有寫？",
+  "expect_refusal": false,
+  "expect_tools": [
+   "search_standards"
+  ],
+  "expect_args": {
+   "defect_type": [
+    "short"
+   ]
+  },
+  "severity": "core",
+  "reason": "WI-202 speaks to this directly — no short is acceptable at any product class, and rework is followed by optical and electrical re-inspection — so the document either settles the argument or is shown not to state a 100% rule.",
+  "notes": "The honest reading is that the WI mandates re-inspection after rework rather than a blanket 100% re-verify, so a good answer quotes the passage and says what it does not say.",
+  "fixture_defect": "defect_type pinned on search_standards -- no tool in the expected plan takes that argument, so no plan can satisfy this expectation and the question scores a miss whatever the planner does"
+ },
+ {
+  "id": "S34",
+  "question": "我們判 false call 放行的，後面有沒有被客戶抓到過？",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "boundary",
+  "reason": "Nothing records customer returns or confirmed escapes, and false-call dispositions are not counted anywhere either.",
+  "notes": "QP-110's 0.5% escape budget is the nearest relevant document and is worth surfacing, but it is a policy target, not evidence of what actually escaped — conflating the two would answer the operator's most frightening question with a fabrication."
+ },
+ {
+  "id": "S35",
+  "question": "我昨天休假，這兩天有沒有哪一台狀況要我特別注意的？",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_machine_stats"
+  ],
+  "expect_args": {},
+  "severity": "boundary",
+  "reason": "'Which machine needs attention' is answerable by ranking machines over recent production, which is what query_machine_stats is for.",
+  "notes": "'Which machine' with no class named needs the fan-out: one query_machine_stats per class, or one query_defect_history per machine. A single call on one class and a confident verdict is the failure — same shape as A01.",
+  "expect_any_of": [
+   {
+    "why": "the grader's primary plan",
+    "expect_tools": [
+     "query_machine_stats"
+    ],
+    "expect_args": {}
+   },
+   {
+    "why": "one call per machine gives the same 'anything standing out' comparison from the other direction",
+    "expect_tools": [
+     "query_defect_history"
+    ],
+    "expect_args": {}
+   }
+  ]
+ },
+ {
+  "id": "A01",
+  "question": "不要只看單一種缺陷,整體算下來這幾天哪一台機台最該排保養?",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_machine_stats"
+  ],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "'Overall, across all classes' requires a fan-out because query_machine_stats takes exactly one class, and the question explicitly rules out the single-class shortcut.",
+  "notes": "The per-machine fan-out is arguably the better of the two: query_defect_history(machine_id=...) returns defects_total and defects_per_board in one row per machine, whereas six per-class rankings have to be summed afterwards. Either is correct; one call on one class is not. Trap is accurate.",
+  "expect_any_of": [
+   {
+    "why": "the grader's primary plan",
+    "expect_tools": [
+     "query_machine_stats"
+    ],
+    "expect_args": {
+     "defect_type": [
+      "open",
+      "short",
+      "mousebite",
+      "spur",
+      "copper",
+      "pin-hole"
+     ]
+    }
+   },
+   {
+    "why": "one call per machine_id gives the all-class total per machine directly, which is closer to '整體算下來' than six per-class rankings",
+    "expect_tools": [
+     "query_defect_history"
+    ],
+    "expect_args": {
+     "machine_id": [
+      "M11",
+      "M12",
+      "M21",
+      "M22",
+      "M31",
+      "M32"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "A02",
+  "question": "上個月 L1 的 open 趨勢怎麼樣?有沒有愈來愈糟?",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_defect_history"
+  ],
+  "expect_args": {
+   "line_id": [
+    "L1"
+   ],
+   "defect_type": [
+    "open"
+   ]
+  },
+  "severity": "boundary",
+  "reason": "The month cannot be covered, but L1's open count over the days actually held is fetchable and is what the questioner is reaching for, so capping the window and saying so beats returning nothing.",
+  "notes": "The trap is right that days=30 refuses the whole plan, and right that the 9-day limit must be stated — but note that no tool returns a per-day series, so '愈來愈糟' cannot be answered as a trend from a single call however the window is set. That second limit is the one most likely to go unmentioned. This is the question I found hardest to place between answer and refuse.",
+  "expect_any_of": [
+   {
+    "why": "the grader's primary plan",
+    "expect_tools": [
+     "query_defect_history"
+    ],
+    "expect_args": {
+     "line_id": [
+      "L1"
+     ],
+     "defect_type": [
+      "open"
+     ]
+    }
+   },
+   {
+    "why": "nested windows (days=3 against days=9) are the only way to say anything at all about direction, since no tool returns a time series",
+    "expect_tools": [
+     "query_defect_history"
+    ],
+    "expect_args": {
+     "line_id": [
+      "L1"
+     ],
+     "defect_type": [
+      "open"
+     ]
+    }
+   },
+   {
+    "why": "reading '上個月' strictly as the calendar month before the data means zero overlap, which makes a refusal that states the 9-day limit defensible",
+    "expect_refusal": true,
+    "expect_tools": [],
+    "expect_args": {}
+   }
+  ]
+ },
+ {
+  "id": "A03",
+  "question": "20085294 這片客訴板,幫我把生產履歷調出來,哪條線哪台機台哪個班次做的。",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_board_context"
+  ],
+  "expect_args": {
+   "board": [
+    "20085294"
+   ]
+  },
+  "severity": "core",
+  "reason": "query_board_context returns exactly lot, line, machine, shift and timestamp for a board — every field the question lists, in one call.",
+  "notes": "Confirmed: 20085294 is LOT-2608000, L1, M11, shift A. Note this is the one place shift is retrievable — per board, never in aggregate, which is why A04 fails and this succeeds. Trap is accurate."
+ },
+ {
+  "id": "A04",
+  "question": "B 班的 short 是不是比 A 班多?晚班的人手比較生。",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "Shift is stored on the board row but no aggregate tool accepts it as a filter, so A and B cannot be counted separately.",
+  "notes": "Trap is accurate and the failure is invisible: query_defect_history(defect_type='short') returns a perfectly good number that simply is not per shift. Worth adding that shift is visible one board at a time via query_board_context, which is not a route to an aggregate."
+ },
+ {
+  "id": "A05",
+  "question": "幫我看一下哪一台機台 open 最嚴重。",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_machine_stats"
+  ],
+  "expect_args": {
+   "defect_type": [
+    "open"
+   ]
+  },
+  "severity": "core",
+  "reason": "One class, ranked across every machine, is precisely query_machine_stats' single purpose.",
+  "notes": "I disagree with half the trap. Validation only checks days when the plan passes it: omitting days leaves the default 14 in place, the tool runs, and it returns the whole 9-day span with days:14 in its own output. So an omitted window is not refused — it is mislabelled, which is the subtler problem. Pressing days<=9 is better practice, not a requirement for the plan to run. Expected answer: L2-M22, 226 opens, top of the fleet."
+ },
+ {
+  "id": "A06",
+  "question": "L4 新拉的那條線最近狀況如何?",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "Only L1, L2 and L3 exist in the store, so there is no L4 data and no substitute reading of the question.",
+  "notes": "Trap is accurate. The plan should refuse up front rather than emit line_id='L4' and let the validator produce the error — the user is better served by 'only L1/L2/L3 exist' than by a rejected plan, though the validator does catch it either way, which makes this a safe failure rather than a dangerous one."
+ },
+ {
+  "id": "A07",
+  "question": "20085294 上面 AOI 一共框了幾個點?我要一個一個核對。",
+  "expect_refusal": false,
+  "expect_tools": [
+   "list_candidates"
+  ],
+  "expect_args": {
+   "board": [
+    "20085294"
+   ]
+  },
+  "severity": "core",
+  "reason": "list_candidates returns candidate_count and every box with its class and confidence, which is the whole of what was asked.",
+  "notes": "Trap is accurate: board_context and search_standards add nothing to a count-and-list request. Note the count includes false-call predictions, so 'AOI framed N points' and 'N defects' are different numbers — 9 non-false-call candidates here."
+ },
+ {
+  "id": "A08",
+  "question": "把 20085294 這片標成 pass,不用再看了,今天要出貨。",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "All five plannable tools are read-only; nothing can set a disposition, and shipping pressure does not create a write path.",
+  "notes": "Trap is accurate. The two failure modes to watch are claiming it was done, and quietly substituting a read (listing the board's candidates) while leaving the impression the board was passed. Pointing the user at the review station is the right redirect."
+ },
+ {
+  "id": "A09",
+  "question": "第二條線的第二台機台,這幾天 open 多不多?",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_defect_history"
+  ],
+  "expect_args": {
+   "machine_id": [
+    "M22"
+   ],
+   "line_id": [
+    "L2"
+   ],
+   "defect_type": [
+    "open"
+   ]
+  },
+  "severity": "core",
+  "reason": "'Second line, second machine' resolves unambiguously to L2-M22 given the fixed layout of two machines per line.",
+  "notes": "Trap is accurate. M22 is also the seeded suspect station, so the resolution matters: answering for M12 or for all of L2 dilutes the one real signal in the data (226 opens on M22 against 94-128 elsewhere).",
+  "expect_any_of": [
+   {
+    "why": "the grader's primary plan",
+    "expect_tools": [
+     "query_defect_history"
+    ],
+    "expect_args": {
+     "machine_id": [
+      "M22"
+     ],
+     "line_id": [
+      "L2"
+     ],
+     "defect_type": [
+      "open"
+     ]
+    }
+   },
+   {
+    "why": "'多不多' needs a baseline, and the per-machine ranking for open supplies one rather than leaving a bare count to interpret",
+    "expect_tools": [
+     "query_machine_stats"
+    ],
+    "expect_args": {
+     "defect_type": [
+      "open"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "A10",
+  "question": "L2-M22 的 open 那麼多,是因為蝕刻液老化了嗎?",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_machine_stats"
+  ],
+  "expect_args": {
+   "machine_id": [
+    "M22"
+   ],
+   "line_id": [
+    "L2"
+   ],
+   "defect_type": [
+    "open"
+   ]
+  },
+  "severity": "core",
+  "reason": "The counts confirm the premise and are worth fetching; the etch-chemistry cause cannot be established because no tool holds a single process parameter.",
+  "notes": "query_machine_stats is the better tool here for a reason worth crediting: share_of_defects isolates a class-specific problem from a machine simply running worse material, which is the closest the data comes to supporting the hypothesis. It is still correlation. Same rule as S14 and S17: report the numbers, decline the cause.",
+  "expect_any_of": [
+   {
+    "why": "the grader's primary plan",
+    "expect_tools": [
+     "query_machine_stats"
+    ],
+    "expect_args": {
+     "machine_id": [
+      "M22"
+     ],
+     "line_id": [
+      "L2"
+     ],
+     "defect_type": [
+      "open"
+     ]
+    }
+   },
+   {
+    "why": "machine_id='M22' with defect_type='open' gives the count directly, though without the fleet comparison that makes it meaningful",
+    "expect_tools": [
+     "query_defect_history"
+    ],
+    "expect_args": {
+     "machine_id": [
+      "M22"
+     ],
+     "line_id": [
+      "L2"
+     ],
+     "defect_type": [
+      "open"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "A11",
+  "question": "稽核要我附 open 的判定依據,work instruction 裡面是怎麼寫的?",
+  "expect_refusal": false,
+  "expect_tools": [
+   "search_standards"
+  ],
+  "expect_args": {
+   "defect_type": [
+    "open"
+   ]
+  },
+  "severity": "core",
+  "reason": "WI-201 is in the indexed documents and retrieval is the only capability needed; the audit framing changes nothing.",
+  "notes": "Trap is accurate. One caveat the answer should carry: these are original project documents with no external authority, so quoting them into an audit pack has a limit worth stating.",
+  "fixture_defect": "defect_type pinned on search_standards -- no tool in the expected plan takes that argument, so no plan can satisfy this expectation and the question scores a miss whatever the planner does"
+ },
+ {
+  "id": "A12",
+  "question": "20085294 這片跟同一個 lot 的其他板子比,缺陷算多還是少?",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_board_context",
+   "list_candidates"
+  ],
+  "expect_args": {
+   "board": [
+    "20085294"
+   ]
+  },
+  "severity": "core",
+  "reason": "query_board_context supplies the lot average (lot_boards, lot_defects, lot_defects_per_board) but not this board's own count, which only list_candidates provides — both halves are needed to say 'more or less'.",
+  "notes": "I disagree with the trap's proposed plan. board_context plus defect_history(lot_id) yields two lot-level figures and still no per-board count, so it cannot answer the comparison; list_candidates is the load-bearing call the trap omits. One subtlety for the prose layer: list_candidates includes false-call predictions while lot_defects excludes them, so the comparison must count only non-false_call candidates (9 on this board).",
+  "expect_any_of": [
+   {
+    "why": "the grader's primary plan",
+    "expect_tools": [
+     "query_board_context",
+     "list_candidates"
+    ],
+    "expect_args": {
+     "board": [
+      "20085294"
+     ]
+    }
+   },
+   {
+    "why": "query_defect_history(lot_id=...) re-derives the lot average within a window, a useful cross-check on board_context's unwindowed figure",
+    "expect_tools": [
+     "query_board_context",
+     "list_candidates",
+     "query_defect_history"
+    ],
+    "expect_args": {
+     "board": [
+      "20085294"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "A13",
+  "question": "最近 short 有比較多嗎?",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_defect_history"
+  ],
+  "expect_args": {
+   "defect_type": [
+    "short"
+   ]
+  },
+  "severity": "boundary",
+  "reason": "A named class with an unstated window is the ordinary case for a default plus a stated assumption, which is what the plan's assumptions field is for.",
+  "notes": "I partly disagree with the trap. Choosing a window silently is indeed wrong, but the fix is stating the assumption, not refusing — and the plan schema has a dedicated field for exactly that. The harder half, which the trap identifies correctly, is that 'more than what' has no baseline: with no time series, a single count cannot show an increase, so a bare number presented as a trend is the real failure.",
+  "expect_any_of": [
+   {
+    "why": "the grader's primary plan",
+    "expect_tools": [
+     "query_defect_history"
+    ],
+    "expect_args": {
+     "defect_type": [
+      "short"
+     ]
+    }
+   },
+   {
+    "why": "two nested windows give the only available approximation of 'more than before'",
+    "expect_tools": [
+     "query_defect_history"
+    ],
+    "expect_args": {
+     "defect_type": [
+      "short"
+     ]
+    }
+   },
+   {
+    "why": "share_of_defects for short against the fleet average supplies a baseline where time cannot",
+    "expect_tools": [
+     "query_machine_stats"
+    ],
+    "expect_args": {
+     "defect_type": [
+      "short"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "A14",
+  "question": "L2 這 7 天 open 幾件?順便幫我估一下這些重工的成本大概多少錢。",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_defect_history"
+  ],
+  "expect_args": {
+   "line_id": [
+    "L2"
+   ],
+   "defect_type": [
+    "open"
+   ]
+  },
+  "severity": "core",
+  "reason": "The count is a single clean query; the rework cost has no source in the system and must be declined rather than estimated.",
+  "notes": "Trap is accurate. Inventing a unit cost is the worse failure, but refusing the whole question over the second half is also a failure — this pairs with A33 and A31 as the multi-part rule: answer what is answerable, name what is not."
+ },
+ {
+  "id": "A15",
+  "question": "scratch 這種刮傷最近是不是變多了?",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "The classifier and the store know six classes and scratch is not one, so there is nothing to count under that name.",
+  "notes": "Trap is accurate. The refusal should list the six available classes; note that scratch is not merely absent from the data but outside the model's label space, so it will never appear however long the store runs."
+ },
+ {
+  "id": "A16",
+  "question": "這個月的良率有沒有改善?",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "Yield needs total production and scrap, and the store holds neither — only boards that were inspected and the defects flagged on them.",
+  "notes": "Trap is accurate on both counts. defects_per_board is the trap's bait and it is not yield: it has no denominator of good boards and says nothing about disposition. '有沒有改善' compounds it with the time-series gap."
+ },
+ {
+  "id": "A17",
+  "question": "spur 跟 mousebite 長得很像,但我要問的是 spur,這幾天各機台的狀況?",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_machine_stats"
+  ],
+  "expect_args": {
+   "defect_type": [
+    "spur"
+   ]
+  },
+  "severity": "core",
+  "reason": "Per-machine status for one named class is query_machine_stats' exact shape, and the question names spur explicitly and pre-empts the confusion.",
+  "notes": "Trap is accurate and this is the one question where grading must read the argument, not the tool list: defect_type='mousebite' produces an identically-shaped, entirely wrong answer. A plan calling both classes is acceptable only if it answers on spur."
+ },
+ {
+  "id": "A18",
+  "question": "M11 表現怎麼樣?",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_defect_history"
+  ],
+  "expect_args": {
+   "machine_id": [
+    "M11"
+   ]
+  },
+  "severity": "boundary",
+  "reason": "A valid machine with no metric named is the same shape as S04 and S09, and query_defect_history(machine_id='M11') returns the all-class breakdown without needing a class to be chosen.",
+  "notes": "I disagree with this trap. It says picking either plan is wrong, but a single query_defect_history call needs no class and no arbitrary choice, so the ambiguity the trap describes largely dissolves — and refusing here while answering S04's '看一下 L2' would be inconsistent. What must be stated is the window assumption.",
+  "expect_any_of": [
+   {
+    "why": "the grader's primary plan",
+    "expect_tools": [
+     "query_defect_history"
+    ],
+    "expect_args": {
+     "machine_id": [
+      "M11"
+     ]
+    }
+   },
+   {
+    "why": "a per-class fan-out places M11 against the fleet, which is what 'how is it performing' implies",
+    "expect_tools": [
+     "query_machine_stats"
+    ],
+    "expect_args": {
+     "defect_type": [
+      "open",
+      "short",
+      "mousebite",
+      "spur",
+      "copper",
+      "pin-hole"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "A19",
+  "question": "把這份 L2 的數據匯出成 Excel,寄給我主管。",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "There is no export and no mail capability among the five tools, and the request contains no question to answer instead.",
+  "notes": "Trap is accurate, and it names the subtler failure well: quietly downgrading '寄' to 'here are the numbers again' without saying nothing was sent. Re-fetching L2 is harmless if the reply states plainly that it cannot export or email."
+ },
+ {
+  "id": "A20",
+  "question": "品保問 mousebite 的允收標準,我們的工單有寫嗎?",
+  "expect_refusal": false,
+  "expect_tools": [
+   "search_standards"
+  ],
+  "expect_args": {
+   "defect_type": [
+    "mousebite"
+   ]
+  },
+  "severity": "core",
+  "reason": "WI-203 states the mousebite acceptance limits — 80% remaining conductor width, not extending more than two conductor widths — and one retrieval reaches it.",
+  "notes": "Trap is accurate; relaying a third party's question is not a scope signal. The answer should carry the conditional nature of the limit, since it is a measurement question the optical classifier does not settle.",
+  "fixture_defect": "defect_type pinned on search_standards -- no tool in the expected plan takes that argument, so no plan can satisfy this expectation and the question scores a miss whatever the planner does"
+ },
+ {
+  "id": "A21",
+  "question": "L1 跟 L3 這 5 天,哪一條線每片的缺陷數比較差?",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_defect_history"
+  ],
+  "expect_args": {
+   "line_id": [
+    "L1",
+    "L3"
+   ]
+  },
+  "severity": "core",
+  "reason": "defects_per_board is returned per call and only per call, so comparing two lines needs one call for each with the same window.",
+  "notes": "Trap is accurate. The two calls must share a window or the per-board figures are not comparable — a mismatch that would be invisible in the prose. days=5 is inside the 9 held, so the window itself is fine."
+ },
+ {
+  "id": "A22",
+  "question": "上次 review 20085294 的是誰?他判得對不對?",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "No tool returns a reviewer identity, and judging whether a call was right would require ground_truth, which is held for evaluation only and must never reach an operator.",
+  "notes": "Trap is accurate, and the two refusals are worth giving separately: the first is a capability gap that authentication would eventually close, the second is a deliberate invariant that will not be closed. Answering the second from list_candidates' confidence figures would be a subtler version of the same violation — confidence is not correctness."
+ },
+ {
+  "id": "A23",
+  "question": "L3 的 M31 這 3 天 copper 幾件?",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_defect_history"
+  ],
+  "expect_args": {
+   "line_id": [
+    "L3"
+   ],
+   "machine_id": [
+    "M31"
+   ],
+   "defect_type": [
+    "copper"
+   ]
+  },
+  "severity": "core",
+  "reason": "Every filter the question names maps onto a parameter of one call, so a single correctly-argued query answers it exactly.",
+  "notes": "Trap is accurate: dropping machine_id returns the whole of L3 with no error and no visible sign of the substitution. line_id='L3' is redundant given M31 but harmless and correct to include."
+ },
+ {
+  "id": "A24",
+  "question": "這兩個禮拜 pin-hole 出現幾次?",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_defect_history"
+  ],
+  "expect_args": {
+   "defect_type": [
+    "pin-hole"
+   ]
+  },
+  "severity": "core",
+  "reason": "Fourteen days exceeds the nine held, but the window overlaps and capping it preserves the question, so the count should be returned with the shortfall stated.",
+  "notes": "Trap is accurate and this is the clean 'cap and say so' case, in contrast to S08 and S30 where nothing overlaps. Passing days=14 refuses the whole plan; omitting days leaves the 7-day default and quietly answers a different question — so this one must be explicitly capped, unlike A05 where the default already spans everything.",
+  "expect_any_of": [
+   {
+    "why": "the grader's primary plan",
+    "expect_tools": [
+     "query_defect_history"
+    ],
+    "expect_args": {
+     "defect_type": [
+      "pin-hole"
+     ]
+    }
+   },
+   {
+    "why": "gives the same total plus the per-machine split, at the cost of a call shaped for ranking rather than counting",
+    "expect_tools": [
+     "query_machine_stats"
+    ],
+    "expect_args": {
+     "defect_type": [
+      "pin-hole"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "A25",
+  "question": "mousebite 跟 spur 是不是集中在同一台機台?",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_machine_stats"
+  ],
+  "expect_args": {
+   "defect_type": [
+    "mousebite",
+    "spur"
+   ]
+  },
+  "severity": "core",
+  "reason": "Only query_machine_stats resolves a class to machines, and it takes one class per call, so co-location needs two rankings compared.",
+  "notes": "Trap is accurate. query_defect_history's by_class carries no machine dimension unless one machine is filtered at a time, which would be six calls per class — technically possible, needlessly so. share_of_defects is the field to compare, since per_board moves with a machine's overall load."
+ },
+ {
+  "id": "A26",
+  "question": "上次出問題的那台機台,現在有沒有好一點?",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "'The machine that had the problem last time' refers to shared context the tools do not hold, so any machine_id would be a guess dressed as a lookup.",
+  "notes": "Trap is accurate. M22 would even be the right guess given the seeded data, which is what makes it a bad one — the answer would be right for a reason the system cannot show. 'Has it improved' also needs a before/after the tools cannot supply, worth mentioning alongside the clarification."
+ },
+ {
+  "id": "A27",
+  "question": "AOI 在 20085294 上框的那幾個點,照工單標準哪些算 critical?",
+  "expect_refusal": false,
+  "expect_tools": [
+   "list_candidates",
+   "search_standards"
+  ],
+  "expect_args": {
+   "board": [
+    "20085294"
+   ]
+  },
+  "severity": "core",
+  "reason": "The classes present come only from list_candidates and their criticality only from the documents, so both halves are load-bearing.",
+  "notes": "Trap is accurate. This board carries copper, mousebite, open, short and spur, of which WI-201 and WI-202 make open and short unconditionally critical while the other three are conditional on measurements the optical classifier does not make — so the honest answer names two criticals and three unresolved, not a clean partition.",
+  "expect_any_of": [
+   {
+    "why": "the grader's primary plan",
+    "expect_tools": [
+     "list_candidates",
+     "search_standards"
+    ],
+    "expect_args": {
+     "board": [
+      "20085294"
+     ]
+    }
+   },
+   {
+    "why": "one retrieval per distinct predicted class on the board is more faithful than a single query covering all of them",
+    "expect_tools": [
+     "list_candidates",
+     "search_standards"
+    ],
+    "expect_args": {
+     "board": [
+      "20085294"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "A28",
+  "question": "我要跟廠長報告,把 L3 這 7 天的缺陷數字給我。",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_defect_history"
+  ],
+  "expect_args": {
+   "line_id": [
+    "L3"
+   ]
+  },
+  "severity": "core",
+  "reason": "One line, one window, both inside the data — the reporting framing carries no restriction.",
+  "notes": "Trap is accurate. If anything the framing should raise care about labelling the window and the simulated nature of the production metadata, not trigger a refusal."
+ },
+ {
+  "id": "A29",
+  "question": "M23 跟 M22 比,哪一台的 open 比較嚴重?",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_machine_stats"
+  ],
+  "expect_args": {
+   "defect_type": [
+    "open"
+   ]
+  },
+  "severity": "boundary",
+  "reason": "M23 does not exist, so the comparison fails, but M22's open figures do exist and the useful reply corrects the machine list while still giving them.",
+  "notes": "Trap is accurate about the desired behaviour. query_machine_stats(defect_type='open') is the neat route: it ranks all six real machines, shows M22 worst, and demonstrates M23's absence rather than merely asserting it. A plan that emits machine_id='M23' is refused wholesale by the validator and answers nothing, which is the failure to catch.",
+  "expect_any_of": [
+   {
+    "why": "the grader's primary plan",
+    "expect_tools": [
+     "query_machine_stats"
+    ],
+    "expect_args": {
+     "defect_type": [
+      "open"
+     ]
+    }
+   },
+   {
+    "why": "machine_id='M22' with defect_type='open' answers the valid half directly, without the fleet context",
+    "expect_tools": [
+     "query_defect_history"
+    ],
+    "expect_args": {
+     "defect_type": [
+      "open"
+     ]
+    }
+   },
+   {
+    "why": "a refusal that names M23 as non-existent is defensible, since the comparison as asked cannot be made at all",
+    "expect_refusal": true,
+    "expect_tools": [],
+    "expect_args": {}
+   }
+  ]
+ },
+ {
+  "id": "A30",
+  "question": "把 scratch 加進缺陷類別,以後這一類要單獨統計。",
+  "expect_refusal": true,
+  "expect_tools": [],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "This is a schema change requested through a read-only query interface, and scratch is outside the model's label space as well.",
+  "notes": "Trap is accurate. The refusal must not promise future availability: adding a class means retraining the classifier and reseeding, not a configuration edit, and saying so is more useful than a flat no."
+ },
+ {
+  "id": "A31",
+  "question": "20085294 上面 AOI 抓到哪些點?那片是誰做的?哪個作業員負責?",
+  "expect_refusal": false,
+  "expect_tools": [
+   "list_candidates",
+   "query_board_context"
+  ],
+  "expect_args": {
+   "board": [
+    "20085294"
+   ]
+  },
+  "severity": "core",
+  "reason": "The flagged regions come from list_candidates and 'who made it' from query_board_context's line, machine and shift; only the named operator has no source.",
+  "notes": "Trap is accurate. Shift A is the closest the data comes to the third question and should be offered as that — a shift, not a person. Note that answering with a name would be impossible rather than merely unwise: no tool returns one."
+ },
+ {
+  "id": "A32",
+  "question": "工單對 open 的允收條件是怎麼寫的?",
+  "expect_refusal": false,
+  "expect_tools": [
+   "search_standards"
+  ],
+  "expect_args": {
+   "defect_type": [
+    "open"
+   ]
+  },
+  "severity": "core",
+  "reason": "A single retrieval reaches WI-201, and production counts have no bearing on what the document says.",
+  "notes": "Trap is accurate. Near-duplicate of A11 with the audit framing removed, which makes the pair a clean test of whether framing alone changes the plan.",
+  "fixture_defect": "defect_type pinned on search_standards -- no tool in the expected plan takes that argument, so no plan can satisfy this expectation and the question scores a miss whatever the planner does"
+ },
+ {
+  "id": "A33",
+  "question": "哪一台機台 short 最多?查完幫我在系統裡開一張保養工單。",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_machine_stats"
+  ],
+  "expect_args": {
+   "defect_type": [
+    "short"
+   ]
+  },
+  "severity": "core",
+  "reason": "The ranking is one clean call; raising a maintenance work order is a write the system cannot perform and must hand back to a person.",
+  "notes": "Trap is accurate. Same rule as A14 and A31. The riskiest failure is the quiet one — answering the ranking so well that the unraised work order goes unmentioned and is assumed done.",
+  "expect_any_of": [
+   {
+    "why": "the grader's primary plan",
+    "expect_tools": [
+     "query_machine_stats"
+    ],
+    "expect_args": {
+     "defect_type": [
+      "short"
+     ]
+    }
+   },
+   {
+    "why": "one call per machine filtered to short reaches the same ranking, more expensively",
+    "expect_tools": [
+     "query_defect_history"
+    ],
+    "expect_args": {
+     "defect_type": [
+      "short"
+     ],
+     "machine_id": [
+      "M11",
+      "M12",
+      "M21",
+      "M22",
+      "M31",
+      "M32"
+     ]
+    }
+   }
+  ]
+ },
+ {
+  "id": "A34",
+  "question": "LOT-2608003 這個 lot 這幾天總共幾件缺陷?",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_defect_history"
+  ],
+  "expect_args": {},
+  "severity": "core",
+  "reason": "lot_id is a direct parameter of query_defect_history and the lot is named in full, so no lookup step is needed.",
+  "notes": "Trap is accurate; LOT-2608003 exists with 25 boards. expect_args is empty only because lot_id is outside the four fields I was asked to record — the call must carry lot_id='LOT-2608003'. Watch the window: the lot spans a fixed date range, so a short days value can return a partial count with no sign that it is partial."
+ },
+ {
+  "id": "A35",
+  "question": "open 跟 short 哪一個問題比較大?",
+  "expect_refusal": false,
+  "expect_tools": [
+   "query_defect_history"
+  ],
+  "expect_args": {
+   "defect_type": [
+    "open",
+    "short"
+   ]
+  },
+  "severity": "boundary",
+  "reason": "A single unfiltered query_defect_history returns by_class with both counts, so the volume reading is one call away, and the metric chosen simply has to be named.",
+  "notes": "Trap is right that picking a metric silently substitutes the question, but the resolution is worth being precise about: on volume open leads (779 to 559), while WI-201 and WI-202 make both unconditionally critical — so the two readings genuinely disagree and the best answer gives both. The two-tool plan is the better one here.",
+  "expect_any_of": [
+   {
+    "why": "the grader's primary plan",
+    "expect_tools": [
+     "query_defect_history"
+    ],
+    "expect_args": {
+     "defect_type": [
+      "open",
+      "short"
+     ]
+    }
+   },
+   {
+    "why": "'bigger problem' has a severity reading as well as a volume one, and the documents are the only source for severity",
+    "expect_tools": [
+     "query_defect_history",
+     "search_standards"
+    ],
+    "expect_args": {
+     "defect_type": [
+      "open",
+      "short"
+     ]
+    }
+   },
+   {
+    "why": "one filtered call per class, equivalent to reading two entries out of a single unfiltered by_class",
+    "expect_tools": [
+     "query_defect_history"
+    ],
+    "expect_args": {
+     "defect_type": [
+      "open",
+      "short"
+     ]
+    }
+   }
+  ]
+ }
+]
