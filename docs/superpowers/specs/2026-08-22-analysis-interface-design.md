@@ -11,6 +11,19 @@ anything with them. Meanwhile the review station answers one question well --
 "what should I do with this region" -- and cannot answer the question a shift
 supervisor actually walks up with: "is M22 drifting, and does that matter?"
 
+The user is the reason this is natural language rather than a query form. A
+shift supervisor does not write SQL, and will not learn to. That justification
+cuts both ways and shapes the design below: someone who cannot write a query
+also cannot check one, so the assumptions display and the refusal path are not
+polish, they are the direct consequence of who is asking.
+
+It also bounds the claim. If most of what a supervisor asks is the same ten
+questions, a dashboard beats a language model on every axis -- faster, free,
+deterministic. What a language model earns is the long tail: the question nobody
+built a tile for. So the page carries both, five common questions as one click
+beside the free-form box, and the design does not pretend to replace the
+dashboard it should be sitting next to.
+
 The measured lesson from the disposition path applies directly. The LLM lost
 where the task was a quantitative judgement over structured data, and it is
 strong where the input or output is natural language. Turning a supervisor's
@@ -161,9 +174,30 @@ Items 2 and 3 exist for trust, not debugging. A supervisor can only judge
 "open is up 30%" if they can see it was measured against the fleet average
 rather than against last week.
 
-Item 4 is the only evidence on screen that the fan-out is real. Recording node
-entry and exit alongside it costs nothing now and makes a later live view of the
-running graph a rendering problem rather than an architectural one.
+Item 4 is the only evidence on screen that the fan-out is real.
+
+### Progress, in the first version
+
+Two model calls at 10-15s each put an answer around 20-25s away. An
+indeterminate spinner over that wait makes it feel longer than it is, and shows
+nothing. The same seconds spent watching tools tick off read as work:
+
+```
+Planning…                              ✓  2.1s
+Running 3 tools
+  ✓ open rate by machine                  0.3s
+  ✓ acceptance criteria for open          0.2s
+  ⟳ defect history, L2, 30d
+```
+
+This was going to be deferred as a live view of the running graph. It is
+promoted into the first version because it does two jobs at once -- it makes the
+wait tolerable, and it is the only thing that shows a viewer the fan-out is
+concurrent. The data is already being recorded for item 4; what is added is
+streaming it, which LangGraph supports natively.
+
+The richer animated graph view stays deferred. Recording node entry and exit now
+keeps it a rendering problem rather than an architectural one.
 
 ### Few-shot in the prompt: five examples, all boundaries
 
@@ -210,6 +244,11 @@ Refusal accuracy carries more weight than it looks. A system that answers
 everything is more dangerous on a factory floor than one that says it does not
 know.
 
+**A known weakness in the method:** the same person writes the few-shot examples
+and the evaluation questions, so the questions will tend to be the shapes the
+prompt was designed for. Unresolved. Partial mitigations are to write the
+questions before reading the examples, or to take them from someone else.
+
 **Not covered:** synthesis can describe correct data incorrectly. The mitigation
 is that the raw results sit beside the prose, so a reader can check. This is a
 known gap, not a solved problem.
@@ -225,6 +264,7 @@ taken before, during or after; the plan should not block on it.
 - The station has no authentication. Today an unauthenticated visitor sees a
   queue; with this page they can pull production statistics for the whole plant.
   Operator authentication moves from a backlog item to a precondition.
-- Two LLM calls per question at 10-15s each puts an answer around 20s. Whether a
-  supervisor waits that long is unmeasured. If not, the bottleneck is those two
-  calls, not the fan-out.
+- Two LLM calls per question at 10-15s each puts an answer around 20-25s.
+  Streamed progress is the mitigation, not a fix. Whether a supervisor waits that
+  long is unmeasured, and worth measuring early rather than at the end: if they
+  will not, the bottleneck is those two calls and no amount of fan-out helps.
