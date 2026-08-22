@@ -35,6 +35,17 @@ truth in this file is the hand-written expectations in the fixture.
 
     uv run python scripts/analysis_eval.py --repeats 3
     uv run python scripts/analysis_eval.py --repeats 3 --plan-only
+    uv run python scripts/analysis_eval.py --repeats 3 \
+        --questions tests/fixtures/analysis_questions_independent.json
+
+`--questions` picks the set. It defaults to the twenty above, whose published
+figures have to stay reproducible. The seventy in
+`analysis_questions_independent.json` were written by three authors who had
+seen neither the prompt nor the few-shot examples nor this fixture, which is
+the one thing the twenty cannot offer; that set carries a severity on every
+question, and the report it produces breaks the score down by severity rather
+than averaging a defect together with a difference of opinion. The two sets are
+reported into separate sections and their numbers are not comparable.
 
 `--plan-only` stops after the planner. Nothing this script scores is decided
 after that node, so the tools and the synthesis call are work whose output is
@@ -84,6 +95,55 @@ HELD_OUT_CAVEAT = (
     "chose. It does not bound the questions nobody thought to ask, the `days` "
     "and `top_k` arguments that go unscored, or whether the prose written over "
     "a correct plan is correct."
+)
+
+#: The one claim a reader needs before weighing the independent set's number.
+#: Everything the older twenty cannot bound comes from a single author having
+#: written the questions, the prompt and the expected plans; this set exists
+#: only because three other people wrote it without seeing any of the three.
+BLIND_TO_THE_PROMPT = (
+    "**These questions were written by authors blind to the prompt.** Three "
+    "people, none of whom had seen the planner's system prompt, its few-shot "
+    "examples or `analysis_questions.json`: thirty-five from an author told "
+    "nothing whatever about the tools and asked to write what a shift "
+    "supervisor would type, thirty-five from an author given only the five "
+    "tool signatures and asked to probe the boundary, and a verdict on all "
+    "seventy from a third author who read the tools and the store's source but "
+    "not the prompt. That is the whole of this set's value over the twenty "
+    "above, and the reason a lower score here is worth more than the 100% "
+    "there."
+)
+
+#: A defect the set exposes, established before the run and recorded here so
+#: the score is read in its light rather than discovered later in a log.
+DAYS_DEFAULT_DEFECT = (
+    "**A known defect this set walks into: `query_machine_stats` defaults to "
+    "`days=14`, and the store holds 9.** `validate_plan` checks `days` only "
+    "when the plan passes it, so a plan that omits the argument runs, returns "
+    "the whole 9-day span, and labels it `\"days\": 14`. Every question here "
+    "reaching for a window shorter than the data is therefore answered with "
+    "the full span under a wrong label, and neither the validator nor this "
+    "scorer sees anything wrong -- `days` is deliberately unscored. Left "
+    "unfixed on this branch on purpose: the number below is the number the "
+    "system as measured produces."
+)
+
+#: The sharpest thing the set found, and the one worth stating before any
+#: score: it is a gap in the tool surface, not a planner failure.
+NO_FALSE_CALL_METRIC = (
+    "**The sharpest finding is not in the score.** Six of the thirty-five "
+    "supervisor questions ask for a false-call count or rate — per machine, "
+    "per shift, per line, for the week — and no tool returns one at any "
+    "aggregate level. `query_defect_history` excludes "
+    "`predicted_class='false_call'` outright and `query_machine_stats` accepts "
+    "only the six real classes, so the quantity does not exist above a single "
+    "board. In a system whose entire subject is false calls, that is the gap "
+    "an author who had not read the code found immediately and the author who "
+    "wrote the tools did not. The grader marked all six `refuse`, which is "
+    "correct for the system as built, and refusing them is what the planner is "
+    "scored on here — but a refusal is the right answer to the wrong question. "
+    "No tool was added to close it, because adding one to pass a set is how a "
+    "measurement stops measuring."
 )
 
 QUESTIONS = Path(__file__).resolve().parents[1] / "tests/fixtures/analysis_questions.json"
@@ -219,6 +279,14 @@ def rate(correct: int, total: int) -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default=DEFAULT_MODEL)
+    parser.add_argument("--questions", type=Path, default=QUESTIONS,
+                        help="the question set to score. Defaults to the "
+                             "original twenty, whose published figures have to "
+                             "stay reproducible; pass "
+                             "tests/fixtures/analysis_questions_independent.json "
+                             "for the seventy written by authors blind to the "
+                             "prompt. The two are reported separately and are "
+                             "not comparable")
     parser.add_argument("--repeats", type=int, default=3,
                         help="times to re-ask each question, for determinism")
     parser.add_argument("--out", type=Path, default=Path("docs/benchmarks.md"))
@@ -236,7 +304,7 @@ def main() -> int:
                              "full graph produces")
     args = parser.parse_args()
 
-    questions = load_questions()
+    questions = load_questions(args.questions)
     domains = store_domains()
     client = OllamaClient(args.model, timeout=EVAL_TIMEOUT_S)
 
@@ -281,7 +349,13 @@ def main() -> int:
         else:
             result = score_plan(first, item)
 
-        scored.append({**item, **result, "rejected": bool(errors and first is not None),
+        scored.append({**item, **result,
+                       # `result` carries the scorer's own `reason`, which
+                       # would otherwise overwrite the grader's. Both belong in
+                       # the report and they answer different questions: why
+                       # this plan missed, and why that was the right plan.
+                       "graded_reason": item.get("reason", ""),
+                       "rejected": bool(errors and first is not None),
                        "no_plan": first is None,
                        "planned": render_plan(first),
                        "every_plan": [render_plan(p) for p in plans],
@@ -308,6 +382,24 @@ def main() -> int:
     hit = lambda rows: sum(1 for r in rows if r["ok"])  # noqa: E731
     misses = [s for s in scored if not s["ok"]]
 
+    # A graded set carries a severity and the grader's reason on every question.
+    # One number over both severities is two findings averaged together: a
+    # `core` miss says the system is not fit for the floor, a `boundary` miss is
+    # a judgement call about what a vague question deserves. The blocks below
+    # are emitted only for such a set, so a re-run of the original twenty
+    # reproduces its published section byte for byte.
+    graded = any(s.get("severity") for s in scored)
+    by_severity = [
+        (severity, [s for s in scored if s.get("severity") == severity])
+        for severity in ("core", "boundary", "stretch")
+    ]
+    # Questions no plan can pass, because the grader pinned an argument onto a
+    # tool that has no such parameter. They score as misses and are left that
+    # way; reporting them apart is the difference between a fixture defect and a
+    # planner that cannot look up a work instruction.
+    unpassable = [s for s in scored if s.get("fixture_defect")]
+    scorable = [s for s in scored if not s.get("fixture_defect")]
+
     # The limit goes immediately under the number it limits. This project's
     # headline invariant is to report an operating point rather than a bare
     # accuracy, and a table of 100%s followed by four paragraphs before the
@@ -315,9 +407,67 @@ def main() -> int:
     # score.
     clean_sweep = [] if misses else ["", CLEAN_SWEEP]
 
+    severity_block = []
+    if graded:
+        severity_block = [
+            "",
+            "Broken down by how much a failure would matter. The severities are "
+            "the grader's, set before any run:",
+            "",
+            "| severity | questions | correct | should answer | should refuse |",
+            "|---|---|---|---|---|",
+        ]
+        for severity, rows in by_severity:
+            if not rows:
+                continue
+            answer_rows = [r for r in rows if not r.get("expect_refusal")]
+            refuse_rows = [r for r in rows if r.get("expect_refusal")]
+            severity_block.append(
+                f"| {severity} | {len(rows)} | {rate(hit(rows), len(rows))} | "
+                f"{rate(hit(answer_rows), len(answer_rows))} | "
+                f"{rate(hit(refuse_rows), len(refuse_rows))} |"
+            )
+        severity_block += [
+            "",
+            "`core` is the row that decides whether this is fit for a floor: a "
+            "question whose right answer the grader judged unarguable, so a miss "
+            "is a defect and not a difference of opinion. `boundary` is where "
+            "reasonable graders disagree — mostly how much of a vague question "
+            "to answer before refusing — and a miss there is an argument, not a "
+            "bug. Averaging the two into one number hides which of the two "
+            "happened.",
+            "",
+            BLIND_TO_THE_PROMPT,
+        ]
+
+    if graded and unpassable:
+        severity_block += [
+            "",
+            f"**{len(unpassable)} of the {len(scored)} cannot be passed by any "
+            f"plan at all, and are counted as misses above.** The grader pinned "
+            f"`defect_type` on a `search_standards`-only plan; `search_standards` "
+            f"takes `query` and has no such parameter, so `validate_plan` would "
+            f"throw out any plan that tried to satisfy the expectation. That is a "
+            f"grading error, recorded rather than repaired — the fixture marks "
+            f"them `fixture_defect` and a guard test asserts the list is exactly "
+            f"these. Excluding them, the score over the remaining "
+            f"{len(scorable)} is {rate(hit(scorable), len(scorable))}. Both "
+            f"numbers are here on purpose: the first is what the set as graded "
+            f"says, the second is what it says about the planner.",
+            "",
+            *[f"- {s['id']} {s['question']} — {s['fixture_defect']}"
+              for s in unpassable],
+        ]
+
+    if graded:
+        severity_block += ["", DAYS_DEFAULT_DEFECT, "", NO_FALSE_CALL_METRIC]
+
     lines = [
         "",
-        "### Analysis planner — does it plan the right lookups, and refuse the rest?",
+        ("### Analysis planner, asked by someone else — does it plan the right "
+         "lookups, and refuse the rest?" if graded else
+         "### Analysis planner — does it plan the right lookups, and refuse the "
+         "rest?"),
         "",
         f"`{args.model}`, {len(questions)} hand-written questions, each asked "
         f"{args.repeats} times. Plans are scored, not answers: the tools are "
@@ -333,14 +483,21 @@ def main() -> int:
         f"| determinism | {len(stable)} | {rate(sum(stable), len(stable))} planned the "
         f"same tools across {args.repeats} runs |",
         *clean_sweep,
-        "",
-        f"**Held out from the prompt.** {len(scored) - len(held_out)} of the "
-        f"{len(scored)} questions are few-shot examples verbatim or near-paraphrases, "
-        f"so on those the model is reciting rather than planning. On the remaining "
-        f"{len(held_out)} it scored "
-        f"{rate(hit(held_out), len(held_out))}, with "
-        f"{rate(sum(stable_held_out), len(stable_held_out))} stable. "
-        f"{HELD_OUT_CAVEAT}",
+        *severity_block,
+        # Only a set with questions drawn from the prompt has a held-out subset
+        # to report. On the independent seventy the same paragraph would say
+        # "0 of the 70", and its caveat -- written about agreement with the
+        # prompt's own author -- would be the opposite of true.
+        *([
+            "",
+            f"**Held out from the prompt.** {len(scored) - len(held_out)} of the "
+            f"{len(scored)} questions are few-shot examples verbatim or near-paraphrases, "
+            f"so on those the model is reciting rather than planning. On the remaining "
+            f"{len(held_out)} it scored "
+            f"{rate(hit(held_out), len(held_out))}, with "
+            f"{rate(sum(stable_held_out), len(stable_held_out))} stable. "
+            f"{HELD_OUT_CAVEAT}",
+        ] if len(held_out) != len(scored) else []),
         "",
         f"**Plans `validate_plan` threw out.** {len(rejected)} of {len(scored)} did "
         f"not validate, {len(rejected_hits)} of which had scored a hit on tools and "
@@ -357,8 +514,14 @@ def main() -> int:
         "Misses:",
         "",
     ]
-    lines += [f"- {s['question']} — {s['reason']}\n  planned: `{s['planned']}`"
-              for s in misses] or ["- none"]
+    lines += [
+        f"- {s['id'] + ' ' if s.get('id') else ''}"
+        f"{'**' + s['severity'] + '** ' if s.get('severity') else ''}"
+        f"{s['question']} — {s['reason']}\n  planned: `{s['planned']}`"
+        + (f"\n  graded: {s['graded_reason']}" if s.get("graded_reason") else "")
+        + (f"\n  {s['fixture_defect']}" if s.get("fixture_defect") else "")
+        for s in misses
+    ] or ["- none"]
 
     if rejected:
         lines += ["", "Rejected plans:", ""]
@@ -383,12 +546,18 @@ def main() -> int:
         "are the same event to this scorer — which is most of what makes the "
         "`把 candidates 資料表刪掉` row less reassuring than it looks.",
         "",
-        "What this does not establish: the expected plans and the few-shot examples "
-        "have the same author, so this is agreement with one opinion of the right "
-        "plan and not an independent ground truth. It is a single point, not an "
-        "operating-point curve, and it says nothing about whether the prose written "
-        "over correct data is correct. Both are recorded in the design rather than "
-        "solved.",
+        ("What this does not establish: the expected plans were written by an "
+         "author who read the tool signatures, so a question whose right answer "
+         "needs a tool nobody thought to expose is still missing from the set. "
+         "It is a single point, not an operating-point curve, and it says "
+         "nothing about whether the prose written over correct data is correct."
+         if graded else
+         "What this does not establish: the expected plans and the few-shot examples "
+         "have the same author, so this is agreement with one opinion of the right "
+         "plan and not an independent ground truth. It is a single point, not an "
+         "operating-point curve, and it says nothing about whether the prose written "
+         "over correct data is correct. Both are recorded in the design rather than "
+         "solved."),
     ]
 
     lines += [
@@ -399,7 +568,8 @@ def main() -> int:
     ]
     for row in scored:
         matched = f" — matched: {row['matched']}" if row.get("matched") else ""
-        lines.append(f"- {row['question']}\n  `{row['planned']}`{matched}")
+        label = f"{row['id']} " if row.get("id") else ""
+        lines.append(f"- {label}{row['question']}\n  `{row['planned']}`{matched}")
     lines += ["", "</details>"]
 
     report = "\n".join(lines)

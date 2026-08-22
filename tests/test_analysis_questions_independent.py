@@ -29,7 +29,7 @@ from pathlib import Path
 from aoi_agent.analysis.plan import PLANNABLE_TOOLS, store_domains, validate_plan
 from aoi_agent.store import seed
 
-from analysis_eval import SCORED_ARGS, load_questions
+from analysis_eval import QUESTIONS, SCORED_ARGS, load_questions
 
 FIXTURE = Path(__file__).parent / "fixtures" / "analysis_questions_independent.json"
 
@@ -329,3 +329,12 @@ def test_no_tool_returns_a_false_call_aggregate():
         # a denominator. Neither ever counts it.
         assert 'predicted_class != "false_call"' in source, tool
         assert 'predicted_class == "false_call"' not in source, tool
+
+
+def test_the_published_twenty_are_still_what_the_script_runs_by_default():
+    """Two sets, two sections, and the older one's figures have to stay
+    reproducible. `--questions` is what makes the seventy runnable; making them
+    the default would silently reinterpret every number already published."""
+    assert QUESTIONS.name == "analysis_questions.json"
+    assert len(load_questions(QUESTIONS)) == 20
+    assert QUESTIONS != FIXTURE
