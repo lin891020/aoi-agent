@@ -175,7 +175,9 @@ Re-run after Q10's expectation was corrected a second time. The previous section
 | should refuse | 7 | 7/7 = 100% |
 | determinism | 20 | 20/20 = 100% planned the same tools across 3 runs |
 
-**Held out from the prompt.** 5 of the 20 questions are few-shot examples verbatim or near-paraphrases, so on those the model is reciting rather than planning. On the remaining 15 it scored 15/15 = 100%, with 15/15 = 100% stable. That is the number to read; the headline above is the optimistic one.
+**A clean sweep is a fact about the question set before it is a fact about the planner.** Nothing here found the boundary, so nothing here bounds anything: the honest reading is that these twenty questions are inside what this model does easily, not that the planner is correct. To have any resolution the set needs questions that are harder in a specific way — a window the store does not hold, an aggregate no single tool computes, a machine named only implicitly — and it needs an author who did not write the prompt.
+
+**Held out from the prompt.** 5 of the 20 questions are few-shot examples verbatim or near-paraphrases, so on those the model is reciting rather than planning. On the remaining 15 it scored 15/15 = 100%, with 15/15 = 100% stable. Read that one rather than the headline above, and read it narrowly: it is agreement with one author's expected plans on question shapes that author chose. It does not bound the questions nobody thought to ask, the `days` and `top_k` arguments that go unscored, or whether the prose written over a correct plan is correct.
 
 **Plans `validate_plan` threw out.** 0 of 20 did not validate, 0 of which had scored a hit on tools and arguments and so would be counted correct above while running nothing. The usual cause is a `days` beyond the 9 the store holds. Scoring counts the plan, so these are reported here rather than folded into the table.
 
@@ -184,8 +186,6 @@ Re-run after Q10's expectation was corrected a second time. The previous section
 Misses:
 
 - none
-
-**A clean sweep is a fact about the question set before it is a fact about the planner.** Nothing here found the boundary, so nothing here bounds anything: the honest reading is that these twenty questions are inside what this model does easily, not that the planner is correct. To have any resolution the set needs questions that are harder in a specific way — a window the store does not hold, an aggregate no single tool computes, a machine named only implicitly — and it needs an author who did not write the prompt.
 
 Refusal accuracy carries more weight than the count suggests. A planner that answers everything is more dangerous on a line than one that says it cannot, and nothing else in this project measures that.
 

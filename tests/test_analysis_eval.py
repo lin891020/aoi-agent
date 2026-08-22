@@ -14,7 +14,14 @@ from aoi_agent.analysis.plan import PLANNABLE_TOOLS
 from aoi_agent.analysis.prompts import FEW_SHOT
 from aoi_agent.store import seed
 
-from analysis_eval import SCORED_ARGS, load_questions, render_plan, score_plan
+from analysis_eval import (
+    CLEAN_SWEEP,
+    HELD_OUT_CAVEAT,
+    SCORED_ARGS,
+    load_questions,
+    render_plan,
+    score_plan,
+)
 
 FIXTURE = Path(__file__).parent / "fixtures" / "analysis_questions.json"
 
@@ -371,3 +378,41 @@ def test_the_rendered_plan_shows_the_arguments_that_were_scored():
 def test_a_refusal_renders_as_a_refusal_rather_than_an_empty_string():
     assert render_plan(plan()) == "(refused)"
     assert render_plan(None) == "(no plan)"
+
+
+# ---------------------------------------------------------------------------
+# The report the script writes, and the file it was written into.
+# ---------------------------------------------------------------------------
+
+BENCHMARKS = Path(__file__).resolve().parents[1] / "docs" / "benchmarks.md"
+
+
+def test_the_published_section_carries_the_script_s_own_wording():
+    """docs/benchmarks.md is appended to by this script, so the file and the
+    generator have to say the same thing. Editing one and not the other leaves
+    a document nobody can reproduce, which is worse than an unedited one."""
+    published = BENCHMARKS.read_text()
+
+    assert CLEAN_SWEEP in published
+    assert HELD_OUT_CAVEAT in published
+
+
+def test_the_limit_is_printed_above_the_paragraphs_it_limits():
+    """A table of three 100%s whose caveat sits four paragraphs below it reads
+    as a result with a footnote. It is a question set with a score, and this
+    project reports the limit with the number rather than after it.
+    """
+    published = BENCHMARKS.read_text()
+    table_row = "| determinism | 20 |"
+
+    assert published.index(table_row) < published.index(CLEAN_SWEEP)
+    assert published.index(CLEAN_SWEEP) < published.index("**Held out from the prompt.**")
+    assert published.index(CLEAN_SWEEP) < published.index("\nMisses:")
+
+
+def test_the_held_out_caveat_names_what_the_number_does_not_bound():
+    """It used to read "That is the number to read" -- a sentence that restates
+    a 100% while sounding like a correction. A caveat that does not name a
+    limit is not one."""
+    assert "does not bound" in HELD_OUT_CAVEAT
+    assert "number to read" not in HELD_OUT_CAVEAT

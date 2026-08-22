@@ -34,6 +34,14 @@ No ground truth from the store is read here, and no label of any kind: the only
 truth in this file is the hand-written expectations in the fixture.
 
     uv run python scripts/analysis_eval.py --repeats 3
+    uv run python scripts/analysis_eval.py --repeats 3 --plan-only
+
+`--plan-only` stops after the planner. Nothing this script scores is decided
+after that node, so the tools and the synthesis call are work whose output is
+discarded -- about half the wall time of a full run, spent writing prose nobody
+reads. It is off by default: the figures in docs/benchmarks.md came off the
+full graph, and a benchmark whose default path is not the measured one has
+stopped being reproducible.
 """
 
 from __future__ import annotations
@@ -45,10 +53,38 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from aoi_agent.analysis.graph import build_analysis_graph  # noqa: E402
+from aoi_agent.analysis.graph import build_analysis_graph, make_plan_node  # noqa: E402
 from aoi_agent.analysis.plan import store_domains  # noqa: E402
 from aoi_agent.graph.flow import DEFAULT_MODEL  # noqa: E402
 from aoi_agent.llm.ollama import OllamaClient  # noqa: E402
+
+#: Printed directly under the table when nothing failed, not after the misses
+#: list. This project's headline invariant is to report an operating point
+#: rather than a bare accuracy; a column of 100%s with its limit four
+#: paragraphs down reads as a result carrying a footnote, when it is a question
+#: set carrying a score. Module-level so `tests/test_analysis_eval.py` can hold
+#: docs/benchmarks.md to the same bytes.
+CLEAN_SWEEP = (
+    "**A clean sweep is a fact about the question set before it is a fact "
+    "about the planner.** Nothing here found the boundary, so nothing here "
+    "bounds anything: the honest reading is that these twenty questions "
+    "are inside what this model does easily, not that the planner is "
+    "correct. To have any resolution the set needs questions that are "
+    "harder in a specific way — a window the store does not hold, an "
+    "aggregate no single tool computes, a machine named only implicitly — "
+    "and it needs an author who did not write the prompt."
+)
+
+#: What the held-out score does *not* bound. It used to read "That is the
+#: number to read; the headline above is the optimistic one" -- a sentence that
+#: restates a 100% while sounding like a correction.
+HELD_OUT_CAVEAT = (
+    "Read that one rather than the headline above, and read it narrowly: it is "
+    "agreement with one author's expected plans on question shapes that author "
+    "chose. It does not bound the questions nobody thought to ask, the `days` "
+    "and `top_k` arguments that go unscored, or whether the prose written over "
+    "a correct plan is correct."
+)
 
 QUESTIONS = Path(__file__).resolve().parents[1] / "tests/fixtures/analysis_questions.json"
 
@@ -192,13 +228,38 @@ def main() -> int:
     parser.add_argument("--note", default="",
                         help="one line into the report header, for a re-run "
                              "whose figures are not comparable with the last")
+    parser.add_argument("--plan-only", action="store_true",
+                        help="score the plan without running the tools or the "
+                             "synthesis call. Roughly halves the wall time and "
+                             "changes no number this script reports. Off by "
+                             "default, so the published run stays the one the "
+                             "full graph produces")
     args = parser.parse_args()
 
     questions = load_questions()
     domains = store_domains()
-    graph = build_analysis_graph(
-        OllamaClient(args.model, timeout=EVAL_TIMEOUT_S), domains
-    )
+    client = OllamaClient(args.model, timeout=EVAL_TIMEOUT_S)
+
+    if args.plan_only:
+        # Only the planner runs. Everything this script scores -- the plan, the
+        # validator's verdict on it, and whether the two are stable across
+        # repeats -- is decided by `plan_node` and nothing downstream reads
+        # back into it, so the tools and the second model call are work whose
+        # output is discarded. On a 35-minute run that is about half the time
+        # spent writing prose nobody reads.
+        #
+        # Not the default. The published figures were produced by the full
+        # graph, and a benchmark whose default path is not the one that was
+        # measured is a benchmark that quietly stopped being reproducible.
+        plan_node = make_plan_node(client, domains)
+        def ask(question: str) -> dict:
+            return plan_node({"question": question})
+    else:
+        graph = build_analysis_graph(client, domains)
+        def ask(question: str) -> dict:
+            return graph.invoke(
+                {"question": question, "results": [], "timings_ms": {}}
+            )
     print(f"store holds {domains['max_days']} days, "
           f"lines {sorted(domains['line_id'])}, "
           f"machines {sorted(domains['machine_id'])}\n")
@@ -207,9 +268,7 @@ def main() -> int:
     for position, item in enumerate(questions, 1):
         plans, rejections = [], []
         for _ in range(args.repeats):
-            state = graph.invoke(
-                {"question": item["question"], "results": [], "timings_ms": {}}
-            )
+            state = ask(item["question"])
             plans.append(state.get("plan"))
             rejections.append(state.get("plan_errors") or [])
 
@@ -247,6 +306,14 @@ def main() -> int:
         ok for ok, s in zip(stable, scored, strict=True) if not s.get("in_prompt")
     ]
     hit = lambda rows: sum(1 for r in rows if r["ok"])  # noqa: E731
+    misses = [s for s in scored if not s["ok"]]
+
+    # The limit goes immediately under the number it limits. This project's
+    # headline invariant is to report an operating point rather than a bare
+    # accuracy, and a table of 100%s followed by four paragraphs before the
+    # caveat reads as a result with a footnote. It is a question set with a
+    # score.
+    clean_sweep = [] if misses else ["", CLEAN_SWEEP]
 
     lines = [
         "",
@@ -265,14 +332,15 @@ def main() -> int:
         f"| should refuse | {len(refusable)} | {rate(hit(refusable), len(refusable))} |",
         f"| determinism | {len(stable)} | {rate(sum(stable), len(stable))} planned the "
         f"same tools across {args.repeats} runs |",
+        *clean_sweep,
         "",
         f"**Held out from the prompt.** {len(scored) - len(held_out)} of the "
         f"{len(scored)} questions are few-shot examples verbatim or near-paraphrases, "
         f"so on those the model is reciting rather than planning. On the remaining "
         f"{len(held_out)} it scored "
         f"{rate(hit(held_out), len(held_out))}, with "
-        f"{rate(sum(stable_held_out), len(stable_held_out))} stable. That is the "
-        f"number to read; the headline above is the optimistic one.",
+        f"{rate(sum(stable_held_out), len(stable_held_out))} stable. "
+        f"{HELD_OUT_CAVEAT}",
         "",
         f"**Plans `validate_plan` threw out.** {len(rejected)} of {len(scored)} did "
         f"not validate, {len(rejected_hits)} of which had scored a hit on tools and "
@@ -289,25 +357,8 @@ def main() -> int:
         "Misses:",
         "",
     ]
-    misses = [s for s in scored if not s["ok"]]
     lines += [f"- {s['question']} — {s['reason']}\n  planned: `{s['planned']}`"
               for s in misses] or ["- none"]
-
-    if not misses:
-        # A benchmark nothing fails has not been passed, it has been outgrown.
-        # Saying so here rather than in a commit message keeps the next reader
-        # from quoting a clean sweep as a bound.
-        lines += [
-            "",
-            "**A clean sweep is a fact about the question set before it is a fact "
-            "about the planner.** Nothing here found the boundary, so nothing here "
-            "bounds anything: the honest reading is that these twenty questions "
-            "are inside what this model does easily, not that the planner is "
-            "correct. To have any resolution the set needs questions that are "
-            "harder in a specific way — a window the store does not hold, an "
-            "aggregate no single tool computes, a machine named only implicitly — "
-            "and it needs an author who did not write the prompt.",
-        ]
 
     if rejected:
         lines += ["", "Rejected plans:", ""]
