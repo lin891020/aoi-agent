@@ -49,6 +49,7 @@
         <thead><tr><th>工具</th><th>參數</th><th>為什麼</th><th class="num">耗時</th><th></th></tr></thead>
         <tbody>
         {% for r in run.results %}
+          {% set tool_said = tool_error(r.data) %}
           <tr>
             <td class="mono">{{ r.tool }}</td>
             <td class="mono dim">{{ r.args }}</td>
@@ -56,7 +57,7 @@
             <td class="num">{{ '%.0f'|format(r.elapsed_ms) }}ms</td>
             <td>
               {% if not r.ok %}<span class="chip warn">失敗</span>
-              {% elif r.data and r.data.error %}<span class="chip warn">查無資料</span>
+              {% elif tool_said %}<span class="chip warn">查無資料</span>
               {% else %}<span class="chip done">ok</span>{% endif %}
             </td>
           </tr>
@@ -64,7 +65,7 @@
              ok; it just has nothing to say. Shown as neither a success nor a
              crash, because it is neither. #}
           {% if not r.ok %}<tr><td colspan="5" class="dim">{{ r.error }}</td></tr>
-          {% elif r.data and r.data.error %}<tr><td colspan="5" class="dim">工具回報：{{ r.data.error }}</td></tr>
+          {% elif tool_said %}<tr><td colspan="5" class="dim">工具回報：{{ tool_said }}</td></tr>
           {% else %}
             {# The figures the prose was written from. Only two of the five
                tools produce a chart, so for the other three this is the only

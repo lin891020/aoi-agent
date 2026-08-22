@@ -37,7 +37,7 @@ from aoi_agent.graph.flow import DEFAULT_MODEL, build_graph
 from aoi_agent.llm.ollama import OllamaClient
 from aoi_agent.station import images, service
 from aoi_agent.station.chart_svg import render_svg
-from aoi_agent.station.result_view import readable_rows
+from aoi_agent.station.result_view import error_text, readable_rows
 from aoi_agent.store import analysis as analysis_store
 from aoi_agent.store import escalations
 from aoi_agent.store.boards import correction_summary, corrections, resolve_candidate
@@ -276,6 +276,9 @@ def _analysis_context(
         # display field on. It is what keeps `ground_truth` filtered in Python,
         # at the dict boundary, rather than in the template.
         "readable_data": readable_rows,
+        # Same reason: an error is printed as written, and Jinja would `str()`
+        # a dict-valued one straight past the guard the rows go through.
+        "tool_error": error_text,
         "waiting": len(escalations.pending()),
     }
 

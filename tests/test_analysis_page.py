@@ -209,12 +209,24 @@ LEAKY_SHAPES = [
     ("a hyphenated key", {"ground-truth": SENTINEL}),
     ("a spaced key", {"Ground Truth": SENTINEL}),
     ("shouted", {"GROUND_TRUTH": SENTINEL}),
+    ("camelCase", {"groundTruth": SENTINEL}),
+    ("camelCase capitalised", {"GroundTruth": SENTINEL}),
+    ("run together", {"groundtruth": SENTINEL}),
+    ("a key that is itself a path", {"a": {"b.ground_truth": SENTINEL}}),
+    ("a path key at the top", {"candidate.ground_truth": SENTINEL}),
     ("inside a record", {"rows": [{"machine": "L2-M22", "ground_truth": SENTINEL}]}),
     ("inside a nested dict", {"meta": {"keep": 1, "ground_truth": SENTINEL}}),
     ("three levels deep", {"a": {"b": {"ground_truth": SENTINEL}}}),
     ("a list of lists", {"weird": [[{"ground_truth": SENTINEL}], "other"]}),
     ("a list of lists of scalars", {"weird": [[SENTINEL]]}),
-    ("a record holding a list", {"rows": [{"m": "x", "history": [SENTINEL]}]}),
+    # A list of *scalars* under an ordinary key is content, not a leak: it is
+    # how `list_candidates` returns a box. So the shapes probed here are a list
+    # holding records, and a list under a key that must be filtered.
+    ("a record holding a list of records",
+     {"rows": [{"m": "x", "history": [{"ground_truth": SENTINEL}]}]}),
+    ("a hidden key holding a list", {"rows": [{"m": "x", "ground_truth": [SENTINEL]}]}),
+    ("a hidden key holding a list at the top", {"ground_truth": [SENTINEL]}),
+    ("a hidden key holding a record", {"ground_truth": {"a": SENTINEL}}),
     ("a record holding a dict", {"rows": [{"m": "x", "gt": {"ground_truth": SENTINEL}}]}),
     ("a dict of dicts", {"per_machine": {"M22": {"ground_truth": SENTINEL}}}),
     ("a tuple", {"weird": ({"ground_truth": SENTINEL},)}),
@@ -228,6 +240,10 @@ LEAKY_SHAPES = [
 #: `readable_rows` is still the boundary, so it is held to the same claim here.
 UNSERIALISABLE_SHAPES = [
     ("a set", {"weird": {SENTINEL}}),
+    ("a tuple as a key", {("k", SENTINEL): 1}),
+    ("an object as a key", {_Telltale(): 1}),
+    ("an object as a nested key", {"a": {_Telltale(): 1}}),
+    ("an object as a key in a record", {"rows": [{_Telltale(): 1}]}),
     ("an object with a telltale repr", {"weird": _Telltale()}),
     ("a list holding one", {"weird": [_Telltale()]}),
     ("a record holding one", {"rows": [{"m": "x", "obj": _Telltale()}]}),
@@ -277,56 +293,128 @@ def test_the_guard_drops_the_shape_it_cannot_read_and_keeps_the_rest(client):
     assert any("未顯示" in value for _, value in rows), "the omission is visible"
 
 
-#: The five plannable tools' real return shapes, from
-#: `.superpowers/sdd/2026-08-22-analysis-interface/real-tool-schemas.md`. A
-#: whitelist that is too strict fails silently -- the page just shows less --
-#: so each one is asserted to still render something a reader can check.
+#: The five plannable tools' real return payloads, each read off the `return`
+#: statement in its own source rather than from a schema note -- the previous
+#: version of this table was fabricated for `list_candidates`, which is exactly
+#: the tool the guard was dropping whole.
+#:
+#: `complete` is False only for `query_defect_history`: filters(5) + 4 scalars +
+#: by_class(6) is 15 rows against MAX_ROWS = 14, so one class is always cut.
+#: Known, and out of scope for this round.
 REAL_SHAPES = [
-    ("query_defect_history",
-     {"filters": {"line_id": "L2", "days": 7}, "window_end": "2026-08-22",
-      "boards_inspected": 40, "defects_total": 91, "defects_per_board": 2.3,
-      "by_class": {"open": 30, "short": 12}},
-     "defects_per_board"),
-    ("query_machine_stats",
-     {"defect_type": "open", "days": 7, "fleet_average_per_board": 1.4,
-      "fleet_share_of_defects": 0.2,
-      "machines": [{"machine": "L2-M22", "per_board": 2.3,
-                    "share_of_defects": 0.32}]},
-     "share_of_defects"),
-    ("query_board_context",
-     {"board": "20085294", "lot_id": "LOT-1", "line_id": "L2",
-      "machine_id": "M22", "shift": "A", "inspected_at": "2026-08-22T01:00:00",
-      "lot_boards": 12, "lot_defects": 30, "lot_defects_per_board": 2.5},
-     "lot_defects_per_board"),
-    ("search_standards",
-     {"query": "open", "passages": [{"document": "WI-300", "heading": "opens",
-                                     "text": "any confirmed open is critical",
-                                     "distance": 0.21}]},
-     "any confirmed open is critical"),
-    ("list_candidates",
-     {"reference": "20085294#3", "candidates": [{"index": 3, "x": 10, "y": 20,
-                                                 "predicted_class": "open"}]},
-     "predicted_class"),
+    (
+        "query_defect_history",  # mcp_servers/production.py:84
+        {
+            "filters": {"lot_id": None, "line_id": "L2", "machine_id": None,
+                        "defect_type": None, "days": 7},
+            "window_end": "2026-08-22T03:00:00",
+            "boards_inspected": 40,
+            "defects_total": 91,
+            "defects_per_board": 2.28,
+            "by_class": {"open": 30, "short": 21, "mousebite": 15, "spur": 12,
+                         "copper": 8, "pin-hole": 5},
+        },
+        ["defects_per_board", "2.28", "filters.line_id", "by_class.open"],
+        False,
+    ),
+    (
+        "query_machine_stats",  # mcp_servers/production.py:130
+        {
+            "defect_type": "open", "days": 7,
+            "fleet_average_per_board": 1.42, "fleet_share_of_defects": 0.201,
+            "machines": [
+                {"machine": "L2-M22", "boards": 40, "defects": 92,
+                 "per_board": 2.3, "share_of_defects": 0.32},
+            ],
+        },
+        ["share_of_defects=0.32", "machine=L2-M22", "fleet_share_of_defects"],
+        True,
+    ),
+    (
+        "query_board_context",  # mcp_servers/production.py:180
+        {
+            "board": "20085294", "lot_id": "LOT-2026-08-14", "line_id": "L2",
+            "machine_id": "M22", "shift": "B",
+            "inspected_at": "2026-08-22T01:12:00",
+            "lot_boards": 12, "lot_defects": 30, "lot_defects_per_board": 2.5,
+        },
+        ["lot_defects_per_board", "2.5", "LOT-2026-08-14"],
+        True,
+    ),
+    (
+        "search_standards",  # mcp_servers/standards.py:32
+        {
+            "query": "open",
+            "passages": [
+                {"document": "WI-300", "heading": "Opens",
+                 "text": "any confirmed open is critical", "distance": 0.2143},
+            ],
+        },
+        ["any confirmed open is critical", "document=WI-300", "distance=0.2143"],
+        True,
+    ),
+    (
+        "list_candidates",  # mcp_servers/classify.py:70
+        {
+            "board": "20085294", "candidate_count": 2,
+            "candidates": [
+                {"candidate_ref": "20085294#3", "box": [10, 20, 30, 40],
+                 "predicted_class": "open", "confidence": 0.9134},
+                {"candidate_ref": "20085294#7", "box": [50, 60, 70, 80],
+                 "predicted_class": "mousebite", "confidence": 0.4102},
+            ],
+        },
+        # `box` is a list inside a record -- the only nested list any tool
+        # returns, and the shape that voided this whole payload in round 2.
+        ["candidate_ref=20085294#3", "box=[10, 20, 30, 40]",
+         "predicted_class=open", "confidence=0.9134", "20085294#7"],
+        True,
+    ),
 ]
 
 
-@pytest.mark.parametrize("data,expected", [(d, e) for _, d, e in REAL_SHAPES],
-                         ids=[name for name, _, _ in REAL_SHAPES])
-def test_every_real_tool_shape_still_renders(data, expected):
+@pytest.mark.parametrize("data,expected,complete",
+                         [(d, e, c) for _, d, e, c in REAL_SHAPES],
+                         ids=[name for name, _, _, _ in REAL_SHAPES])
+def test_every_real_tool_payload_still_renders(data, expected, complete):
+    """A whitelist that is too strict fails silently, by showing the reader less.
+
+    The payloads are the real ones. A fabricated payload here passed while
+    `list_candidates` rendered nothing but a board and a count.
+    """
     rendered = str(readable_rows(data))
 
-    assert expected in rendered
-    assert "未顯示" not in rendered, "nothing a real tool returns should be dropped"
+    for fragment in expected:
+        assert fragment in rendered
+    if complete:
+        assert "未顯示" not in rendered, "nothing a real tool returns is dropped"
 
 
-def test_the_data_view_truncates_rather_than_floods():
-    """A passage from `search_standards` is paragraphs long; a block nobody
-    reads is worth the same as no block."""
-    rows = readable_rows({"passages": [{"text": "word " * 200}] * 9})
+def test_a_hidden_key_nested_in_a_record_is_counted_not_silently_skipped():
+    """Every omission is visible, at whatever depth it happened."""
+    nested = readable_rows({"meta": {"ground_truth": SENTINEL, "keep": 2}})
+    in_record = readable_rows({"rows": [{"ground_truth": SENTINEL, "keep": 3}]})
 
-    assert len(rows) <= 8, "nine passages must not become nine paragraphs"
-    assert all(len(value) <= 400 for _, value in rows)
-    assert any("另外" in value for _, value in rows), "the omission must be visible"
+    assert ("meta.keep", "2") in nested
+    assert any("未顯示" in value for _, value in nested), "the nested drop is counted"
+    assert ("rows[0]", "keep=3") in in_record
+    assert any("未顯示" in value for _, value in in_record), "and inside a record"
+
+
+def test_a_tool_error_that_is_not_a_string_is_not_str_ed_onto_the_page(
+    client, monkeypatch
+):
+    """Every error path in the repo returns a string today. One edit from not."""
+    monkeypatch.setitem(
+        analysis.PLANNABLE_TOOLS, "query_machine_stats",
+        lambda **kw: {"error": {"ground_truth": SENTINEL}},
+    )
+    page = client.post("/ask", data={"question": "M22 正常嗎"},
+                       follow_redirects=True).text
+
+    assert SENTINEL not in page
+    assert "ground_truth" not in page.casefold()
+    assert "無法顯示的錯誤" in page, "the reader is still told the tool reported one"
 
 
 def test_an_empty_question_is_refused_before_the_model_is_asked(client):
