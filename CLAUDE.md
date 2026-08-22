@@ -102,27 +102,26 @@ uv run python -m aoi_agent queue                 # what is waiting on a person
 
 ## Still open
 
-**`gpt-oss:20b` does not meet WI-300's 10s response budget.** Measured on a
-quiet machine: p90 service time 15.6s, 20 of 24 calls over. See
-docs/benchmarks.md. WI-300 says change the model, not the budget, so a decision
-is owed: `think=False` measured 3.3s on the same prompt but throws away the
-reasoning that justifies having an LLM in the loop at all; a smaller model is
-the other direction. Nothing downstream is settled until this is.
+Retraining from operator corrections, INT8/ONNX quantisation, demo video.
 
-Also open: retraining from operator corrections, INT8/ONNX quantisation, demo
-video.
+`gpt-oss:20b` misses WI-300's 10s response budget -- p90 service time 15.6s on a
+quiet machine, 20 of 24 calls over. It no longer gates anything, because the LLM
+is off the decision path and an operator waits for a verdict, not for an
+explanation. Worth revisiting only if the LLM is ever put back on that path, or
+if the station starts blocking on the explanation to render.
 
 On the station itself:
 
-- **Split escalations by kind.** `agent_uncertain` vs `infrastructure`. With a
-  10s budget, an Ollama outage escalates *every* candidate and buries the
-  genuinely ambiguous ones under a page of "the model did not answer". The
-  behaviour is right -- fail towards a person -- but the queue stops being
-  triageable, and the infrastructure batch could be re-run on recovery instead
-  of spending operator time. One column on `Escalation`, plus a filter.
 - Board browser, so the 82% the agent settled is visible and not just the queue.
 - **Timestamps are stored UTC and displayed UTC**, unlabelled. On a quality
   record read at UTC+8 that is an eight-hour lie. Store UTC, render local, say
   which -- pairs with the operator-identity gap below.
 - Operator authentication. `reviewer` is a free-text field, so the corrections
-  that feed retraining carry no trustworthy identity.
+  that feed retraining carry no trustworthy identity. Demonstrated the hard way:
+  five regions were clicked through without domain knowledge, four of them wrong,
+  and nothing in the system could tell those labels from an expert's. They had to
+  be deleted by hand.
+- **The criteria answer the wrong question for the operator.** For `open` the
+  retrieved passage says any confirmed open is critical -- how to *disposition*
+  one. It never says how to *confirm* one, which is what the person looking at
+  the images actually needs.
