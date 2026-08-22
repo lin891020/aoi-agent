@@ -25,7 +25,9 @@ src/aoi_agent/
                             fan-out, chart derived from the result shape
     station/                the review station -- FastAPI + Jinja, the
                             escalation queue, /ask and its SSE progress
-                            stream, and the service layer behind both.
+                            stream, and service.py -- the review layer the
+                            CLI shares with it. /ask has its own writer in
+                            analysis/service.py.
                             result_view.py is the ground_truth boundary;
                             chart_svg.py renders a chart spec server-side
     cli.py
@@ -118,10 +120,12 @@ board is back under the unscoped reading.
   real domains and refuses rather than retrying: `line_id="L4"` raises nothing
   and returns nothing, and the missing series reads as a finding.
 - **The fan-out is the shape of the work, not a latency optimisation.** The plan
-  expands into `Send` branches because the facts are independent; four real
-  tools take 183ms in parallel against 462ms in sequence, either side of two
-  model calls costing around 25 seconds. Nothing in the code, the docs or the
-  page may present it as a speed-up.
+  expands into `Send` branches because the facts are independent. The tools
+  cost milliseconds either side of two model calls costing around 25 seconds,
+  so the saving is noise. Every run records `tools_wall` against
+  `tools_longest_branch` in `analysis_runs`, which is where that comparison
+  lives -- do not quote a figure that is not in `docs/benchmarks.md`. Nothing
+  in the code, the docs or the page may present the fan-out as a speed-up.
 - **Thresholds come from the sweep or the work instructions**, not from hand
   tuning against the test set. See docs/architecture.md.
 - **Use the official DeepPCB split.** Do not re-split; comparability matters.
