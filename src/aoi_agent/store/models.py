@@ -18,6 +18,7 @@ import os
 from datetime import datetime
 
 from sqlalchemy import (
+    Boolean,
     DateTime,
     Float,
     ForeignKey,
@@ -150,6 +151,35 @@ class Escalation(Base):
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     candidate: Mapped[CandidateRecord] = relationship()
+
+
+class AnalysisRun(Base):
+    """One natural-language question, and everything needed to redraw it.
+
+    The plan, the raw results and the chart specification are kept rather than
+    an image, so a run recorded this quarter renders next quarter without asking
+    a model to reproduce a plan it would not reproduce. It is also what the
+    evaluation script reads, and what a live view of a running graph would
+    replay.
+    """
+
+    __tablename__ = "analysis_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    question: Mapped[str] = mapped_column(String(1024))
+    plan_json: Mapped[str | None] = mapped_column(String, nullable=True)
+    results_json: Mapped[str] = mapped_column(String, default="[]")
+    chart_json: Mapped[str | None] = mapped_column(String, nullable=True)
+    answer: Mapped[str] = mapped_column(String, default="")
+    timings_json: Mapped[str] = mapped_column(String, default="{}")
+    refused: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+
+    asked_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    """Free text until the station has authentication -- same gap as
+    ``ReviewDecision.reviewer``, and this page widens it, because a query
+    interface exposes plant-wide statistics where the queue exposed a queue."""
+
+    asked_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
 def make_engine(url: str | None = None):

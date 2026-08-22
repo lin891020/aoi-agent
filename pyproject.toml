@@ -31,7 +31,11 @@ build-backend = "uv_build"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src", "tests"]
+# `scripts` is here so tests can import the eval scripts by bare name. It puts
+# every scripts/*.py on the import path under its own filename: nothing collides
+# today, but `scripts/report.py` is the one to watch -- it is generic enough that
+# a dependency could plausibly ship a top-level `report` and shadow either way.
+pythonpath = ["src", "tests", "scripts"]
 markers = [
     "dataset: requires DeepPCB to be cloned into data/DeepPCB",
 ]

@@ -1,0 +1,223 @@
+{% extends "base.html" %}
+{% block title %}Ask &middot; production data{% endblock %}
+{% block content %}
+<section class="panel">
+  <h1>問一個關於產線的問題</h1>
+
+  <form class="ask" method="post" action="/ask">
+    <input type="text" name="question" autocomplete="off" autofocus
+           value="{{ run.question if run else '' }}"
+           placeholder="例如：L2-M22 的 open 是不是不尋常？">
+    <button type="submit">問</button>
+  </form>
+
+  {# The form posts and redirects, with no JavaScript involved. The progress
+     panel below is populated only by the script at the end of this file --
+     with scripting off it stays hidden and the page still answers. #}
+  <div class="progress" id="progress" hidden>
+    <p class="label" id="progress-head">規劃中…</p>
+    <ul id="progress-list"></ul>
+  </div>
+
+  <p class="sub">試試看：
+    {% for example in examples %}
+      <a class="example" href="#" onclick="document.querySelector('.ask input').value=this.textContent;return false">{{ example }}</a>
+    {% endfor %}
+  </p>
+  <p class="sim">資料涵蓋最近 {{ coverage_days }} 天。超出這個範圍的問題會被拒答，而不是用最接近的窗口代答。產線 metadata 是模擬的；驗收標準是本專案自撰文件，不是 IPC-A-610。</p>
+
+  {# A rejected or unparseable plan's reasons never reach this template as
+     `plan_errors`: the POST route 303-redirects before they can be attached,
+     and `/ask/stream` (below) only has them while it is live -- it streams
+     them as `error` events into the progress panel, and by the time a viewer
+     lands on this page over a plain GET, `report_node` has already folded the
+     same reasons into `run.answer`, which is shown further down. A dedicated
+     block here would be markup no route could ever fill; deleted rather than
+     left dead. See the streamed `error` handler in the script below, and
+     `report_node` in analysis/graph.py, for where the two live instead. #}
+
+  {% if run %}
+    <div class="answer-block">
+      <h2>1 &middot; 它怎麼理解你的問題</h2>
+      <p>{{ run.plan.interpretation if run.plan else run.answer }}</p>
+    </div>
+
+    {% if run.plan and run.plan.assumptions %}
+    <div class="answer-block">
+      <h2>3 &middot; 它假設了什麼</h2>
+      <ul>{% for a in run.plan.assumptions %}<li>{{ a }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+
+    {% if run.results %}
+    <div class="answer-block">
+      <h2>2 &middot; 它呼叫了什麼</h2>
+      <table class="queue">
+        <thead><tr><th>工具</th><th>參數</th><th>為什麼</th><th class="num">耗時</th><th></th></tr></thead>
+        <tbody>
+        {% for r in run.results %}
+          {% set tool_said = tool_error(r.data) %}
+          <tr>
+            <td class="mono">{{ r.tool }}</td>
+            <td class="mono dim">{{ r.args }}</td>
+            {# `r.why`, not `run.plan.calls[loop.index0].why`. Pairing by
+               position was only ever right for `POST /ask`, where the reducer
+               applies branch writes in plan order; `GET /ask/stream` rebuilds
+               its state from arrival order, so the fastest tool's row carried
+               the slowest tool's reason -- and the stream is the normal path.
+               This column is for trust, so a wrong reason beside a right tool
+               is worse than none. The justification now travels on the result
+               itself; a run stored before it did renders this cell empty. #}
+            <td class="dim">{{ r.why or '' }}</td>
+            <td class="num">{{ '%.0f'|format(r.elapsed_ms) }}ms</td>
+            <td>
+              {% if not r.ok %}<span class="chip warn">失敗</span>
+              {% elif tool_said %}<span class="chip warn">查無資料</span>
+              {% else %}<span class="chip done">ok</span>{% endif %}
+            </td>
+          </tr>
+          {# A tool that answers with {"error": ...} returned, so the call is
+             ok; it just has nothing to say. Shown as neither a success nor a
+             crash, because it is neither. #}
+          {% if not r.ok %}<tr><td colspan="5" class="dim">{{ r.error }}</td></tr>
+          {% elif tool_said %}<tr><td colspan="5" class="dim">工具回報：{{ tool_said }}</td></tr>
+          {% else %}
+            {# The figures the prose was written from. Only two of the five
+               tools produce a chart, so for the other three this is the only
+               thing on the page a reader can check the answer against.
+               `readable_data` filters `ground_truth` in Python, at the dict
+               boundary -- do not replace this with a JSON dump. #}
+            {% set rows = readable_data(r.data) %}
+            {% if rows %}
+            <tr><td colspan="5" class="data-cell">
+              <details class="data" {% if rows|length <= 6 %}open{% endif %}>
+                {# `shown_count(rows)`, not `rows|length`: the last row can be
+                   the "另外 n 項未顯示" note, which is a statement about the
+                   payload rather than a field of it. Counting it made a
+                   payload cut from 20 fields to 14 announce 15. #}
+                <summary>回傳的資料（{{ shown_count(rows) }} 項）</summary>
+                <table class="kv">
+                  {% for label, value in rows %}
+                  <tr><th class="mono dim">{{ label }}</th><td class="mono">{{ value }}</td></tr>
+                  {% endfor %}
+                </table>
+              </details>
+            </td></tr>
+            {% endif %}
+          {% endif %}
+        {% endfor %}
+        </tbody>
+      </table>
+      {# The only thing on screen that shows the fan-out is real, so it is
+         stated as what it is. `tools_wall` is measured across the whole tool
+         phase, scheduling included -- not `max(elapsed_ms)`, which is the
+         longest single branch and therefore a lower bound. Both are shown,
+         because the gap between them is the scheduling and a reader who can
+         see it is not being asked to take the parallel figure on trust.
+         This is not a saving: the two model calls either side cost around
+         twenty-five seconds whatever these do. #}
+      <p class="sub dim">4 &middot;
+        {{ run.results|length }} 個工具 &middot;
+        平行 {{ '%.0f'|format(run.timings.tools_wall or 0) }}ms
+        （最長的單一分支 {{ '%.0f'|format(run.timings.tools_longest_branch or 0) }}ms）/
+        依序 {{ '%.0f'|format(run.timings.tools_sequential or 0) }}ms &middot;
+        規劃 {{ '%.0f'|format(run.timings.plan or 0) }}ms &middot;
+        撰寫 {{ '%.0f'|format(run.timings.synthesise or 0) }}ms
+      </p>
+    </div>
+    {% endif %}
+
+    {% if chart_svg %}
+    <figure class="chart">{{ chart_svg|safe }}</figure>
+    {% endif %}
+
+    <div class="answer-block">
+      <h2>5 &middot; 回答</h2>
+      <p>{{ run.answer }}</p>
+    </div>
+  {% endif %}
+
+  {% if recent %}
+    <h2>最近問過的</h2>
+    <ul class="recent">
+      {% for r in recent %}
+        <li><a href="/ask/{{ r.id }}">{{ r.question }}</a>
+            {% if r.refused %}<span class="chip">拒答</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block script %}
+<script>
+  // Enhancement only: with JavaScript off the form posts and the server
+  // renders the finished page. With it on, the same run streams its progress
+  // so a 20-second wait reads as work rather than as a hang.
+  //
+  // Everything written into the DOM below goes through `.textContent`, never
+  // `.innerHTML` -- the event payloads are JSON (model-authored `interpretation`
+  // and `why` text, tool-reported `error` strings) parsed with `JSON.parse`,
+  // and `.textContent` renders it as inert text regardless of what characters
+  // it contains. No string here is ever concatenated into markup.
+  var form = document.querySelector('.ask');
+  form.addEventListener('submit', function (event) {
+    var question = form.querySelector('input[name=question]').value.trim();
+    if (!question) return;
+    event.preventDefault();
+
+    var panel = document.getElementById('progress');
+    var list = document.getElementById('progress-list');
+    var head = document.getElementById('progress-head');
+    panel.hidden = false;
+    list.innerHTML = '';
+    head.textContent = '規劃中…';
+
+    var source = new EventSource('/ask/stream?question=' + encodeURIComponent(question));
+    source.addEventListener('plan', function (e) {
+      var plan = JSON.parse(e.data);
+      head.textContent = plan.interpretation || '規劃完成';
+      // Keyed by `call.key`, not `call.tool`: two calls to the same tool with
+      // different arguments would otherwise get the same element id, and
+      // `getElementById` only ever finds the first -- the second call's row
+      // would spin as "running" for the life of the page. The server computes
+      // the key once and sends it on both the plan and the tool event so the
+      // two are guaranteed to agree.
+      plan.calls.forEach(function (call) {
+        var li = document.createElement('li');
+        li.id = 'tool-' + call.key;
+        li.textContent = '⟳ ' + call.tool;
+        list.appendChild(li);
+      });
+    });
+    source.addEventListener('tool', function (e) {
+      var result = JSON.parse(e.data);
+      var li = document.getElementById('tool-' + result.key);
+      if (!li) return;
+      li.textContent = (result.ok ? '✓ ' : '✗ ') + result.tool +
+                       '  ' + Math.round(result.elapsed_ms) + 'ms' +
+                       (result.ok ? '' : '  ' + result.error);
+    });
+    source.addEventListener('error', function (e) {
+      if (!e.data) {
+        // The browser's own connection-level error, not one of our named SSE
+        // `error` events (which always carry `data`). EventSource reconnects
+        // on any closed connection by default, `done` or not -- without this,
+        // a dropped stream would have the browser silently re-issue the GET
+        // and re-run the whole question, and every question after it, for as
+        // long as the tab stayed open.
+        source.close();
+        return;
+      }
+      var li = document.createElement('li');
+      try { li.textContent = '✗ ' + JSON.parse(e.data).message; }
+      catch (_) { li.textContent = '✗ 連線中斷'; }
+      list.appendChild(li);
+    });
+    source.addEventListener('done', function (e) {
+      source.close();
+      window.location = '/ask/' + JSON.parse(e.data).run_id;
+    });
+  });
+</script>
+{% endblock %}

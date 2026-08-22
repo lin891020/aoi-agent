@@ -16,16 +16,24 @@ src/aoi_agent/
     aoi/simulator.py        template differencing -- the "AOI"
     aoi/matching.py         label candidates against ground truth
     vision/                 patches, dataset, ResNet-18, inference, operating point
-    store/                  SQLAlchemy models, seeding, standards retrieval
+    store/                  SQLAlchemy models, seeding, standards retrieval,
+                            the analysis_runs log
     mcp_servers/            three MCP servers (classify, production, standards)
     graph/                  LangGraph flow with the human escalation,
                             durable SQLite checkpointer
+    analysis/               the /ask flow -- typed plan, validator, Send
+                            fan-out, chart derived from the result shape
     station/                the review station -- FastAPI + Jinja, the
-                            escalation queue, and the service layer the
-                            CLI shares with it
+                            escalation queue, /ask and its SSE progress
+                            stream, and service.py -- the review layer the
+                            CLI shares with it. /ask has its own writer in
+                            analysis/service.py.
+                            result_view.py is the ground_truth boundary;
+                            chart_svg.py renders a chart spec server-side
     cli.py
-scripts/                    gate_check, build_patches, train, report, seed_store, ...
-tests/                      94 tests; dataset-dependent ones behind `-m dataset`
+scripts/                    gate_check, build_patches, train, report, seed_store,
+                            analysis_eval, ...
+tests/                      530 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -40,20 +48,33 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 94 tests, no GPU needed
+uv run pytest                                    # 530 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
 uv run python scripts/routing_report.py          # how much never reaches the LLM
 uv run python scripts/latency_report.py          # does the reason node fit the response budget?
 uv run python scripts/agent_eval.py              # does the agent layer beat the classifier? (~9 min)
+uv run python scripts/analysis_eval.py           # does the planner plan the right lookups, and refuse the rest?
+uv run python scripts/analysis_eval.py --plan-only  # the same score, without the tools and the prose nobody scores
 uv run python scripts/check_mcp_servers.py       # servers start and advertise tools
 uv run python -m aoi_agent board 20085294 --queue  # run a board, queue what it cannot settle
-uv run python -m aoi_agent station               # review station on :8000
+uv run python -m aoi_agent station               # review station on :8000 -- the queue, and /ask
 uv run python -m aoi_agent queue                 # what is waiting on a person
 ```
 
 ## Invariants — do not quietly change these
+
+Three of these are scoped to the **disposition path** -- the flow that ends in a
+board being dismissed, confirmed or held. That scope is not a loophole, it is
+what the invariants are about: they all buy the same thing, which is that a
+wrong call cannot ship a board or corrupt the next training round. The `/ask`
+flow dispositions nothing. Nothing on that page holds or releases a part, no
+label it produces reaches `review_decisions`, and its worst failure is a
+supervisor reading a wrong sentence with the raw figures printed beside it. So
+it has no checkpointer and no escalation queue, deliberately -- see
+docs/architecture.md, "The analysis path". Anything that ever does disposition a
+board is back under the unscoped reading.
 
 - **Report an operating-point curve, never bare accuracy.** An escape ships a
   bad board; a false call costs seconds. Headline is "review removed at an
@@ -64,20 +85,47 @@ uv run python -m aoi_agent queue                 # what is waiting on a person
   classifier's own number. `route_after_reason` routes on `ESCALATE_BELOW`,
   `decide_node` takes `model_class`, and what the LLM writes is what the
   operator reads. Do not put it back on the decision path without a measurement
-  that says to.
-- **Every failure path escalates to a human, except an LLM outage.** Unparseable
-  verdict, `open` below the threshold, anything under `ESCALATE_BELOW` -- all
-  route to a person. An unreachable LLM no longer does, because the decision no
-  longer depends on it: the operator loses an explanation, not a verdict, and
-  the queue does not fill with every candidate on the line.
-- **An escalation must outlive the process.** The checkpointer is a SQLite file,
-  not `InMemorySaver`. An escalation that dies with the CLI run is a prompt
-  wearing a graph's clothes.
+  that says to. On the analysis path the same rule holds in its own terms: the
+  planner chooses which *lookups* to make, every one of them is validated
+  against the real signatures and value domains before it runs, and the chart is
+  derived from the result shape rather than chosen by the model. What the LLM
+  contributes at either end is language.
+- **On the disposition path, every failure escalates to a human, except an LLM
+  outage.** Unparseable verdict, `open` below the threshold, anything under
+  `ESCALATE_BELOW` -- all route to a person. An unreachable LLM no longer does,
+  because the decision no longer depends on it: the operator loses an
+  explanation, not a verdict, and the queue does not fill with every candidate
+  on the line. The analysis flow's failures terminate in a message on the page
+  instead -- an unplanned question, a rejected plan, a branch whose tool raised.
+  There is no disposition waiting on any of them and nothing for a person to
+  answer, so a queue entry would be a task nobody can close.
+- **On the disposition path, an escalation must outlive the process.** The
+  checkpointer is a SQLite file, not `InMemorySaver`. An escalation that dies
+  with the CLI run is a prompt wearing a graph's clothes. The analysis flow has
+  no checkpointer because nothing in it suspends -- adopting the feature anyway
+  is what this project spent a day removing from the other graph. What that
+  flow needs instead is reproducibility, and the `analysis_runs` table serves
+  it: a chart is redrawn from stored data rather than by re-running a plan the
+  model may not reproduce.
 - **The review station never shows `ground_truth`.** The operator's answer is
   the next training round's label; showing them the answer key first collects an
-  echo, not a judgement. Enforced at the dict boundary, not by grepping HTML.
+  echo, not a judgement. Enforced at the dict boundary, not by grepping HTML --
+  `store.boards.resolve_candidate` for the queue, and on the analysis page both
+  routes out of a tool's payload: `result_view.readable_rows` for the table and
+  `result_view.strip_hidden` for what the synthesis prompt is shown. A boundary
+  with a second door is not a boundary.
 - **No free-form text-to-SQL.** Typed parameters over a fixed query set. A valid
   but semantically wrong query returns a plausible number and gets acted on.
+  This is why `/ask` validates a plan's argument *values* against the store's
+  real domains and refuses rather than retrying: `line_id="L4"` raises nothing
+  and returns nothing, and the missing series reads as a finding.
+- **The fan-out is the shape of the work, not a latency optimisation.** The plan
+  expands into `Send` branches because the facts are independent. The tools
+  cost milliseconds either side of two model calls costing around 25 seconds,
+  so the saving is noise. Every run records `tools_wall` against
+  `tools_longest_branch` in `analysis_runs`, which is where that comparison
+  lives -- do not quote a figure that is not in `docs/benchmarks.md`. Nothing
+  in the code, the docs or the page may present the fan-out as a speed-up.
 - **Thresholds come from the sweep or the work instructions**, not from hand
   tuning against the test set. See docs/architecture.md.
 - **Use the official DeepPCB split.** Do not re-split; comparability matters.
@@ -116,11 +164,17 @@ On the station itself:
 - **Timestamps are stored UTC and displayed UTC**, unlabelled. On a quality
   record read at UTC+8 that is an eight-hour lie. Store UTC, render local, say
   which -- pairs with the operator-identity gap below.
-- Operator authentication. `reviewer` is a free-text field, so the corrections
-  that feed retraining carry no trustworthy identity. Demonstrated the hard way:
-  five regions were clicked through without domain knowledge, four of them wrong,
-  and nothing in the system could tell those labels from an expert's. They had to
-  be deleted by hand.
+- **Authentication, which `/ask` turned from a backlog item into a
+  precondition.** There is none, on either page. Two separate costs now. The
+  one that was always here: `reviewer` is a free-text field, so the corrections
+  that feed retraining carry no trustworthy identity -- demonstrated the hard
+  way, when five regions were clicked through without domain knowledge, four of
+  them wrong, and nothing in the system could tell those labels from an
+  expert's. They had to be deleted by hand. The one this branch added: an
+  unauthenticated visitor to the queue sees the regions on one line, and the
+  same visitor at `/ask` can pull production statistics for the whole plant.
+  That is a change of kind, and it is the item on this list that should block
+  the station running anywhere but a laptop.
 - **The criteria answer the wrong question for the operator.** For `open` the
   retrieved passage says any confirmed open is critical -- how to *disposition*
   one. It never says how to *confirm* one, which is what the person looking at
