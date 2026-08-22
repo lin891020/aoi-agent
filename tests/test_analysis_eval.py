@@ -7,7 +7,9 @@ with the code.
 
 from __future__ import annotations
 
+import json
 import re
+import sys
 from pathlib import Path
 
 from aoi_agent.analysis.plan import PLANNABLE_TOOLS
@@ -416,3 +418,70 @@ def test_the_held_out_caveat_names_what_the_number_does_not_bound():
     limit is not one."""
     assert "does not bound" in HELD_OUT_CAVEAT
     assert "number to read" not in HELD_OUT_CAVEAT
+
+
+def test_plan_only_scores_the_same_and_runs_neither_the_tools_nor_the_prose(
+    monkeypatch, capsys
+):
+    """Everything this script scores is decided by the plan node.
+
+    The tools and the synthesis call therefore produce output nobody reads --
+    about half the wall time of a 35-minute run. `--plan-only` stops after the
+    planner. This asserts the two paths agree on the score and that the short
+    one really does skip the work: the stub tool is never entered, and the
+    model is asked once per repeat rather than twice.
+    """
+    import analysis_eval as ae
+    from aoi_agent.llm.ollama import ChatResult, Timing
+
+    ran_tools, chats = [], []
+
+    def stub_tool(**kwargs):
+        ran_tools.append(kwargs)
+        return {"machines": []}
+
+    for name in PLANNABLE_TOOLS:
+        monkeypatch.setitem(PLANNABLE_TOOLS, name, stub_tool)
+
+    plan = {"interpretation": "i", "assumptions": [],
+            "calls": [{"tool": "query_machine_stats",
+                       "args": {"defect_type": "open"}, "why": "w"}]}
+
+    class StubClient:
+        def __init__(self, *a, **kw):
+            pass
+
+        def chat(self, messages, **kwargs):
+            chats.append(kwargs.get("response_format") is not None)
+            text = json.dumps(plan) if kwargs.get("response_format") else "prose"
+            return ChatResult(text=text, tool_calls=[], thinking="",
+                              timing=Timing(1.0, 0.0, 1.0, 1.0, 10, 10))
+
+    monkeypatch.setattr(ae, "OllamaClient", StubClient)
+    monkeypatch.setattr(ae, "store_domains", lambda: {
+        "line_id": {"L1", "L2", "L3"},
+        "machine_id": {"M11", "M12", "M21", "M22", "M31", "M32"},
+        "defect_type": {"open"}, "max_days": 9})
+
+    def run(*extra):
+        chats.clear()
+        ran_tools.clear()
+        monkeypatch.setattr(
+            sys, "argv",
+            ["analysis_eval.py", "--repeats", "1", "--dry-run", *extra],
+        )
+        assert ae.main() == 0
+        return capsys.readouterr().out
+
+    full = run()
+    assert ran_tools, "the default path runs the tools"
+    assert False in chats, "the default path writes the prose"
+
+    short = run("--plan-only")
+    assert not ran_tools, "--plan-only must not run a tool"
+    assert all(chats), "--plan-only must not make the synthesis call"
+
+    def table(output: str) -> list[str]:
+        return [line for line in output.splitlines() if line.startswith("| should")]
+
+    assert table(short) == table(full), "the flag must not change a score"
