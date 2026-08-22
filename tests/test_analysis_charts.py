@@ -17,11 +17,26 @@ def ok(tool: str, data: dict) -> dict:
 
 MACHINE_STATS = {
     "defect_type": "open",
+    "days": 14,
+    "fleet_average_per_board": 1.85,
     "fleet_share_of_defects": 0.225,
     "machines": [
-        {"machine": "L2-M22", "share_of_defects": 0.321, "per_board": 2.3},
-        {"machine": "L1-M11", "share_of_defects": 0.190, "per_board": 1.4},
+        {"machine": "L2-M22", "boards": 40, "defects": 29, "per_board": 2.3,
+         "share_of_defects": 0.321},
+        {"machine": "L1-M11", "boards": 35, "defects": 18, "per_board": 1.4,
+         "share_of_defects": 0.190},
     ],
+}
+
+
+DEFECT_HISTORY = {
+    "filters": {"lot_id": None, "line_id": None, "machine_id": None,
+                "defect_type": None, "days": 7},
+    "window_end": "2026-08-22T00:00:00",
+    "boards_inspected": 120,
+    "defects_total": 15,
+    "defects_per_board": 0.13,
+    "by_class": {"open": 12, "short": 3},
 }
 
 
@@ -43,9 +58,7 @@ def test_the_fleet_average_is_carried_as_its_own_series():
 
 
 def test_a_defect_breakdown_becomes_bars():
-    spec = chart_spec_for(
-        [ok("query_defect_history", {"counts": {"open": 12, "short": 3}})]
-    )
+    spec = chart_spec_for([ok("query_defect_history", DEFECT_HISTORY)])
 
     assert spec["kind"] == "bar"
     assert {p["x"] for p in spec["series"][0]["points"]} == {"open", "short"}
@@ -78,7 +91,7 @@ def test_the_first_plottable_result_wins_when_several_are_present():
         [
             ok("search_standards", {"passages": []}),
             ok("query_machine_stats", MACHINE_STATS),
-            ok("query_defect_history", {"counts": {"open": 1}}),
+            ok("query_defect_history", {**DEFECT_HISTORY, "by_class": {"open": 1}}),
         ]
     )
 

@@ -57,7 +57,7 @@ def _machine_comparison(data: dict) -> dict | None:
 
 
 def _defect_breakdown(data: dict) -> dict | None:
-    counts = data.get("counts")
+    counts = data.get("by_class")
     if not counts:
         return None
     return {
