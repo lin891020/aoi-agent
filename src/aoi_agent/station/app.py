@@ -38,7 +38,7 @@ from aoi_agent.graph.flow import DEFAULT_MODEL, build_graph
 from aoi_agent.llm.ollama import OllamaClient
 from aoi_agent.station import images, service
 from aoi_agent.station.chart_svg import render_svg
-from aoi_agent.station.result_view import error_text, readable_rows
+from aoi_agent.station.result_view import _clip, error_text, readable_rows
 from aoi_agent.store import analysis as analysis_store
 from aoi_agent.store import escalations
 from aoi_agent.store.boards import correction_summary, corrections, resolve_candidate
@@ -248,16 +248,19 @@ EXAMPLE_QUESTIONS = [
 ]
 
 
-def _analysis_context(
-    request: Request, run: dict | None, errors: list[str] | None = None
-) -> dict:
-    """Everything ``analysis.html`` renders, for all three of its entrances.
+def _analysis_context(request: Request, run: dict | None) -> dict:
+    """Everything ``analysis.html`` renders, for both of its entrances.
 
-    ``errors`` is the live plan-validation list, which only a caller holding the
-    graph's state has: a stored run keeps the errors inside its answer, because
-    that is what the reader needs and normalising them would be a column nobody
-    queries. Passing them explicitly is how the streaming route hands them over
-    before the run is saved.
+    A rejected or unparseable plan's reasons are not a key here. They reach a
+    reader two other ways instead: live, as the stream's own `error` events;
+    persisted, folded into `run.answer` by `report_node`. Both routes that call
+    this (`ask_page`, `ask_result`) only ever render a stored run or none at
+    all, and a stored run carries no separate errors column -- there used to be
+    a `plan_errors` parameter here for a template block that no route could
+    ever fill, since `/ask/stream` renders no template and a plain GET on
+    `/ask/{run_id}` never carries the live state the stream held. Both the
+    block and the parameter were removed together; see the Task 8 fix-round
+    report for the trace of why.
 
     A chart is a whole specification or it is absent -- there is no empty spec
     to render, so the guard is on the key being missing, not on a kind. Only
@@ -267,7 +270,6 @@ def _analysis_context(
     """
     return {
         "run": run,
-        "plan_errors": list(errors or (run or {}).get("plan_errors") or []),
         "examples": EXAMPLE_QUESTIONS,
         "recent": analysis_store.recent_runs(8),
         "coverage_days": store_domains()["max_days"],
@@ -335,6 +337,23 @@ def _merge_state(state: dict, payload: dict) -> None:
             state[key] = value
 
 
+def _tool_key(tool: str, args: dict | None) -> str:
+    """A stable id for one planned call, shared by the plan and tool events.
+
+    Two calls to the same tool with different arguments must not collide on
+    `tool` alone: `analysis.html` used to key each progress row by tool name,
+    so the second of two `search_standards` calls in one plan overwrote the
+    first row's element id, and its own `tool` event then found nothing to
+    update -- a row stuck reading "running" for the life of the page. Computed
+    once here, server-side, for both the call (from the `plan` event) and the
+    matching result (from the `tool` event), rather than asking the client to
+    recompute it: `json.dumps(..., sort_keys=True)` and `JSON.stringify` do
+    not canonicalise objects the same way, and a client-side hash could
+    silently disagree with the server's for the exact same arguments.
+    """
+    return f"{tool}:{json.dumps(args or {}, sort_keys=True, ensure_ascii=False)}"
+
+
 @app.get("/ask/stream")
 def ask_stream(question: str, asked_by: str = "operator"):
     """Run one question, emitting progress as it goes.
@@ -345,10 +364,21 @@ def ask_stream(question: str, asked_by: str = "operator"):
     """
     if not question.strip():
         raise HTTPException(400, "a question is required")
+    # Normalised the same way `POST /ask` normalises its form field, so
+    # `?asked_by=` (or a value that is only whitespace) does not persist an
+    # empty attribution.
+    asked_by = asked_by.strip() or "operator"
 
     def stream():
         graph = analysis_graph()
         state: dict = {}
+        # A comment line, sent before anything else. SSE comments (a line
+        # starting with `:`) are ignored by `EventSource` but still count as
+        # response bytes, which flushes the headers through a buffering proxy
+        # immediately rather than leaving the connection looking idle until
+        # the first real event -- on a slow plan call, that can be several
+        # seconds away.
+        yield ": stream-open\n\n"
         try:
             for update in graph.stream(
                 {"question": question.strip(), "results": [], "timings_ms": {}},
@@ -360,37 +390,87 @@ def ask_stream(question: str, asked_by: str = "operator"):
                     payload = payload or {}
                     _merge_state(state, payload)
                     if node == "plan":
-                        plan = payload.get("plan") or {}
-                        yield _sse("plan", {
-                            "interpretation": plan.get("interpretation", ""),
-                            "calls": plan.get("calls", []),
-                        })
+                        plan = payload.get("plan")
+                        if plan is not None:
+                            # Only when the planner actually answered. An
+                            # unreachable planner has no plan at all -- the
+                            # error below still fires -- and announcing
+                            # "planning complete" a moment before it would
+                            # show the operator something that did not
+                            # happen.
+                            yield _sse("plan", {
+                                "interpretation": plan.get("interpretation", ""),
+                                "calls": [
+                                    {
+                                        **call,
+                                        "key": _tool_key(
+                                            call.get("tool", ""), call.get("args")
+                                        ),
+                                    }
+                                    for call in plan.get("calls", [])
+                                ],
+                            })
                         for error in payload.get("plan_errors") or []:
                             yield _sse("error", {"message": error})
                     elif node == "run_tool":
                         for result in payload.get("results") or []:
                             yield _sse("tool", {
                                 "tool": result["tool"],
+                                "key": _tool_key(result["tool"], result["args"]),
                                 "ok": result["ok"],
-                                "error": result["error"],
+                                # Clipped the same as every other tool-reported
+                                # string on the rendered page
+                                # (`result_view._clip`, 160 chars): a failing
+                                # tool's raw exception text is otherwise
+                                # unbounded, and a traceback-length message
+                                # becomes one unbounded row in the progress
+                                # panel.
+                                "error": _clip(result["error"]) if result["error"] else None,
                                 "elapsed_ms": result["elapsed_ms"],
                             })
+            # Persisted inside the try: if `save_run` itself raises, the
+            # `except` below still turns that into one clean `error` event
+            # instead of an uncaught exception unwinding the ASGI response
+            # mid-stream. An abrupt end with no `done` event is indistinguish-
+            # able, to `EventSource`, from a dropped connection -- it
+            # reconnects and reruns the whole question, looping for as long as
+            # the tab stays open. See the `error` handler in analysis.html,
+            # which closes the connection on exactly that native error.
+            run_id = analysis_store.save_run(
+                question=question.strip(),
+                plan=state.get("plan"),
+                results=state.get("results") or [],
+                chart=state.get("chart_spec"),
+                answer=state.get("answer", ""),
+                timings=state.get("timings_ms") or {},
+                refused=bool(state.get("refused")),
+                asked_by=asked_by,
+            )
         except Exception as error:  # noqa: BLE001 -- the stream must close cleanly
             yield _sse("error", {"message": f"{type(error).__name__}: {error}"})
-
-        run_id = analysis_store.save_run(
-            question=question.strip(),
-            plan=state.get("plan"),
-            results=state.get("results") or [],
-            chart=state.get("chart_spec"),
-            answer=state.get("answer", ""),
-            timings=state.get("timings_ms") or {},
-            refused=bool(state.get("refused")),
-            asked_by=asked_by,
-        )
+            return
+        # A client that navigates away mid-run raises `GeneratorExit` at
+        # whichever `yield` was in flight above. It is not an `Exception`, so
+        # the `except` above never sees it: it propagates straight out of this
+        # generator and `save_run` is never reached. That is deliberate, not a
+        # gap to close with a `finally` -- the run already cost two model
+        # calls with nobody left to read the answer, and there is no run to
+        # attach a `done` event to. Persisting it anyway would be a background
+        # write nobody asked for.
         yield _sse("done", {"run_id": run_id})
 
-    return StreamingResponse(stream(), media_type="text/event-stream")
+    return StreamingResponse(
+        stream(),
+        media_type="text/event-stream",
+        headers={
+            # Without these, a buffering reverse proxy (nginx by default, and
+            # anything shop-floor between the browser and this process) can
+            # hold the whole response until it closes, which turns the stream
+            # back into the blank-screen wait this feature exists to remove.
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.get("/ask/{run_id}", response_class=HTMLResponse)

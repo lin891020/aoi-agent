@@ -156,22 +156,38 @@
     source.addEventListener('plan', function (e) {
       var plan = JSON.parse(e.data);
       head.textContent = plan.interpretation || '規劃完成';
+      // Keyed by `call.key`, not `call.tool`: two calls to the same tool with
+      // different arguments would otherwise get the same element id, and
+      // `getElementById` only ever finds the first -- the second call's row
+      // would spin as "running" for the life of the page. The server computes
+      // the key once and sends it on both the plan and the tool event so the
+      // two are guaranteed to agree.
       plan.calls.forEach(function (call) {
         var li = document.createElement('li');
-        li.id = 'tool-' + call.tool;
+        li.id = 'tool-' + call.key;
         li.textContent = '⟳ ' + call.tool;
         list.appendChild(li);
       });
     });
     source.addEventListener('tool', function (e) {
       var result = JSON.parse(e.data);
-      var li = document.getElementById('tool-' + result.tool);
+      var li = document.getElementById('tool-' + result.key);
       if (!li) return;
       li.textContent = (result.ok ? '✓ ' : '✗ ') + result.tool +
                        '  ' + Math.round(result.elapsed_ms) + 'ms' +
                        (result.ok ? '' : '  ' + result.error);
     });
     source.addEventListener('error', function (e) {
+      if (!e.data) {
+        // The browser's own connection-level error, not one of our named SSE
+        // `error` events (which always carry `data`). EventSource reconnects
+        // on any closed connection by default, `done` or not -- without this,
+        // a dropped stream would have the browser silently re-issue the GET
+        // and re-run the whole question, and every question after it, for as
+        // long as the tab stayed open.
+        source.close();
+        return;
+      }
       var li = document.createElement('li');
       try { li.textContent = '✗ ' + JSON.parse(e.data).message; }
       catch (_) { li.textContent = '✗ 連線中斷'; }

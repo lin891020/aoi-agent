@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from aoi_agent.analysis import graph as analysis
 from aoi_agent.llm.ollama import ChatResult, Timing
 from aoi_agent.station import app as station_app
+from aoi_agent.store import analysis as analysis_store
 from aoi_agent.store.models import create_all, make_session_factory
 
 PLAN = {
@@ -93,12 +94,32 @@ def test_the_done_event_carries_the_run_id_to_navigate_to(client):
 
 def test_the_run_the_stream_persists_is_the_same_one_the_page_renders(client):
     """The stream must not be a second, parallel execution -- that would double
-    the cost and could disagree with itself."""
+    the cost and could disagree with itself.
+
+    This is also the merge-correctness test: ``stream_mode="updates"`` hands
+    back one update per ``Send`` branch, so a naive ``state.update(payload)``
+    treats each branch's single-item ``results`` list -- and each node's
+    contribution to ``timings_ms`` -- as last-write-wins, keeping only
+    whichever update happened to land last. That made the previous version of
+    this test order-dependent: it passed only when ``query_machine_stats``
+    happened to be the branch folded in last, and failed against
+    ``state.update`` otherwise. Asserting both tool names and both a `plan`
+    and a `synthesise` timing closes that gap -- any one of the three being
+    silently dropped fails it, regardless of arrival order.
+    """
     body = client.get("/ask/stream", params={"question": "M22 正常嗎"}).text
     run_id = events(body)[-1]["data"]["run_id"]
-    page = client.get(f"/ask/{run_id}").text
 
+    run = analysis_store.get_run(run_id)
+    assert sorted(r["tool"] for r in run["results"]) == [
+        "query_machine_stats", "search_standards"
+    ]
+    assert "plan" in run["timings"]
+    assert "synthesise" in run["timings"]
+
+    page = client.get(f"/ask/{run_id}").text
     assert "query_machine_stats" in page
+    assert "search_standards" in page
 
 
 def test_a_failing_tool_is_streamed_as_a_failed_tool_event(client, monkeypatch):
@@ -123,6 +144,38 @@ def test_a_rejected_plan_ends_the_stream_with_an_error_event(client, monkeypatch
 
     assert names[-1] == "done", "a rejected plan still produces a viewable run"
     assert any(e["event"] == "error" for e in events(body))
+
+
+def test_two_calls_to_the_same_tool_get_distinct_rows(client, monkeypatch):
+    """Two calls to one tool used to collide on the element id `tool-<name>`
+    (keyed by tool name alone), so the second call's `tool` event found
+    nothing to update and its row stayed reading "running" forever. Different
+    arguments must produce different keys -- one per planned call -- and every
+    `tool` event's key must be claimable by exactly one of them, which is the
+    actual mechanism that keeps both rows resolving on the page."""
+    twice = {
+        "interpretation": "two standards lookups",
+        "assumptions": [],
+        "calls": [
+            {"tool": "search_standards", "args": {"query": "open", "top_k": 2},
+             "why": "a"},
+            {"tool": "search_standards", "args": {"query": "short", "top_k": 2},
+             "why": "b"},
+        ],
+    }
+    monkeypatch.setattr(station_app, "_analysis_graph",
+                        analysis.build_analysis_graph(StubClient(plan=twice), DOMAINS))
+    body = client.get("/ask/stream", params={"question": "two lookups"}).text
+    plan_event = next(e for e in events(body) if e["event"] == "plan")
+    tool_events = [e["data"] for e in events(body) if e["event"] == "tool"]
+
+    plan_keys = [c["key"] for c in plan_event["data"]["calls"]]
+    assert len(set(plan_keys)) == 2, "two different calls must get two different keys"
+
+    tool_keys = sorted(t["key"] for t in tool_events)
+    assert tool_keys == sorted(plan_keys), (
+        "every tool event must be claimable by exactly one planned call's row"
+    )
 
 
 def test_the_form_still_works_with_no_javascript(client):
