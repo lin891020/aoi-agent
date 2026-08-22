@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections import defaultdict
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Request
@@ -329,27 +330,34 @@ def _merge_state(state: dict, payload: dict) -> None:
     the state the graph itself accumulated.
     """
     for key, value in payload.items():
-        if key == "results" and value:
-            state["results"] = [*state.get("results", []), *value]
-        elif key == "timings_ms" and value:
-            state["timings_ms"] = {**state.get("timings_ms", {}), **value}
+        if key == "results":
+            # `or []`, not `and value` before choosing this branch: an empty
+            # update must no-op, the same as `existing + [] == existing` under
+            # `operator.add`. Falling through to `state[key] = value` on a
+            # falsy update -- the original bug here -- would wipe every branch
+            # already accumulated the moment one more arrived empty.
+            state["results"] = [*state.get("results", []), *(value or [])]
+        elif key == "timings_ms":
+            state["timings_ms"] = {**state.get("timings_ms", {}), **(value or {})}
         else:
             state[key] = value
 
 
-def _tool_key(tool: str, args: dict | None) -> str:
-    """A stable id for one planned call, shared by the plan and tool events.
+def _tool_base_key(tool: str, args: dict | None) -> str:
+    """The content half of a call's key: everything but which occurrence it is.
 
     Two calls to the same tool with different arguments must not collide on
-    `tool` alone: `analysis.html` used to key each progress row by tool name,
-    so the second of two `search_standards` calls in one plan overwrote the
-    first row's element id, and its own `tool` event then found nothing to
-    update -- a row stuck reading "running" for the life of the page. Computed
-    once here, server-side, for both the call (from the `plan` event) and the
-    matching result (from the `tool` event), rather than asking the client to
-    recompute it: `json.dumps(..., sort_keys=True)` and `JSON.stringify` do
-    not canonicalise objects the same way, and a client-side hash could
-    silently disagree with the server's for the exact same arguments.
+    `tool` alone: `analysis.html` keys each progress row by this, and a
+    collision means the second call's `tool` event finds nothing to update --
+    a row stuck reading "running" for the life of the page. `json.dumps(...,
+    sort_keys=True)` rather than a client-side `JSON.stringify` hash, because
+    the two do not canonicalise key order the same way and a client-side
+    recomputation could silently disagree with the server's for identical
+    arguments.
+
+    Content alone is not enough: two byte-identical calls -- `validate_plan`
+    has no rule against them -- produce the same base key. See the position
+    queue in `ask_stream`, which appends *which* occurrence this is.
     """
     return f"{tool}:{json.dumps(args or {}, sort_keys=True, ensure_ascii=False)}"
 
@@ -372,6 +380,17 @@ def ask_stream(question: str, asked_by: str = "operator"):
     def stream():
         graph = analysis_graph()
         state: dict = {}
+        # Declared positions not yet claimed by a `tool` event, grouped by
+        # `_tool_base_key`. `validate_plan` allows two byte-identical calls
+        # (deliberately not changed here -- see the Task 8 fix-round report),
+        # so content alone cannot tell their rows apart. The plan node runs,
+        # and is streamed, before any `run_tool` branch: by the time a `tool`
+        # event needs a key, every position for its base key is already
+        # queued, so popping the smallest one gives each occurrence of an
+        # identical call a distinct, stable key -- which of the two identical
+        # branches gets which position does not matter, since nothing about
+        # them differs.
+        pending_positions: dict[str, list[int]] = defaultdict(list)
         # A comment line, sent before anything else. SSE comments (a line
         # starting with `:`) are ignored by `EventSource` but still count as
         # response bytes, which flushes the headers through a buffering proxy
@@ -398,25 +417,27 @@ def ask_stream(question: str, asked_by: str = "operator"):
                             # "planning complete" a moment before it would
                             # show the operator something that did not
                             # happen.
+                            calls = []
+                            for index, call in enumerate(plan.get("calls", [])):
+                                base = _tool_base_key(
+                                    call.get("tool", ""), call.get("args")
+                                )
+                                pending_positions[base].append(index)
+                                calls.append({**call, "key": f"{index}:{base}"})
                             yield _sse("plan", {
                                 "interpretation": plan.get("interpretation", ""),
-                                "calls": [
-                                    {
-                                        **call,
-                                        "key": _tool_key(
-                                            call.get("tool", ""), call.get("args")
-                                        ),
-                                    }
-                                    for call in plan.get("calls", [])
-                                ],
+                                "calls": calls,
                             })
                         for error in payload.get("plan_errors") or []:
                             yield _sse("error", {"message": error})
                     elif node == "run_tool":
                         for result in payload.get("results") or []:
+                            base = _tool_base_key(result["tool"], result["args"])
+                            queue = pending_positions.get(base)
+                            index = queue.pop(0) if queue else 0
                             yield _sse("tool", {
                                 "tool": result["tool"],
-                                "key": _tool_key(result["tool"], result["args"]),
+                                "key": f"{index}:{base}",
                                 "ok": result["ok"],
                                 # Clipped the same as every other tool-reported
                                 # string on the rendered page

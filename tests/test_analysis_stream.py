@@ -178,6 +178,42 @@ def test_two_calls_to_the_same_tool_get_distinct_rows(client, monkeypatch):
     )
 
 
+def test_two_byte_identical_calls_to_the_same_tool_both_resolve(client, monkeypatch):
+    """`_tool_base_key` alone (tool + args) is not enough: `validate_plan` has
+    no rule against two calls that are byte-identical -- same tool, same
+    args -- so content gives them nothing to disambiguate by. This is the
+    shape that keying purely on `_tool_base_key` still collides on: both
+    `plan` calls carry the exact same base key, and without a further
+    tie-break both `tool` events would too, so one page row would never
+    resolve. Asserts two distinct keys on the plan side, and that both keys
+    get claimed by the two (indistinguishable) tool events -- i.e. both rows
+    resolve, not just one of them twice."""
+    identical = {
+        "interpretation": "same lookup twice",
+        "assumptions": [],
+        "calls": [
+            {"tool": "search_standards", "args": {"query": "open", "top_k": 2},
+             "why": "a"},
+            {"tool": "search_standards", "args": {"query": "open", "top_k": 2},
+             "why": "a"},
+        ],
+    }
+    monkeypatch.setattr(station_app, "_analysis_graph",
+                        analysis.build_analysis_graph(StubClient(plan=identical), DOMAINS))
+    body = client.get("/ask/stream", params={"question": "same lookup twice"}).text
+    plan_event = next(e for e in events(body) if e["event"] == "plan")
+    tool_events = [e["data"] for e in events(body) if e["event"] == "tool"]
+
+    plan_keys = sorted(c["key"] for c in plan_event["data"]["calls"])
+    assert len(plan_keys) == 2
+    assert plan_keys[0] != plan_keys[1], (
+        "two byte-identical calls must still get two distinct keys"
+    )
+
+    tool_keys = sorted(t["key"] for t in tool_events)
+    assert tool_keys == plan_keys, "both rows must resolve, not just one of them twice"
+
+
 def test_the_form_still_works_with_no_javascript(client):
     """The stream is an enhancement. The station runs on shop-floor browsers."""
     response = client.post("/ask", data={"question": "M22 正常嗎"},
