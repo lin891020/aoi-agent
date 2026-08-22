@@ -12,7 +12,7 @@ from aoi_agent.analysis import graph as analysis
 from aoi_agent.llm.ollama import ChatResult, Timing
 from aoi_agent.station import app as station_app
 from aoi_agent.station.chart_svg import render_svg
-from aoi_agent.station.result_view import readable_rows
+from aoi_agent.station.result_view import MAX_CHARS, MAX_ROWS, readable_rows
 from aoi_agent.store.models import create_all, make_session_factory
 
 PLAN = {
@@ -198,11 +198,13 @@ class _Telltale:
     __str__ = __repr__
 
 
-#: Shapes a sixth tool could plausibly return, each hiding the answer key
-#: somewhere the previous name-matching guard did not look. Adding one is a
-#: line, which is the point: the claim being tested is about every shape, not
-#: about the two that were found.
-LEAKY_SHAPES = [
+#: Ways a sixth tool could hide the answer key in what it returns. Each is a
+#: *fragment* -- one or two entries, no wrapper -- because the wrapper is the
+#: other half of this table and the two are crossed below. Every leak found in
+#: this module so far has been a shape that was already probed somewhere else
+#: and not probed here, so the shape and the place it sits are varied
+#: separately and combined exhaustively rather than by hand.
+LEAKY_FRAGMENTS = [
     ("the exact key", {"ground_truth": SENTINEL}),
     ("a capitalised key", {"Ground_Truth": SENTINEL}),
     ("a padded key", {" ground_truth ": SENTINEL}),
@@ -212,46 +214,81 @@ LEAKY_SHAPES = [
     ("camelCase", {"groundTruth": SENTINEL}),
     ("camelCase capitalised", {"GroundTruth": SENTINEL}),
     ("run together", {"groundtruth": SENTINEL}),
-    ("a key that is itself a path", {"a": {"b.ground_truth": SENTINEL}}),
-    ("a path key at the top", {"candidate.ground_truth": SENTINEL}),
-    ("inside a record", {"rows": [{"machine": "L2-M22", "ground_truth": SENTINEL}]}),
-    ("inside a nested dict", {"meta": {"keep": 1, "ground_truth": SENTINEL}}),
-    ("three levels deep", {"a": {"b": {"ground_truth": SENTINEL}}}),
-    ("a list of lists", {"weird": [[{"ground_truth": SENTINEL}], "other"]}),
-    ("a list of lists of scalars", {"weird": [[SENTINEL]]}),
-    # A list of *scalars* under an ordinary key is content, not a leak: it is
-    # how `list_candidates` returns a box. So the shapes probed here are a list
-    # holding records, and a list under a key that must be filtered.
-    ("a record holding a list of records",
-     {"rows": [{"m": "x", "history": [{"ground_truth": SENTINEL}]}]}),
-    ("a hidden key holding a list", {"rows": [{"m": "x", "ground_truth": [SENTINEL]}]}),
-    ("a hidden key holding a list at the top", {"ground_truth": [SENTINEL]}),
+    ("a key that is itself a path", {"candidate.ground_truth": SENTINEL}),
+    # The name split across two levels. Whichever container does the splitting,
+    # neither half is a hidden key on its own -- which is how the list form of
+    # this shape reached the page while the dict form was filtered.
+    ("split over a dict", {"ground": {"truth": SENTINEL}}),
+    ("split over a list", {"ground": [{"truth": SENTINEL}]}),
+    ("split over a list of scalars", {"ground": {"truth": [SENTINEL]}}),
+    ("a hidden key holding a list", {"ground_truth": [SENTINEL]}),
     ("a hidden key holding a record", {"ground_truth": {"a": SENTINEL}}),
-    ("a record holding a dict", {"rows": [{"m": "x", "gt": {"ground_truth": SENTINEL}}]}),
-    ("a dict of dicts", {"per_machine": {"M22": {"ground_truth": SENTINEL}}}),
+    ("a hidden key holding records", {"ground_truth": [{"a": SENTINEL}]}),
     ("a tuple", {"weird": ({"ground_truth": SENTINEL},)}),
     ("a non-string key", {0: {"ground_truth": SENTINEL}}),
-]
-
-#: The same question asked of shapes that are not JSON at all. These cannot be
-#: asserted on the page: the synthesis prompt `json.dumps` the results, so a set
-#: or a bare object raises there and the run never renders. That is a crash
-#: rather than a leak, and it belongs to the tools that would return one -- but
-#: `readable_rows` is still the boundary, so it is held to the same claim here.
-UNSERIALISABLE_SHAPES = [
+    # Not JSON at all. These cannot reach the page -- the synthesis prompt
+    # `json.dumps` the results, so the run raises before anything renders --
+    # but `readable_rows` is still the boundary, so they are held to the same
+    # claim at the function. The split below is made by asking `json`, not by
+    # hand, so a fragment cannot be quietly excused from the page-level test.
     ("a set", {"weird": {SENTINEL}}),
     ("a tuple as a key", {("k", SENTINEL): 1}),
     ("an object as a key", {_Telltale(): 1}),
-    ("an object as a nested key", {"a": {_Telltale(): 1}}),
-    ("an object as a key in a record", {"rows": [{_Telltale(): 1}]}),
     ("an object with a telltale repr", {"weird": _Telltale()}),
     ("a list holding one", {"weird": [_Telltale()]}),
-    ("a record holding one", {"rows": [{"m": "x", "obj": _Telltale()}]}),
+]
+
+#: Every position a value can occupy in a tool's return value. A fragment is
+#: dropped into each of them, so no position can be the one nobody thought of:
+#: round 1 missed the list path, round 2 the record inside it, round 3 the
+#: composed label in one branch of two.
+POSITIONS = [
+    ("at the top", lambda f: {"tool": "x", **f}),
+    ("inside a nested dict", lambda f: {"meta": {"keep": 1, **f}}),
+    ("inside a record in a list", lambda f: {"rows": [{"m": "x", **f}]}),
+    ("as the whole of a record in a list", lambda f: {"rows": [dict(f)]}),
+    ("inside a list of lists", lambda f: {"weird": [[dict(f)]]}),
+    ("inside a dict of dicts", lambda f: {"a": {"b": dict(f)}}),
+    ("inside a list held by a record", lambda f: {"rows": [{"m": "x", "h": [dict(f)]}]}),
+]
+
+#: The three positions the page renders. The rest are shapes this module drops
+#: by design, and `test_every_probed_position_is_one_the_page_accounts_for`
+#: holds them to that -- a leak table over positions that render nothing would
+#: pass by doing nothing at all.
+RENDERED_POSITIONS = {"at the top", "inside a nested dict",
+                      "inside a record in a list",
+                      "as the whole of a record in a list"}
+
+#: shape x position, which is the claim: no shape leaks anywhere it can sit.
+LEAK_CASES = [
+    (f"{shape} {where}", place(fragment))
+    for shape, fragment in LEAKY_FRAGMENTS
+    for where, place in POSITIONS
 ]
 
 
-@pytest.mark.parametrize("data", [shape for _, shape in LEAKY_SHAPES],
-                         ids=[name for name, _ in LEAKY_SHAPES])
+def _serialisable(payload: object) -> bool:
+    """Whether this payload can reach the page at all.
+
+    `synthesise` `json.dumps` the tool results, so a set or a bare object
+    raises there and the run never renders. That is a crash rather than a leak,
+    and it belongs to the tool that would return one -- but the page-level test
+    must not silently skip a shape that *is* serialisable, so the split is made
+    by asking `json` rather than by hand.
+    """
+    try:
+        json.dumps(payload)
+    except TypeError:
+        return False
+    return True
+
+
+PAGE_CASES = [(name, data) for name, data in LEAK_CASES if _serialisable(data)]
+
+
+@pytest.mark.parametrize("data", [data for _, data in PAGE_CASES],
+                         ids=[name for name, _ in PAGE_CASES])
 def test_no_payload_shape_puts_the_answer_key_on_the_page(client, monkeypatch, data):
     """The station's hardest invariant, at the one boundary this task opens.
 
@@ -268,16 +305,41 @@ def test_no_payload_shape_puts_the_answer_key_on_the_page(client, monkeypatch, d
     assert "ground_truth" not in page.casefold()
 
 
-@pytest.mark.parametrize(
-    "data", [shape for _, shape in LEAKY_SHAPES + UNSERIALISABLE_SHAPES],
-    ids=[name for name, _ in LEAKY_SHAPES + UNSERIALISABLE_SHAPES],
-)
+@pytest.mark.parametrize("data", [data for _, data in LEAK_CASES],
+                         ids=[name for name, _ in LEAK_CASES])
 def test_no_payload_shape_survives_the_dict_boundary(data):
-    """The same claim one layer down, where the guard actually lives."""
+    """The same claim one layer down, where the guard actually lives.
+
+    Every case, including the ones that cannot be serialised as far as a page.
+    """
     rendered = str(readable_rows(data))
 
     assert SENTINEL not in rendered
     assert "ground_truth" not in rendered.casefold()
+
+
+@pytest.mark.parametrize("where,place", POSITIONS,
+                         ids=[where for where, _ in POSITIONS])
+def test_every_probed_position_is_one_the_page_accounts_for(
+    client, monkeypatch, where, place
+):
+    """A leak table over positions that render nothing would pass by doing nothing.
+
+    So each position is checked with an ordinary value in it: either the page
+    shows it, or the page says something was left out. Silently showing neither
+    is the failure this test exists to catch.
+    """
+    marker = "PLAIN-READABLE-VALUE"
+    monkeypatch.setitem(analysis.PLANNABLE_TOOLS, "query_machine_stats",
+                        lambda **kw: place({"visible": marker}))
+    page = client.post("/ask", data={"question": "M22 正常嗎"},
+                       follow_redirects=True).text
+
+    if where in RENDERED_POSITIONS:
+        assert marker in page, "this position renders, so the leak test is real"
+    else:
+        assert marker not in page, "this position is dropped by design"
+        assert "未顯示" in page, "and the reader is told it was"
 
 
 def test_the_guard_drops_the_shape_it_cannot_read_and_keeps_the_rest(client):
@@ -296,11 +358,12 @@ def test_the_guard_drops_the_shape_it_cannot_read_and_keeps_the_rest(client):
 #: The five plannable tools' real return payloads, each read off the `return`
 #: statement in its own source rather than from a schema note -- the previous
 #: version of this table was fabricated for `list_candidates`, which is exactly
-#: the tool the guard was dropping whole.
+#: the tool the guard was dropping whole. Re-read at every round:
+#: `mcp_servers/production.py:84,168,202`, `standards.py:32`, `classify.py:70`.
 #:
 #: `complete` is False only for `query_defect_history`: filters(5) + 4 scalars +
 #: by_class(6) is 15 rows against MAX_ROWS = 14, so one class is always cut.
-#: Known, and out of scope for this round.
+#: Known, and out of scope.
 REAL_SHAPES = [
     (
         "query_defect_history",  # mcp_servers/production.py:84
@@ -318,7 +381,7 @@ REAL_SHAPES = [
         False,
     ),
     (
-        "query_machine_stats",  # mcp_servers/production.py:130
+        "query_machine_stats",  # mcp_servers/production.py:168
         {
             "defect_type": "open", "days": 7,
             "fleet_average_per_board": 1.42, "fleet_share_of_defects": 0.201,
@@ -331,7 +394,7 @@ REAL_SHAPES = [
         True,
     ),
     (
-        "query_board_context",  # mcp_servers/production.py:180
+        "query_board_context",  # mcp_servers/production.py:202
         {
             "board": "20085294", "lot_id": "LOT-2026-08-14", "line_id": "L2",
             "machine_id": "M22", "shift": "B",
@@ -390,6 +453,21 @@ def test_every_real_tool_payload_still_renders(data, expected, complete):
         assert "未顯示" not in rendered, "nothing a real tool returns is dropped"
 
 
+@pytest.mark.parametrize("data,expected,complete",
+                         [(d, e, c) for _, d, e, c in REAL_SHAPES],
+                         ids=[name for name, _, _, _ in REAL_SHAPES])
+def test_every_real_tool_payload_reaches_the_page(client, monkeypatch,
+                                                  data, expected, complete):
+    """And reaches the reader, not just the function that builds the rows."""
+    monkeypatch.setitem(analysis.PLANNABLE_TOOLS, "query_machine_stats",
+                        lambda **kw: data)
+    page = client.post("/ask", data={"question": "M22 正常嗎"},
+                       follow_redirects=True).text
+
+    for fragment in expected:
+        assert fragment in page
+
+
 def test_a_hidden_key_nested_in_a_record_is_counted_not_silently_skipped():
     """Every omission is visible, at whatever depth it happened."""
     nested = readable_rows({"meta": {"ground_truth": SENTINEL, "keep": 2}})
@@ -399,6 +477,50 @@ def test_a_hidden_key_nested_in_a_record_is_counted_not_silently_skipped():
     assert any("未顯示" in value for _, value in nested), "the nested drop is counted"
     assert ("rows[0]", "keep=3") in in_record
     assert any("未顯示" in value for _, value in in_record), "and inside a record"
+
+
+#: Long enough that an unclipped row would be a page on its own. 200 items and
+#: 300 characters each is 60KB if nothing cuts it.
+FLOOD = ["y" * 300] * 200
+
+
+def test_the_data_view_truncates_rather_than_floods():
+    """A block that floods the page is one nobody reads.
+
+    Both list paths, because the last round clipped one of them and deleted
+    this test rather than extending it: a list that is a value of the payload,
+    and the same list one level down as a field of a record -- which is where
+    it went through unclipped, 10.4KB in a single row.
+    """
+    cases = {
+        "a list at the top": readable_rows({"meta": 1, "hist": FLOOD}),
+        "the same list inside a record": readable_rows({"meta": {"hist": FLOOD}}),
+        "a list of long records": readable_rows(
+            {"query": "open",
+             "passages": [{"document": "WI-300", "heading": "Opens",
+                           "text": "z" * 400, "distance": 0.2}] * 9},
+        ),
+    }
+
+    for where, rows in cases.items():
+        assert rows, where
+        assert len(rows) <= MAX_ROWS + 1, where
+        assert all(len(value) <= MAX_CHARS for _, value in rows), where
+        assert len("".join(v for _, v in rows)) < 2000, where
+        assert any("未顯示" in value for _, value in rows), f"{where}: silently cut"
+
+
+def test_a_flooding_payload_does_not_flood_the_rendered_page(client, monkeypatch):
+    """The same claim where it is felt: the block on the operator's screen."""
+    monkeypatch.setitem(analysis.PLANNABLE_TOOLS, "query_machine_stats",
+                        lambda **kw: {"meta": {"hist": FLOOD}})
+    page = client.post("/ask", data={"question": "M22 正常嗎"},
+                       follow_redirects=True).text
+
+    block = page[page.index('<details class="data"'):]
+    block = block[: block.index("</details>")]
+    assert len(block) < 2000, "the returned-data block is a page of its own"
+    assert "未顯示" in block
 
 
 def test_a_tool_error_that_is_not_a_string_is_not_str_ed_onto_the_page(
