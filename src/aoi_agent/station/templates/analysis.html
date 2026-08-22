@@ -11,9 +11,13 @@
     <button type="submit">問</button>
   </form>
 
-  {# The form posts and redirects, with no JavaScript involved. A live
-     progress panel belongs here, below the form and above the answer, and
-     must stay additive: with scripting off this page still answers. #}
+  {# The form posts and redirects, with no JavaScript involved. The progress
+     panel below is populated only by the script at the end of this file --
+     with scripting off it stays hidden and the page still answers. #}
+  <div class="progress" id="progress" hidden>
+    <p class="label" id="progress-head">規劃中…</p>
+    <ul id="progress-list"></ul>
+  </div>
 
   <p class="sub">試試看：
     {% for example in examples %}
@@ -22,12 +26,15 @@
   </p>
   <p class="sim">資料涵蓋最近 {{ coverage_days }} 天。超出這個範圍的問題會被拒答，而不是用最接近的窗口代答。產線 metadata 是模擬的；驗收標準是本專案自撰文件，不是 IPC-A-610。</p>
 
-  {% if plan_errors %}
-    <div class="handover">
-      <span class="label">這個計畫沒有執行</span>
-      <ul>{% for e in plan_errors %}<li>{{ e }}</li>{% endfor %}</ul>
-    </div>
-  {% endif %}
+  {# A rejected or unparseable plan's reasons never reach this template as
+     `plan_errors`: the POST route 303-redirects before they can be attached,
+     and `/ask/stream` (below) only has them while it is live -- it streams
+     them as `error` events into the progress panel, and by the time a viewer
+     lands on this page over a plain GET, `report_node` has already folded the
+     same reasons into `run.answer`, which is shown further down. A dedicated
+     block here would be markup no route could ever fill; deleted rather than
+     left dead. See the streamed `error` handler in the script below, and
+     `report_node` in analysis/graph.py, for where the two live instead. #}
 
   {% if run %}
     <div class="answer-block">
@@ -119,4 +126,61 @@
     </ul>
   {% endif %}
 </section>
+{% endblock %}
+
+{% block script %}
+<script>
+  // Enhancement only: with JavaScript off the form posts and the server
+  // renders the finished page. With it on, the same run streams its progress
+  // so a 20-second wait reads as work rather than as a hang.
+  //
+  // Everything written into the DOM below goes through `.textContent`, never
+  // `.innerHTML` -- the event payloads are JSON (model-authored `interpretation`
+  // and `why` text, tool-reported `error` strings) parsed with `JSON.parse`,
+  // and `.textContent` renders it as inert text regardless of what characters
+  // it contains. No string here is ever concatenated into markup.
+  var form = document.querySelector('.ask');
+  form.addEventListener('submit', function (event) {
+    var question = form.querySelector('input[name=question]').value.trim();
+    if (!question) return;
+    event.preventDefault();
+
+    var panel = document.getElementById('progress');
+    var list = document.getElementById('progress-list');
+    var head = document.getElementById('progress-head');
+    panel.hidden = false;
+    list.innerHTML = '';
+    head.textContent = '規劃中…';
+
+    var source = new EventSource('/ask/stream?question=' + encodeURIComponent(question));
+    source.addEventListener('plan', function (e) {
+      var plan = JSON.parse(e.data);
+      head.textContent = plan.interpretation || '規劃完成';
+      plan.calls.forEach(function (call) {
+        var li = document.createElement('li');
+        li.id = 'tool-' + call.tool;
+        li.textContent = '⟳ ' + call.tool;
+        list.appendChild(li);
+      });
+    });
+    source.addEventListener('tool', function (e) {
+      var result = JSON.parse(e.data);
+      var li = document.getElementById('tool-' + result.tool);
+      if (!li) return;
+      li.textContent = (result.ok ? '✓ ' : '✗ ') + result.tool +
+                       '  ' + Math.round(result.elapsed_ms) + 'ms' +
+                       (result.ok ? '' : '  ' + result.error);
+    });
+    source.addEventListener('error', function (e) {
+      var li = document.createElement('li');
+      try { li.textContent = '✗ ' + JSON.parse(e.data).message; }
+      catch (_) { li.textContent = '✗ 連線中斷'; }
+      list.appendChild(li);
+    });
+    source.addEventListener('done', function (e) {
+      source.close();
+      window.location = '/ask/' + JSON.parse(e.data).run_id;
+    });
+  });
+</script>
 {% endblock %}

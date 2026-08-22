@@ -224,3 +224,8 @@ table.kv { border-collapse: collapse; font-size: 0.82rem; }
 table.kv th { text-align: left; font-weight: 400; padding: 0.15rem 1rem 0.15rem 0;
               vertical-align: top; white-space: nowrap; }
 table.kv td { padding: 0.15rem 0; vertical-align: top; }
+
+.progress { margin: 1rem 0; padding: 0.9rem 1.1rem; background: var(--bg);
+            border: 1px solid var(--line); border-radius: 10px; }
+.progress ul { list-style: none; padding: 0; margin: 0.5rem 0 0;
+               font-family: var(--mono); font-size: 0.85rem; line-height: 1.9; }

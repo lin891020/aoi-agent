@@ -22,11 +22,12 @@ locked-down shop-floor browser is worse than a CLI.
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -304,6 +305,92 @@ def ask(question: str = Form(...), asked_by: str = Form("operator")):
         analysis_graph(), question.strip(), asked_by.strip() or "operator"
     )
     return RedirectResponse(f"/ask/{run['id']}", status_code=303)
+
+
+def _sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _merge_state(state: dict, payload: dict) -> None:
+    """Fold one node's update into the running copy, honouring its reducers.
+
+    ``stream_mode="updates"`` hands back one update per ``Send`` branch, not
+    one per superstep, so two ``run_tool`` branches arrive as two separate
+    dicts, each holding its own single-item ``results`` list. A plain
+    ``state.update(payload)`` treats every key as last-write-wins, which is
+    correct for a scalar like ``answer`` but silently drops every branch
+    except whichever ``run_tool`` update is folded in last -- the same for
+    ``timings_ms``, which the plan, collect and synthesise nodes all write to
+    in turn. `AnalysisState` declares `results` with `operator.add` and
+    `timings_ms` with `operator.or_` for exactly this reason; this mirrors
+    both reducers so the copy held here for `save_run` cannot disagree with
+    the state the graph itself accumulated.
+    """
+    for key, value in payload.items():
+        if key == "results" and value:
+            state["results"] = [*state.get("results", []), *value]
+        elif key == "timings_ms" and value:
+            state["timings_ms"] = {**state.get("timings_ms", {}), **value}
+        else:
+            state[key] = value
+
+
+@app.get("/ask/stream")
+def ask_stream(question: str, asked_by: str = "operator"):
+    """Run one question, emitting progress as it goes.
+
+    One execution, not two: the same run that produces these events is the run
+    that gets persisted, so the page a viewer lands on cannot disagree with the
+    progress they just watched.
+    """
+    if not question.strip():
+        raise HTTPException(400, "a question is required")
+
+    def stream():
+        graph = analysis_graph()
+        state: dict = {}
+        try:
+            for update in graph.stream(
+                {"question": question.strip(), "results": [], "timings_ms": {}},
+                stream_mode="updates",
+            ):
+                for node, payload in update.items():
+                    # A node returning an empty dict streams as None. Verified
+                    # against LangGraph 1.2 before this plan was written.
+                    payload = payload or {}
+                    _merge_state(state, payload)
+                    if node == "plan":
+                        plan = payload.get("plan") or {}
+                        yield _sse("plan", {
+                            "interpretation": plan.get("interpretation", ""),
+                            "calls": plan.get("calls", []),
+                        })
+                        for error in payload.get("plan_errors") or []:
+                            yield _sse("error", {"message": error})
+                    elif node == "run_tool":
+                        for result in payload.get("results") or []:
+                            yield _sse("tool", {
+                                "tool": result["tool"],
+                                "ok": result["ok"],
+                                "error": result["error"],
+                                "elapsed_ms": result["elapsed_ms"],
+                            })
+        except Exception as error:  # noqa: BLE001 -- the stream must close cleanly
+            yield _sse("error", {"message": f"{type(error).__name__}: {error}"})
+
+        run_id = analysis_store.save_run(
+            question=question.strip(),
+            plan=state.get("plan"),
+            results=state.get("results") or [],
+            chart=state.get("chart_spec"),
+            answer=state.get("answer", ""),
+            timings=state.get("timings_ms") or {},
+            refused=bool(state.get("refused")),
+            asked_by=asked_by,
+        )
+        yield _sse("done", {"run_id": run_id})
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
 
 
 @app.get("/ask/{run_id}", response_class=HTMLResponse)
