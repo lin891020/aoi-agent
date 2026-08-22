@@ -95,13 +95,45 @@ def test_the_results_arrive_through_the_reducer_not_by_overwriting(stub_tools):
     assert tools == {"query_machine_stats", "search_standards"}
 
 
-def test_the_branches_run_concurrently(stub_tools):
-    """Each stub sleeps 50ms. Sequential would be 100ms plus overhead."""
-    started = time.perf_counter()
-    run(StubClient())
-    elapsed = (time.perf_counter() - started) * 1000
+def test_the_branches_run_concurrently(monkeypatch):
+    """Concurrency is asserted as overlapping intervals, not as elapsed time.
 
-    assert elapsed < 90, f"branches look sequential: {elapsed:.0f}ms"
+    Do not "simplify" this back to a stopwatch. A `< 90ms` bound on two 50ms
+    tools measured 60ms once -- about 30ms of headroom on a fanless machine
+    that CLAUDE.md says throttles under sustained load. That assertion fails on
+    a slow run and passes on a sequential implementation that happens to be
+    fast, which is backwards on both counts.
+
+    Overlap is the property itself: two branches whose open intervals intersect
+    were in flight at the same time, whatever the machine was doing at the
+    time. It is also the only assertion in this file that a `for call in
+    plan["calls"]` loop inside one node would fail -- every other test here
+    passes against that. This is what makes the Send fan-out load-bearing
+    rather than decorative.
+    """
+    spans: dict[str, tuple[float, float]] = {}
+
+    def make(name):
+        def tool(**kwargs):
+            started = time.perf_counter()
+            time.sleep(0.05)
+            spans[name] = (started, time.perf_counter())
+            return {}
+        return tool
+
+    for name in ("query_machine_stats", "search_standards"):
+        monkeypatch.setitem(analysis.PLANNABLE_TOOLS, name, make(name))
+
+    run(StubClient())
+
+    assert len(spans) == 2, f"both branches must have run, got {sorted(spans)}"
+    (first_start, first_end), (second_start, second_end) = spans.values()
+    overlap_ms = (min(first_end, second_end) - max(first_start, second_start)) * 1000
+
+    assert overlap_ms > 0, (
+        f"the branches did not overlap: one finished {-overlap_ms:.0f}ms before "
+        f"the other started, which is a sequential run"
+    )
 
 
 def test_an_invalid_plan_runs_nothing_and_reports_every_error(stub_tools):
@@ -189,3 +221,18 @@ def test_timings_are_recorded_per_tool_and_for_the_phases(stub_tools):
     assert "tools_wall" in state["timings_ms"]
     assert "synthesise" in state["timings_ms"]
     assert state["timings_ms"]["tools_sequential"] >= state["timings_ms"]["tools_wall"]
+
+
+def test_a_planner_outage_is_not_reported_as_a_validation_failure(stub_tools):
+    """There was no plan to validate, so saying one failed validation sends the
+    operator to look for a bad question when the model is simply down."""
+    import httpx
+
+    class Dead:
+        def chat(self, messages, **kwargs):
+            raise httpx.ReadTimeout("timed out")
+
+    state = run(Dead())
+
+    assert "did not validate" not in state["answer"]
+    assert "ReadTimeout" in state["answer"]

@@ -44,8 +44,11 @@ from aoi_agent.analysis.prompts import (
 from aoi_agent.analysis.tools import ToolResult, run_call
 
 #: Re-exported so the registry a branch will call is reachable from the flow
-#: that fans out over it -- and so a test can substitute a tool where the graph
-#: itself looks it up.
+#: that fans out over it. Note that nothing here looks a tool up: `run_call`
+#: does that, in `tools.py`. Substituting an entry through this name works
+#: because all three modules bind the same dict object, not because the lookup
+#: happens here -- so rebinding this name rather than mutating the dict would
+#: change nothing.
 __all__ = ["AnalysisState", "PLANNABLE_TOOLS", "build_analysis_graph"]
 
 
@@ -163,12 +166,27 @@ def make_synthesise_node(client):
 
 
 def report_node(state: AnalysisState) -> dict[str, Any]:
-    """Terminal for a refusal or a rejected plan. Nothing ran; say why."""
+    """Terminal for a refusal, a rejected plan, or no plan at all.
+
+    Nothing ran in any of the three, but they are not the same thing and an
+    operator acts on them differently. A rejected plan is a question to rephrase
+    or a value that does not exist; a planner that never answered is the model
+    being down, and telling someone their plan "did not validate" sends them to
+    look for a fault in a question that was never read.
+    """
     if state.get("refused"):
         plan = state.get("plan") or {}
         return {"answer": plan.get("interpretation", "No lookup could be planned."),
                 "chart_spec": None}
+
     errors = "\n".join(f"- {e}" for e in state.get("plan_errors") or [])
+    if state.get("plan") is None:
+        # Nothing came back to validate: the planner was unreachable, or what
+        # it returned was not a plan.
+        return {
+            "answer": "Nothing was run because no plan was produced:\n" + errors,
+            "chart_spec": None,
+        }
     return {
         "answer": "The plan was not run because it did not validate:\n" + errors,
         "chart_spec": None,
