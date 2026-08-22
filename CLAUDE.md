@@ -33,7 +33,7 @@ src/aoi_agent/
     cli.py
 scripts/                    gate_check, build_patches, train, report, seed_store,
                             analysis_eval, ...
-tests/                      530 tests; dataset-dependent ones behind `-m dataset`
+tests/                      547 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -48,7 +48,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 530 tests, no GPU needed, no model called
+uv run pytest                                    # 547 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
@@ -57,6 +57,8 @@ uv run python scripts/latency_report.py          # does the reason node fit the 
 uv run python scripts/agent_eval.py              # does the agent layer beat the classifier? (~9 min)
 uv run python scripts/analysis_eval.py           # does the planner plan the right lookups, and refuse the rest?
 uv run python scripts/analysis_eval.py --plan-only  # the same score, without the tools and the prose nobody scores
+uv run python scripts/analysis_eval.py --questions tests/fixtures/analysis_questions_independent.json
+                                                 # the same scorer on seventy questions whose authors never saw the prompt
 uv run python scripts/check_mcp_servers.py       # servers start and advertise tools
 uv run python -m aoi_agent board 20085294 --queue  # run a board, queue what it cannot settle
 uv run python -m aoi_agent station               # review station on :8000 -- the queue, and /ask

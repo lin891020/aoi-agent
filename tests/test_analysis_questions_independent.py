@@ -29,7 +29,14 @@ from pathlib import Path
 from aoi_agent.analysis.plan import PLANNABLE_TOOLS, store_domains, validate_plan
 from aoi_agent.store import seed
 
-from analysis_eval import QUESTIONS, SCORED_ARGS, load_questions
+from analysis_eval import (
+    BLIND_TO_THE_PROMPT,
+    DAYS_DEFAULT_DEFECT,
+    NO_FALSE_CALL_METRIC,
+    QUESTIONS,
+    SCORED_ARGS,
+    load_questions,
+)
 
 FIXTURE = Path(__file__).parent / "fixtures" / "analysis_questions_independent.json"
 
@@ -338,3 +345,32 @@ def test_the_published_twenty_are_still_what_the_script_runs_by_default():
     assert QUESTIONS.name == "analysis_questions.json"
     assert len(load_questions(QUESTIONS)) == 20
     assert QUESTIONS != FIXTURE
+
+
+BENCHMARKS = Path(__file__).resolve().parents[1] / "docs" / "benchmarks.md"
+
+
+def test_the_published_section_carries_the_script_s_own_wording():
+    """The section in docs/benchmarks.md is appended by the script, so the file
+    and the generator have to say the same thing. Editing one and not the other
+    leaves a document nobody can reproduce.
+
+    All three of these are claims about the run rather than numbers from it: who
+    wrote the questions, and the two defects the set exposes that no score can
+    show."""
+    published = BENCHMARKS.read_text()
+
+    assert BLIND_TO_THE_PROMPT in published
+    assert DAYS_DEFAULT_DEFECT in published
+    assert NO_FALSE_CALL_METRIC in published
+
+
+def test_the_published_section_did_not_displace_the_original_one():
+    """Two question sets, two sections, and the older one's figures stay put.
+    They are not comparable and the new section is not a correction of the old."""
+    published = BENCHMARKS.read_text()
+
+    assert published.count("### Analysis planner") == 2
+    assert published.index("### Analysis planner —") < published.index(
+        "### Analysis planner, asked by someone else"
+    )
