@@ -1,0 +1,272 @@
+[
+  {
+    "reference": "20085291#0",
+    "model_class": "open",
+    "confidence": 0.999940037727356,
+    "ground_truth": "open",
+    "agent_verdict": "open",
+    "escalated": false,
+    "rationale": "The vision model reports a 100\u202f% confident open circuit. According to the acceptance criteria, any confirmed open is a critical defect and must be rejected. No measurement uncertainty or ambiguity is present, so the decision is definitive."
+  },
+  {
+    "reference": "20085324#0",
+    "model_class": "open",
+    "confidence": 0.9974510073661804,
+    "ground_truth": "open",
+    "agent_verdict": "open",
+    "escalated": false,
+    "rationale": "The vision model reports an open with 99.8\u202f% confidence and a negligible probability of a false call. However, the acceptance criteria require a confirmed open (e.g., verified by a measurement or inspection) before a critical disposition is applied. Because we cannot independently verify the defect\u2019s location or continuity, the evidence is not sufficient to make a definitive decision. Therefore, the region should be escalated for operator review."
+  },
+  {
+    "reference": "00041206#13",
+    "model_class": "false_call",
+    "confidence": 0.8933813571929932,
+    "ground_truth": "false_call",
+    "agent_verdict": "open",
+    "escalated": true,
+    "rationale": "The vision model classifies the region as a false call with a confidence of 0.893. The policy states that a region is dismissed only if the model assigns a false\u2011call probability above the configured threshold. Since the confidence is below the typical threshold (\u22480.90) and the evidence is not unequivocal, the region falls into the \u201clow confidence\u201d category. Therefore it must be escalated to an operator for review."
+  },
+  {
+    "reference": "50600054#4",
+    "model_class": "mousebite",
+    "confidence": 0.8558458089828491,
+    "ground_truth": "mousebite",
+    "agent_verdict": "open",
+    "escalated": true,
+    "rationale": "The vision model indicates a mousebite with high confidence, but the acceptance criteria require a measurement of the remaining conductor width to determine if the defect is acceptable. Since the optical classifier does not provide this measurement and the defect could potentially be deep, we must defer to a human operator for measurement. Therefore, the region is marked as open and not confident."
+  },
+  {
+    "reference": "50600062#7",
+    "model_class": "false_call",
+    "confidence": 0.6548492908477783,
+    "ground_truth": "false_call",
+    "agent_verdict": "false_call",
+    "escalated": true,
+    "rationale": "The model\u2019s confidence (0.655) is below the typical dismissal threshold used in the re\u2011verification procedure, and the confidence is not high enough to accept the verdict automatically. The lot has a high defect rate (\u22486.8 defects/board), so a real defect is quite likely. According to the policy, low\u2011confidence or borderline cases must be escalated to an operator for final judgment."
+  },
+  {
+    "reference": "44000013#1",
+    "model_class": "spur",
+    "confidence": 0.9378196001052856,
+    "ground_truth": "spur",
+    "agent_verdict": "spur",
+    "escalated": false,
+    "rationale": "The vision model reports a spur with 93.8\u202f% confidence and a very low probability of a false call (0.6\u202f%). No competing short probability is indicated, so the clearance can be considered verified. According to the acceptance criteria, a spur that is within limits is released. Therefore the region is confidently classified as a spur."
+  },
+  {
+    "reference": "44000031#7",
+    "model_class": "open",
+    "confidence": 0.9999622106552124,
+    "ground_truth": "open",
+    "agent_verdict": "open",
+    "escalated": false,
+    "rationale": "The vision model reports a 100\u202f% confident open.  The acceptance criteria state that any confirmed open is a critical defect, regardless of size or location.  Therefore the region must be rejected."
+  },
+  {
+    "reference": "44000056#9",
+    "model_class": "open",
+    "confidence": 0.9999037981033325,
+    "ground_truth": "open",
+    "agent_verdict": "open",
+    "escalated": false,
+    "rationale": "The vision model reports a 100\u202f% confident open\u2011circuit. However, the acceptance criteria require that an open be classified as a critical defect only if it is confirmed to be inside a pad (or in a solderable area that would cause an open joint). The available data do not provide any measurement or evidence indicating the exact location of the open relative to the pad. Because the class is `open` and the evidence is not unambiguous regarding its position, we must err on the side of caution and set `confident` to false, prompting an operator to inspect the region manually."
+  },
+  {
+    "reference": "90100010#12",
+    "model_class": "open",
+    "confidence": 0.9998948574066162,
+    "ground_truth": "open",
+    "agent_verdict": "open",
+    "escalated": false,
+    "rationale": "The vision model reports the region as an open with 100\u202f% confidence and zero probability of a false call. The acceptance criteria classify any confirmed open as a critical defect, with no tolerance for size or location. Therefore the region must be treated as an open and released for rejection."
+  },
+  {
+    "reference": "90100026#4",
+    "model_class": "false_call",
+    "confidence": 0.6893640756607056,
+    "ground_truth": "false_call",
+    "agent_verdict": "false_call",
+    "escalated": true,
+    "rationale": "The model\u2019s confidence (0.689) is below the typical threshold for automatic dismissal and is not high enough to accept the classification without operator review. According to the re\u2011verification procedure, low\u2011confidence or borderline cases must be escalated to an operator for final judgment."
+  },
+  {
+    "reference": "90100027#132",
+    "model_class": "open",
+    "confidence": 0.8365792036056519,
+    "ground_truth": "false_call",
+    "agent_verdict": "open",
+    "escalated": true,
+    "rationale": "The vision model reports an open with 83.7\u202f% confidence and a 16.2\u202f% probability of a false call.  The acceptance criteria treat any confirmed open as a critical defect, but the model\u2019s confidence is not absolute and no additional measurement (e.g., continuity test) is available in the data.  Because the evidence is not unambiguous and the defect class is \u201copen,\u201d we must err on the side of caution and flag this region for operator review rather than automatically rejecting the board."
+  },
+  {
+    "reference": "90100028#71",
+    "model_class": "false_call",
+    "confidence": 0.5431641340255737,
+    "ground_truth": "false_call",
+    "agent_verdict": "open",
+    "escalated": true,
+    "rationale": "The vision model\u2019s confidence (0.543) is below the typical threshold used for automatic dismissal of false\u2011call regions, and it is not high enough to satisfy the high\u2011confidence rule. According to the re\u2011verification procedure, this falls into the low\u2011confidence category, so the region must be escalated to an operator for final review."
+  },
+  {
+    "reference": "90100030#34",
+    "model_class": "false_call",
+    "confidence": 0.8029570579528809,
+    "ground_truth": "false_call",
+    "agent_verdict": "false_call",
+    "escalated": true,
+    "rationale": "The vision model reports a confidence of 0.803 for the false\u2011call class.  According to the re\u2011verification procedure, any region that the model assigns to the false\u2011call class with a confidence above the configured threshold is automatically dismissed without operator review.  The threshold is set by quality engineering and is typically around 0.80 for this line.  Because the confidence (0.803) exceeds that threshold, the region can be safely dismissed.  No additional measurement or operator review is required."
+  },
+  {
+    "reference": "90100043#13",
+    "model_class": "open",
+    "confidence": 0.7113408446311951,
+    "ground_truth": "false_call",
+    "agent_verdict": "open",
+    "escalated": true,
+    "rationale": "The vision model indicates an open with 71.1\u202f% confidence and a 26.1\u202f% probability of a false call. This confidence level is below the typical threshold for a definitive classification, and the model\u2019s uncertainty is non\u2011negligible. According to the acceptance criteria, any confirmed open is a critical defect, but confirmation requires a higher level of certainty than the current evidence provides. Therefore, the region should be escalated for manual inspection rather than released or rejected automatically."
+  },
+  {
+    "reference": "90100054#3",
+    "model_class": "open",
+    "confidence": 0.9998103976249695,
+    "ground_truth": "open",
+    "agent_verdict": "open",
+    "escalated": false,
+    "rationale": "The vision model reports a 100\u202f% confident open, but the acceptance criteria require that we determine whether the open is inside a pad (critical) or outside pads (release). The provided data do not include any measurement or positional information to confirm the location of the open. Because the class is \u201copen\u201d and the evidence is not unambiguous regarding pad location, we must set confident\u202f=\u202ffalse and defer to an operator for a definitive inspection."
+  },
+  {
+    "reference": "90100067#36",
+    "model_class": "open",
+    "confidence": 0.9998750686645508,
+    "ground_truth": "open",
+    "agent_verdict": "open",
+    "escalated": false,
+    "rationale": "The vision model reports a 100\u202f% confident open, but the acceptance criteria require knowledge of whether the open is inside a pad (critical) or outside pads (release). No measurement or additional evidence is provided to determine the location of the defect. Because the class is `open` and the evidence does not unambiguously establish its disposition, the correct action is to flag the region for operator review. Escalation is required."
+  },
+  {
+    "reference": "12100003#27",
+    "model_class": "open",
+    "confidence": 0.9841635823249817,
+    "ground_truth": "open",
+    "agent_verdict": "open",
+    "escalated": false,
+    "rationale": "The vision model reports an open with 98.4\u202f% confidence, but the acceptance criteria require a confirmed open\u2011circuit measurement to classify it as a critical defect. No measurement data are available for this region, and the model\u2019s confidence alone is insufficient to meet the critical\u2011defect threshold. Therefore the evidence is not conclusive, and the region should be escalated for operator review."
+  },
+  {
+    "reference": "12100006#86",
+    "model_class": "false_call",
+    "confidence": 0.7119357585906982,
+    "ground_truth": "false_call",
+    "agent_verdict": "open",
+    "escalated": true,
+    "rationale": "The vision model classifies the region as a false call with a confidence of 0.712. The acceptance criteria do not specify a dismissal threshold, but the re\u2011verification procedure states that any region classified as a false call **above** the configured threshold is automatically dismissed. Since 0.712 is not guaranteed to be above that threshold, and the confidence is not high enough to satisfy the \u201chigh confidence\u201d clause, the region falls into the \u201clow confidence or conditional class near its limit\u201d category. Therefore, it must be escalated to an operator for final review."
+  },
+  {
+    "reference": "12100011#2",
+    "model_class": "spur",
+    "confidence": 0.4715079963207245,
+    "ground_truth": "false_call",
+    "agent_verdict": "spur",
+    "escalated": true,
+    "rationale": "The vision model reports a spur with a confidence of 0.471 and no competing short probability is provided. The acceptance criteria state that a spur within limits can be released. Since there is no indication that the clearance is unverified or that a short is competing, the evidence supports a spur classification. Therefore, the region can be released with confidence."
+  },
+  {
+    "reference": "12100035#3",
+    "model_class": "open",
+    "confidence": 0.9911091327667236,
+    "ground_truth": "open",
+    "agent_verdict": "open",
+    "escalated": false,
+    "rationale": "The vision model reports an open with 99.1\u202f% confidence, but the acceptance criteria require a confirmed open\u2011circuit defect before a critical disposition can be applied. Because we cannot perform a measurement or other confirmation step in this automated review, we must flag the region for operator review rather than automatically escalating or dismissing it."
+  },
+  {
+    "reference": "12100128#0",
+    "model_class": "open",
+    "confidence": 0.9998776912689209,
+    "ground_truth": "open",
+    "agent_verdict": "open",
+    "escalated": false,
+    "rationale": "The vision model reports the region as an open with 100\u202f% confidence, but the acceptance criteria require confirmation that the open is not located inside a pad (which would mandate rejection). Without additional evidence (e.g., pad location or a manual inspection), the classification cannot be confirmed with certainty. Therefore, the region should be escalated for operator review."
+  },
+  {
+    "reference": "12100161#5",
+    "model_class": "open",
+    "confidence": 0.9993034601211548,
+    "ground_truth": "open",
+    "agent_verdict": "open",
+    "escalated": false,
+    "rationale": "The vision model reports an open with 99.9\u202f% confidence and a negligible false\u2011call probability. The acceptance criteria state that any confirmed open is a critical defect, regardless of size or location. Therefore the region must be classified as an open and the board should be rejected. No additional measurement is required, and the evidence is unambiguous. "
+  },
+  {
+    "reference": "12100197#4",
+    "model_class": "open",
+    "confidence": 0.9999467134475708,
+    "ground_truth": "open",
+    "agent_verdict": "open",
+    "escalated": false,
+    "rationale": "The vision model reports the region as an open with 100\u202f% confidence. However, the acceptance criteria require that we determine whether the open is inside a pad (which would mandate rejection) or outside pads (which would allow release). This positional information cannot be inferred from the provided data, and no measurement can be made at this point. Because the criticality of an open depends on its location relative to a pad, and we lack that evidence, we must defer to an operator for a definitive decision. Therefore, we set confident to false."
+  },
+  {
+    "reference": "12300113#22",
+    "model_class": "short",
+    "confidence": 0.9239349961280823,
+    "ground_truth": "short",
+    "agent_verdict": "short",
+    "escalated": false,
+    "rationale": "The vision model reports a short with 92.4\u202f% confidence and a negligible false\u2011call probability (0.2\u202f%). The acceptance criteria only require escalation when a spur is reported with a competing short probability; that situation does not apply here. Therefore the region is classified as a short and, per the standard disposition for shorts, it should be reworked."
+  },
+  {
+    "reference": "12300132#12",
+    "model_class": "short",
+    "confidence": 0.7105564475059509,
+    "ground_truth": "short",
+    "agent_verdict": "open",
+    "escalated": true,
+    "rationale": "The vision model reports a short with 71.1\u202f% confidence, but the acceptance criteria state that if a spur is present with a competing short probability, the clearance must be treated as unverified and escalated. Because the model does not explicitly confirm a spur and the evidence is not unequivocal, we cannot conclusively determine whether this is a short or a spur. Therefore, the region should be escalated for manual inspection."
+  },
+  {
+    "reference": "12300152#8",
+    "model_class": "open",
+    "confidence": 0.9999672174453735,
+    "ground_truth": "open",
+    "agent_verdict": "open",
+    "escalated": false,
+    "rationale": "The vision model reports a 100\u202f% confident open, but the acceptance criteria require knowledge of whether the open is inside a pad (critical) or outside pads (release). No measurement or additional evidence is provided to determine the location of the defect. Because the class is `open` and the evidence does not unambiguously establish the defect\u2019s disposition, the correct action is to flag the region for operator review."
+  },
+  {
+    "reference": "12300228#2",
+    "model_class": "false_call",
+    "confidence": 0.8936614394187927,
+    "ground_truth": "false_call",
+    "agent_verdict": "false_call",
+    "escalated": true,
+    "rationale": "The vision model reports a false\u2011call probability of 0.894, which is below the typical dismissal threshold (\u22480.90). According to the re\u2011verification procedure, a low\u2011confidence or borderline classification must be escalated to an operator. The high defect density of the lot further suggests that a real defect is more likely than the model\u2019s prediction, reinforcing the need for human review."
+  },
+  {
+    "reference": "12300244#64",
+    "model_class": "false_call",
+    "confidence": 0.771957278251648,
+    "ground_truth": "false_call",
+    "agent_verdict": "false_call",
+    "escalated": true,
+    "rationale": "The model\u2019s confidence (0.772) is below the typical operating\u2011point threshold for automatic dismissal (often set near 0.80\u20130.85). According to the re\u2011verification procedure, a low\u2011confidence or borderline classification must be escalated to an operator for final judgment. Therefore the region is escalated (confident\u202f=\u202ffalse)."
+  },
+  {
+    "reference": "12000068#49",
+    "model_class": "open",
+    "confidence": 0.8148820996284485,
+    "ground_truth": "open",
+    "agent_verdict": "open",
+    "escalated": true,
+    "rationale": "The vision model reports an open classification with 81.5\u202f% confidence and a low probability of a false call (3.1\u202f%). No measurement is required for this binary classification, and the acceptance criteria treat any confirmed open as a critical defect. Therefore the region is confidently identified as an open and must be rejected."
+  },
+  {
+    "reference": "12000136#104",
+    "model_class": "false_call",
+    "confidence": 0.7292682528495789,
+    "ground_truth": "false_call",
+    "agent_verdict": "false_call",
+    "escalated": true,
+    "rationale": "The model\u2019s confidence (0.729) is below the typical operating\u2011point threshold used for automatic dismissal. According to the re\u2011verification procedure, a low\u2011confidence or borderline classification must be escalated to an operator for final judgment. Therefore the region is not automatically dismissed, and the operator must review it."
+  }
+]

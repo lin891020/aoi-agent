@@ -129,3 +129,36 @@ Distribution of what the agent said, against the truth:
 | mousebite | 1 | 0 | 1 |
 | spur | 1 | 1 | 0 |
 | copper | 1 | 0 | 1 |
+
+### Agent layer after the change — routing on the classifier's confidence
+
+`ESCALATE_BELOW = 0.90` replaced the LLM's `confident` flag, and `decide_node` now takes the classifier's class. Same procedure as the run above.
+
+
+`gpt-oss:20b`, 30 candidates the router sends to investigation, sampled by stride across the store. `fragment` ground truth is held out, as in training. Ran in 0 min.
+
+**What the system dispositions on, against what the LLM would have dispositioned on.** `decide_node` takes the classifier's class; the agent column is the counterfactual it replaced.
+
+| | candidates | system (classifier) | LLM counterfactual |
+|---|---|---|---|
+| all investigated | 30 | 27/30 = 90.0% | 22/30 = 73.3% |
+| agent kept | 15 | 15/15 = 100.0% | 15/15 = 100.0% |
+| agent escalated | 15 | 12/15 = 80.0% | 7/15 = 46.7% |
+
+**Calibration of the hand-off.** The LLM's verdicts were right 100.0% of the time on what it kept and 46.7% of the time on what it handed over, a gap of +53.3%. The escalations land on the harder cases, which is what the confidence flag is for.
+
+**Where the LLM would have overridden the classifier.** It proposed a different class on 5 of 30 candidates. The agent was right 0 of those times; the classifier had already been right 5 times, and 0 were wrong either way. Acting on those proposals would cost accuracy rather than add it, which is why the flow does not. On the kept set the classifier scores 15/15 = 100.0% against the LLM's 100.0%.
+
+**Escalation rate.** 15/30 = 50.0% of investigated candidates, which is 8.9% of the whole queue.
+
+**Escapes.** 0 of 15 kept candidates were called `false_call` while carrying a real defect.
+
+Distribution of what the agent said, against the truth:
+
+| truth | n | agent agreed | agent escalated |
+|---|---|---|---|
+| open | 14 | 14 | 1 |
+| false_call | 12 | 6 | 12 |
+| short | 2 | 1 | 1 |
+| mousebite | 1 | 0 | 1 |
+| spur | 1 | 1 | 0 |

@@ -25,7 +25,7 @@ src/aoi_agent/
                             CLI shares with it
     cli.py
 scripts/                    gate_check, build_patches, train, report, seed_store, ...
-tests/                      90 tests; dataset-dependent ones behind `-m dataset`
+tests/                      94 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -40,7 +40,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 90 tests, no GPU needed
+uv run pytest                                    # 94 tests, no GPU needed
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
@@ -58,9 +58,18 @@ uv run python -m aoi_agent queue                 # what is waiting on a person
 - **Report an operating-point curve, never bare accuracy.** An escape ships a
   bad board; a false call costs seconds. Headline is "review removed at an
   escape budget".
-- **Every failure path escalates to a human.** Unparseable verdict, LLM
-  unreachable, `open` at any confidence -- all route to a person. Never guess to
-  avoid escalating.
+- **The LLM explains; it does not decide.** Measured, its verdict was worse
+  than the classifier's (12 overrides, 1 right) and its `confident` flag was
+  worse at selecting who needs a person than a plain threshold on the
+  classifier's own number. `route_after_reason` routes on `ESCALATE_BELOW`,
+  `decide_node` takes `model_class`, and what the LLM writes is what the
+  operator reads. Do not put it back on the decision path without a measurement
+  that says to.
+- **Every failure path escalates to a human, except an LLM outage.** Unparseable
+  verdict, `open` below the threshold, anything under `ESCALATE_BELOW` -- all
+  route to a person. An unreachable LLM no longer does, because the decision no
+  longer depends on it: the operator loses an explanation, not a verdict, and
+  the queue does not fill with every candidate on the line.
 - **An escalation must outlive the process.** The checkpointer is a SQLite file,
   not `InMemorySaver`. An escalation that dies with the CLI run is a prompt
   wearing a graph's clothes.
@@ -92,16 +101,6 @@ uv run python -m aoi_agent queue                 # what is waiting on a person
   gitignored and rebuilt by scripts.
 
 ## Still open
-
-**The agent's verdict is worse than the classifier it second-guesses, but its
-escalation flag is well calibrated.** Measured over 60 investigated candidates:
-it overrode the vision model's class 12 times and was right once, breaking nine
-the classifier had already got right. Meanwhile it is right 87.0% on what it
-keeps against 62.2% on what it escalates -- a +24.8% gap, with zero escapes. The
-implied change is to take the classifier's class whenever the agent does not
-escalate, which scores 91.3% against the agent's 87.0% on the same set, and to
-let the LLM decide only *whether* to hand over. Not yet made; see
-docs/benchmarks.md and `scripts/agent_eval.py`.
 
 **`gpt-oss:20b` does not meet WI-300's 10s response budget.** Measured on a
 quiet machine: p90 service time 15.6s, 20 of 24 calls over. See

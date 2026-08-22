@@ -79,6 +79,7 @@ def test_an_escalated_run_lands_on_the_queue(store, graph):
 
 def test_a_settled_run_never_reaches_the_queue(store, stub_tools):  # noqa: F811
     """The queue is for what the agent could not settle, not for everything."""
+    stub_tools["classify"]["confidence"] = 0.93
     settled = flow.build_graph(StubClient(confident=True, verdict="short"), InMemorySaver())
     state = service.start_review(settled, REFERENCE)
 

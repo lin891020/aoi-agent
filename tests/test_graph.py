@@ -127,10 +127,65 @@ def test_a_confident_open_still_gathers_evidence(stub_tools):
     assert "gather_context" in state["trace"]
 
 
-def test_an_uncertain_case_gathers_evidence_and_decides(stub_tools):
+def test_an_uncertain_case_gathers_evidence_and_goes_to_a_person(stub_tools):
+    """The stub classifies at 0.55, below `ESCALATE_BELOW`. Evidence is still
+    gathered -- the operator reads it -- but nobody settles it automatically."""
+    state, _ = run(flow.build_graph(StubClient(confident=True), InMemorySaver()))
+
+    # `escalate` lands in the trace on resume, not here: `interrupt` suspends
+    # the node before it records itself.
+    assert state["trace"] == ["classify", "gather_context", "reason"]
+    assert "__interrupt__" in state
+
+
+def test_a_confident_classification_is_decided_after_the_evidence(stub_tools):
+    stub_tools["classify"]["confidence"] = 0.93
     state, _ = run(flow.build_graph(StubClient(confident=True), InMemorySaver()))
 
     assert state["trace"] == ["classify", "gather_context", "reason", "decide"]
+    assert state["decided_by"] == "agent"
+
+
+def test_the_llm_saying_it_is_confident_does_not_rescue_a_weak_classification(
+    stub_tools,
+):
+    """Measured, the LLM's `confident` flag was worse at selecting who needs a
+    person than the classifier's own number. It no longer routes anything."""
+    stub_tools["classify"]["confidence"] = 0.61
+    sure, unsure = StubClient(confident=True), StubClient(confident=False)
+
+    for client in (sure, unsure):
+        state, _ = run(flow.build_graph(client, InMemorySaver()))
+        assert "__interrupt__" in state, "confidence decides, not the LLM"
+
+
+def test_the_classifier_class_stands_when_the_llm_disagrees(stub_tools):
+    """It overrode the classifier twelve times in evaluation and was right once."""
+    stub_tools["classify"] = {
+        "predicted_class": "spur", "confidence": 0.93,
+        "false_call_probability": 0.02, "recommendation": "review",
+    }
+    state, _ = run(
+        flow.build_graph(StubClient(confident=True, verdict="copper"), InMemorySaver())
+    )
+
+    assert state["verdict"] == "spur"
+    assert state["agent_verdict"] == "copper", "kept for the record, acted on by nobody"
+
+
+def test_an_unreachable_model_no_longer_forces_an_escalation(stub_tools):
+    """It used to, and that was right while the LLM decided. Now the decision
+    never depended on it, so an outage costs an explanation, not a verdict --
+    and does not put every candidate on the line into the queue."""
+    stub_tools["classify"]["confidence"] = 0.93
+
+    class DeadClient:
+        def chat(self, messages, **kwargs):
+            raise httpx.ReadTimeout("timed out")
+
+    state, _ = run(flow.build_graph(DeadClient(), InMemorySaver()))
+
+    assert "__interrupt__" not in state
     assert state["decided_by"] == "agent"
 
 

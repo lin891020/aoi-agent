@@ -9,7 +9,7 @@
 | MCP tools | expose the model, the production store and the criteria as callable functions | choose which of themselves to call |
 | LangGraph flow | route on confidence, gather evidence, hand over to a person | contain domain rules that belong in the work instructions |
 | Review station | show a person the evidence the agent had, and take their answer | re-run the flow to render a page, or show the ground truth |
-| Local LLM | weigh evidence the vision model could not settle | classify pixels, or write SQL |
+| Local LLM | explain to an operator why a region reached them | decide anything -- measured worse than the classifier at both the class and the hand-off |
 
 ## The decision path
 
@@ -86,6 +86,7 @@ than the one on the operator's screen.
 |---|---|---|
 | `DEFAULT_DISMISS_THRESHOLD` | 0.915 | the operating-point sweep, at the ≤0.5% escape budget |
 | `CONFIDENT` | 0.95 | WI-300 decision authority |
+| `ESCALATE_BELOW` | 0.90 | lowest threshold adding no escape to the budget; see docs/benchmarks.md |
 | `LOW_CONFIDENCE` | 0.70 | WI-300 escalation triggers |
 | `RESPONSE_BUDGET_S` | 10.0 | WI-300 response budget, derived from QP-110 |
 | `IOU_THRESHOLD` | 0.33 | DeepPCB's own benchmark convention |

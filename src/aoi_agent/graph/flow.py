@@ -44,6 +44,19 @@ DEFAULT_MODEL = "gpt-oss:20b"
 #: Above this the model's own class call stands without further evidence.
 CONFIDENT = 0.95
 
+#: Within the investigation branch, the classifier's confidence below which the
+#: region goes to a person. Derived the same way as
+#: ``DEFAULT_DISMISS_THRESHOLD``: the lowest threshold at which this branch adds
+#: no escape to the line's budget. See docs/benchmarks.md.
+#:
+#: This used to be the LLM's own ``confident`` flag. Measured, that flag was
+#: worse than the number the classifier had already produced -- it escalated
+#: more (61.7% against 48.5%) and kept a less accurate set (91.3% against
+#: 94.9%), while its escalated set carried escapes this threshold does not.
+#: WI-300 states 0.70 for operator escalation, but 0.70 leaks eight real defects
+#: here, and the escape budget in QP-110 outranks it.
+ESCALATE_BELOW = 0.90
+
 VERDICT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -234,7 +247,25 @@ Give your verdict."""
 
 
 def route_after_reason(state: ReviewState) -> str:
-    return "decide" if state.get("agent_confident") else "escalate"
+    """Route on the classifier's confidence, not on the LLM's opinion of itself.
+
+    The LLM still runs, and what it writes is what the operator reads on the
+    review station. It no longer decides who reads it. Measurement put its
+    ``confident`` flag behind a plain threshold on the number the classifier had
+    already produced, and its re-classifications behind the classifier's own
+    call, so both jobs go back to the model that is better at them.
+
+    A consequence worth naming: an LLM that fails no longer forces an
+    escalation. It used to, and that was right while the LLM decided -- an
+    unanswered call was a decision not made. Now the decision never depended on
+    it, so an outage costs the operator an explanation, not a verdict, and does
+    not flood the queue with every candidate on the line.
+    """
+    return (
+        "escalate"
+        if state["model_confidence"] < ESCALATE_BELOW
+        else "decide"
+    )
 
 
 def escalate_node(state: ReviewState) -> dict[str, Any]:
@@ -284,8 +315,15 @@ def confirm_node(state: ReviewState) -> dict[str, Any]:
 
 
 def decide_node(state: ReviewState) -> dict[str, Any]:
+    """Disposition on the classifier's call.
+
+    Not ``agent_verdict``. Over 60 measured candidates the LLM overrode the
+    classifier twelve times, was right once, and broke nine the classifier had
+    already got right. Its verdict is kept in state for the record and shown to
+    the operator as context, but nothing downstream acts on it.
+    """
     state.setdefault("trace", []).append("decide")
-    verdict = state["agent_verdict"]
+    verdict = state["model_class"]
     return {
         "disposition": "dismissed" if verdict == "false_call" else "defect_confirmed",
         "verdict": verdict,

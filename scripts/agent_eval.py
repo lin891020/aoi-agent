@@ -181,9 +181,11 @@ def report(args, results: list[dict], elapsed: float) -> int:
         f"sampled by stride across the store. `fragment` ground truth is held out, as "
         f"in training. Ran in {elapsed / 60:.0f} min.",
         "",
-        "**Accuracy against the classifier it second-guesses**",
+        "**What the system dispositions on, against what the LLM would have "
+        "dispositioned on.** `decide_node` takes the classifier's class; the "
+        "agent column is the counterfactual it replaced.",
         "",
-        "| | candidates | vision model | agent |",
+        "| | candidates | system (classifier) | LLM counterfactual |",
         "|---|---|---|---|",
         f"| all investigated | {len(results)} | {rate(vision_correct(results), len(results))} "
         f"| {rate(correct(results), len(results))} |",
@@ -211,7 +213,7 @@ def report(args, results: list[dict], elapsed: float) -> int:
     else:
         margin = kept_acc - sent_acc
         lines += [
-            "**Calibration.** The agent's verdicts were right "
+            "**Calibration of the hand-off.** The LLM's verdicts were right "
             f"{kept_acc:.1%} of the time on what it kept and {sent_acc:.1%} of the "
             f"time on what it handed over, a gap of {margin:+.1%}. "
             + (
@@ -234,7 +236,8 @@ def report(args, results: list[dict], elapsed: float) -> int:
     vision_won = sum(1 for r in changed if r["model_class"] == r["ground_truth"])
 
     override = (
-        "**Where the agent overrode the classifier.** It changed the class on "
+        "**Where the LLM would have overridden the classifier.** It proposed a "
+        "different class on "
         f"{len(changed)} of {len(results)} candidates. The agent was right "
         f"{agent_won} of those times; the classifier had already been right "
         f"{vision_won} times, and {len(changed) - agent_won - vision_won} were "
@@ -242,12 +245,11 @@ def report(args, results: list[dict], elapsed: float) -> int:
     )
     if kept and vision_won > agent_won:
         override += (
-            " Re-classification is costing accuracy rather than adding it. The "
-            "layer's value is the escalation flag, and taking the classifier's "
-            "class whenever the agent does not escalate would score "
-            f"{vision_correct(kept)}/{len(kept)} = "
-            f"{vision_correct(kept) / len(kept):.1%} on the kept set, against the "
-            f"agent's {correct(kept) / len(kept):.1%}."
+            " Acting on those proposals would cost accuracy rather than add it, "
+            "which is why the flow does not. On the kept set the classifier "
+            f"scores {vision_correct(kept)}/{len(kept)} = "
+            f"{vision_correct(kept) / len(kept):.1%} against the LLM's "
+            f"{correct(kept) / len(kept):.1%}."
         )
 
     lines += [
