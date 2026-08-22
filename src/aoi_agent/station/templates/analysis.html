@@ -64,7 +64,27 @@
              ok; it just has nothing to say. Shown as neither a success nor a
              crash, because it is neither. #}
           {% if not r.ok %}<tr><td colspan="5" class="dim">{{ r.error }}</td></tr>
-          {% elif r.data and r.data.error %}<tr><td colspan="5" class="dim">工具回報：{{ r.data.error }}</td></tr>{% endif %}
+          {% elif r.data and r.data.error %}<tr><td colspan="5" class="dim">工具回報：{{ r.data.error }}</td></tr>
+          {% else %}
+            {# The figures the prose was written from. Only two of the five
+               tools produce a chart, so for the other three this is the only
+               thing on the page a reader can check the answer against.
+               `readable_data` filters `ground_truth` in Python, at the dict
+               boundary -- do not replace this with a JSON dump. #}
+            {% set rows = readable_data(r.data) %}
+            {% if rows %}
+            <tr><td colspan="5" class="data-cell">
+              <details class="data" {% if rows|length <= 6 %}open{% endif %}>
+                <summary>回傳的資料（{{ rows|length }} 項）</summary>
+                <table class="kv">
+                  {% for label, value in rows %}
+                  <tr><th class="mono dim">{{ label }}</th><td class="mono">{{ value }}</td></tr>
+                  {% endfor %}
+                </table>
+              </details>
+            </td></tr>
+            {% endif %}
+          {% endif %}
         {% endfor %}
         </tbody>
       </table>

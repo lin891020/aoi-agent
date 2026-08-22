@@ -37,6 +37,7 @@ from aoi_agent.graph.flow import DEFAULT_MODEL, build_graph
 from aoi_agent.llm.ollama import OllamaClient
 from aoi_agent.station import images, service
 from aoi_agent.station.chart_svg import render_svg
+from aoi_agent.station.result_view import readable_rows
 from aoi_agent.store import analysis as analysis_store
 from aoi_agent.store import escalations
 from aoi_agent.store.boards import correction_summary, corrections, resolve_candidate
@@ -258,7 +259,10 @@ def _analysis_context(
     before the run is saved.
 
     A chart is a whole specification or it is absent -- there is no empty spec
-    to render, so the guard is on the key being missing, not on a kind.
+    to render, so the guard is on the key being missing, not on a kind. Only
+    two of the five tools have chart builders, which is why `readable_data` is
+    here too: the raw figures sit beside the prose for every tool, so a reader
+    can catch a summary that describes correct data incorrectly.
     """
     return {
         "run": run,
@@ -267,6 +271,11 @@ def _analysis_context(
         "recent": analysis_store.recent_runs(8),
         "coverage_days": store_domains()["max_days"],
         "chart_svg": render_svg(run["chart"]) if run and run.get("chart") else "",
+        # Passed as a callable rather than precomputed: the results are read
+        # straight out of the store and nothing here should copy them to hang a
+        # display field on. It is what keeps `ground_truth` filtered in Python,
+        # at the dict boundary, rather than in the template.
+        "readable_data": readable_rows,
         "waiting": len(escalations.pending()),
     }
 

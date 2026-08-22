@@ -20,6 +20,33 @@ from html import escape
 PALETTE = ["#60a5fa", "#f59e0b", "#34d399", "#f472b6"]
 
 
+def _plottable(series: object) -> list[dict]:
+    """The series that can actually be drawn, in drawing order.
+
+    A specification is read back out of a JSON column, so "malformed" here is
+    not a hypothetical: a series with no points, a point missing its ``y``, a
+    ``y`` that is a string. The docstring below promises '' for anything
+    unplottable, and a `KeyError` reaching the route would be a 500 on a page
+    whose figures are all still correct -- losing the reader the answer to save
+    them a picture.
+    """
+    keep = []
+    for one in series if isinstance(series, list) else []:
+        if not isinstance(one, dict):
+            continue
+        points = [
+            point
+            for point in (one.get("points") or [])
+            if isinstance(point, dict)
+            and point.get("x") is not None
+            and isinstance(point.get("y"), (int, float))
+            and not isinstance(point.get("y"), bool)
+        ]
+        if points:
+            keep.append({"name": one.get("name", ""), "points": points})
+    return keep
+
+
 def _text(value: object) -> str:
     """Anything at all, safe to place in markup or in an attribute."""
     return escape(str(value if value is not None else ""), quote=True)
@@ -27,8 +54,8 @@ def _text(value: object) -> str:
 
 def render_svg(spec: dict, width: int = 720, height: int = 280) -> str:
     """Render a chart specification. Returns '' for anything unplottable."""
-    series = spec.get("series") or []
-    if not series or not series[0].get("points"):
+    series = _plottable(spec.get("series"))
+    if not series:
         return ""
 
     pad_left, pad_right, pad_top, pad_bottom = 56, 16, 28, 44
@@ -66,7 +93,7 @@ def render_svg(spec: dict, width: int = 720, height: int = 280) -> str:
             f'<rect x="{pad_left + index * 92}" y="{height - 14}" width="9" '
             f'height="9" fill="{colour}" rx="2"/>'
             f'<text x="{pad_left + index * 92 + 14}" y="{height - 6}" '
-            f'fill="#8b8b96" font-size="10">{_text(one.get("name", ""))}</text>'
+            f'fill="#8b8b96" font-size="10">{_text(one["name"])}</text>'
         )
 
     for position, label in enumerate(labels):
