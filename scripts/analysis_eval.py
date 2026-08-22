@@ -73,8 +73,55 @@ def load_questions(path: Path = QUESTIONS) -> list[dict]:
     return json.loads(Path(path).read_text())
 
 
+def render_plan(plan: dict | None) -> str:
+    """One line of the plan, carrying the arguments the scorer looked at.
+
+    Tool names alone cannot tell a single `query_machine_stats` call apart from
+    a six-call fan-out over the defect classes, and those are a miss and a hit
+    respectively. A run record that cannot distinguish them is ambiguous exactly
+    where it matters.
+    """
+    if plan is None:
+        return "(no plan)"
+    calls = plan.get("calls") or []
+    if not calls:
+        return "(refused)"
+    rendered = []
+    for call in calls:
+        args = {
+            key: value
+            for key, value in (call.get("args") or {}).items()
+            if key in SCORED_ARGS
+        }
+        inside = ", ".join(f"{k}={v!r}" for k, v in sorted(args.items()))
+        rendered.append(f"{call.get('tool')}({inside})")
+    return " + ".join(rendered)
+
+
 def score_plan(plan: dict, expected: dict) -> dict:
-    """Did this plan do what the question needed? One reason if not."""
+    """Did this plan do what the question needed? One reason if not.
+
+    A question may accept more than one plan. Where two different sets of calls
+    fetch the same figure, judging one of them wrong measures the fixture's
+    preference and not the planner, so `expect_any_of` lists them with the
+    reason they were judged equivalent and a match against any one is a hit.
+    """
+    alternatives = expected.get("expect_any_of")
+    if not alternatives:
+        return _score_one(plan, expected)
+
+    attempts = []
+    for alternative in alternatives:
+        result = _score_one(plan, {**expected, **alternative})
+        if result["ok"]:
+            return {**result, "matched": alternative.get("why", "")}
+        attempts.append(f"{alternative.get('why', '')} — {result['reason']}")
+    return {"ok": False,
+            "reason": "matched no accepted plan: " + "; ".join(attempts)}
+
+
+def _score_one(plan: dict, expected: dict) -> dict:
+    """One expectation, scored."""
     calls = plan.get("calls") or []
     refused = not calls
 
@@ -82,12 +129,12 @@ def score_plan(plan: dict, expected: dict) -> dict:
         if refused:
             return {"ok": True, "reason": ""}
         return {"ok": False,
-                "reason": f"should have refused; planned {[c['tool'] for c in calls]}"}
+                "reason": f"should have refused; planned {render_plan(plan)}"}
 
     if refused:
         return {"ok": False, "reason": "refused a question it should have answered"}
 
-    called = {c["tool"] for c in calls}
+    called = {c.get("tool") for c in calls}
     missing = set(expected.get("expect_tools") or []) - called
     if missing:
         # Extra tools are fine -- more context is not an error. Missing ones are
@@ -95,7 +142,10 @@ def score_plan(plan: dict, expected: dict) -> dict:
         return {"ok": False, "reason": f"never called {sorted(missing)}"}
 
     for key, values in (expected.get("expect_args") or {}).items():
-        asked = {c.get("args", {}).get(key) for c in calls}
+        # `or {}` and not `.get(key, {})`: a call carrying `args: null` is a
+        # plan to score a miss on, not an AttributeError. `validate_plan`
+        # guards it the same way.
+        asked = {(c.get("args") or {}).get(key) for c in calls}
         absent = [value for value in values if value not in asked]
         if absent:
             # Which call carries it is the planner's business. That the plan
@@ -123,7 +173,7 @@ def signature(plan: dict | None) -> str:
     """
     if plan is None:
         return "__no_plan__"
-    return json.dumps(sorted(c["tool"] for c in (plan.get("calls") or [])))
+    return json.dumps(sorted(str(c.get("tool")) for c in (plan.get("calls") or [])))
 
 
 def rate(correct: int, total: int) -> str:
@@ -137,6 +187,8 @@ def main() -> int:
                         help="times to re-ask each question, for determinism")
     parser.add_argument("--out", type=Path, default=Path("docs/benchmarks.md"))
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--raw", type=Path, default=None,
+                        help="write every scored plan to JSON, for auditing")
     parser.add_argument("--note", default="",
                         help="one line into the report header, for a re-run "
                              "whose figures are not comparable with the last")
@@ -172,13 +224,18 @@ def main() -> int:
 
         scored.append({**item, **result, "rejected": bool(errors and first is not None),
                        "no_plan": first is None,
+                       "planned": render_plan(first),
+                       "every_plan": [render_plan(p) for p in plans],
                        "reject_reasons": errors if first is not None else []})
         stable.append(len({signature(p) for p in plans}) == 1)
 
         print(f"  [{position:>3}/{len(questions)}] "
               f"{'ok  ' if result['ok'] else 'MISS'} "
-              f"{'stable' if stable[-1] else 'VARIES'}  {item['question'][:40]}  "
-              f"{result['reason']}", flush=True)
+              f"{'stable' if stable[-1] else 'VARIES'}  {item['question'][:40]}\n"
+              f"        planned {render_plan(first)}"
+              + (f"\n        matched {result['matched']}" if result.get("matched") else "")
+              + (f"\n        {result['reason']}" if result["reason"] else ""),
+              flush=True)
 
     held_out = [s for s in scored if not s.get("in_prompt")]
     answerable = [s for s in scored if not s.get("expect_refusal")]
@@ -233,7 +290,8 @@ def main() -> int:
         "",
     ]
     misses = [s for s in scored if not s["ok"]]
-    lines += [f"- {s['question']} — {s['reason']}" for s in misses] or ["- none"]
+    lines += [f"- {s['question']} — {s['reason']}\n  planned: `{s['planned']}`"
+              for s in misses] or ["- none"]
 
     if not misses:
         # A benchmark nothing fails has not been passed, it has been outgrown.
@@ -282,8 +340,23 @@ def main() -> int:
         "solved.",
     ]
 
+    lines += [
+        "",
+        "<details><summary>What each question actually planned (first of the "
+        f"{args.repeats} runs, scored arguments only)</summary>",
+        "",
+    ]
+    for row in scored:
+        matched = f" — matched: {row['matched']}" if row.get("matched") else ""
+        lines.append(f"- {row['question']}\n  `{row['planned']}`{matched}")
+    lines += ["", "</details>"]
+
     report = "\n".join(lines)
     print("\n" + report)
+
+    if args.raw:
+        args.raw.write_text(json.dumps(scored, indent=2, ensure_ascii=False))
+        print(f"\nper-question plans -> {args.raw}")
     if not args.dry_run:
         with args.out.open("a") as handle:
             handle.write(report + "\n")
