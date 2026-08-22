@@ -611,3 +611,133 @@ def test_an_empty_question_is_refused_before_the_model_is_asked(client):
 
 def test_an_unknown_run_is_a_404(client):
     assert client.get("/ask/99999").status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# The second route out of a tool's payload.
+# ---------------------------------------------------------------------------
+
+
+def test_the_synthesis_prompt_is_filtered_by_the_same_rule_as_the_table():
+    """`readable_rows` guards the table. It does not guard the page.
+
+    The synthesis prompt serialises the raw payload into the model's context
+    and `run.answer` is rendered verbatim, so a field the table drops can still
+    reach a reader in a sentence -- a model told "describe what the results
+    show" will reproduce whatever it was shown. Filtering one route and not the
+    other enforces the invariant on neither.
+    """
+    from aoi_agent.analysis.prompts import build_synthesis_messages
+
+    results = [{
+        "tool": "list_candidates", "args": {"board": "20085294"}, "why": "w",
+        "position": 0, "ok": True, "elapsed_ms": 1.0, "error": None,
+        "data": {"regions": [{"index": 1, "ground_truth": SENTINEL,
+                              "score": 0.9}]},
+    }]
+    body = build_synthesis_messages("q", PLAN, results)[-1]["content"]
+
+    assert SENTINEL not in body
+    assert "ground_truth" not in body
+    assert "0.9" in body, "the rest of the payload must still reach the model"
+
+
+def test_the_hidden_key_spellings_the_table_catches_are_caught_here_too():
+    """One rule, two routes. `strip_hidden` shares `_is_hidden` with the walk
+    precisely so the two cannot come to disagree about how `ground_truth` is
+    spelled -- a second implementation is the drift this exists to prevent."""
+    from aoi_agent.station.result_view import strip_hidden
+
+    for payload in (
+        {"groundTruth": SENTINEL},
+        {"Ground-Truth": SENTINEL},
+        {"groundtruth": SENTINEL},
+        {"ground": {"truth": SENTINEL}},
+        {"ground": [{"truth": SENTINEL}]},
+        {"rows": [{"ground_truth": SENTINEL}]},
+    ):
+        assert SENTINEL not in json.dumps(strip_hidden(payload)), payload
+
+
+def test_a_leaked_field_would_reach_the_answer_if_the_prompt_were_unfiltered(
+    client, monkeypatch
+):
+    """The end-to-end shape of the leak, so the guard above is not a unit test
+    of itself: a tool returns the key, the model repeats what it was given, and
+    the page prints the answer verbatim.
+    """
+    leaking = f"The board's recorded label was {SENTINEL}."
+    monkeypatch.setattr(
+        station_app, "_analysis_graph",
+        analysis.build_analysis_graph(StubClient(answer=leaking), DOMAINS),
+    )
+    response = client.post("/ask", data={"question": "M22 正常嗎"},
+                           follow_redirects=True)
+
+    # The stub answers with the sentinel regardless of its input -- this asserts
+    # the page does print `run.answer` as written, which is why the filter has
+    # to be on what the model is shown rather than on what it writes.
+    assert SENTINEL in response.text
+
+
+# ---------------------------------------------------------------------------
+# Cross-file agreement.
+# ---------------------------------------------------------------------------
+
+
+def test_the_stated_coverage_is_the_one_the_validator_enforces(client, monkeypatch):
+    """The page's "資料涵蓋最近 N 天" and the validator's `days` limit have to be
+    the same N.
+
+    The graph freezes its domains into the plan node at first use; the page used
+    to re-read `store_domains()` on every render. After a reseed the two
+    disagreed, and the page's number was the one nobody was enforcing -- a
+    supervisor told the store holds four days while a nine-day plan validates,
+    or the reverse. Both now read one snapshot.
+    """
+    monkeypatch.setattr(station_app, "_analysis_domains", None)
+    calls = []
+
+    def counted():
+        calls.append(1)
+        return {"line_id": {"L2"}, "machine_id": {"M22"},
+                "defect_type": {"open"}, "max_days": 42}
+
+    monkeypatch.setattr(station_app, "store_domains", counted)
+
+    first = client.get("/ask").text
+    assert "資料涵蓋最近 42 天" in first
+
+    # The store moves under a running station. The page must not start quoting
+    # a coverage the validator in the built graph knows nothing about.
+    monkeypatch.setattr(station_app, "store_domains",
+                        lambda: {"line_id": set(), "machine_id": set(),
+                                 "defect_type": set(), "max_days": 3})
+    assert "資料涵蓋最近 42 天" in client.get("/ask").text
+    assert len(calls) == 1, "the snapshot is read once, not per render"
+
+
+def test_the_item_count_beside_a_payload_does_not_count_the_omission_note():
+    """"回傳的資料（N 項）" is a count of what the tool returned. The
+    "另外 n 項未顯示" line is a statement *about* that payload, not a field of
+    it, and counting it told a reader there were more items than there are."""
+    from aoi_agent.station.result_view import shown_count
+
+    wide = {f"field_{i}": i for i in range(MAX_ROWS + 6)}
+    rows = readable_rows(wide)
+
+    assert len(rows) == MAX_ROWS + 1, "the omission note is one of the rows"
+    assert shown_count(rows) == MAX_ROWS
+    assert rows[-1][0] == "…"
+
+
+def test_the_page_prints_the_uncounted_note_and_the_honest_count(client, monkeypatch):
+    monkeypatch.setitem(
+        analysis.PLANNABLE_TOOLS, "query_machine_stats",
+        lambda **kw: {f"field_{i}": i for i in range(MAX_ROWS + 6)},
+    )
+    page = client.post("/ask", data={"question": "很多欄位"},
+                       follow_redirects=True).text
+
+    assert f"回傳的資料（{MAX_ROWS} 項）" in page
+    assert "另外 6 項未顯示" in page

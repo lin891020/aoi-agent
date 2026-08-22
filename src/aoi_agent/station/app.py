@@ -1,9 +1,25 @@
 """The re-verification station.
 
-What an operator gets when the agent hands a region over: the queue of regions
-still waiting, and for each one the same evidence the agent had -- the images,
-the model's reading, the production context, the acceptance criteria it
-retrieved, and why it declined to decide.
+Two pages, for two people.
+
+The queue is what an operator gets when the agent hands a region over: the
+regions still waiting, and for each one the same evidence the agent had -- the
+images, the model's reading, the production context, the acceptance criteria it
+retrieved, and why it declined to decide. That page dispositions boards.
+
+``/ask`` is for the shift supervisor, who walks up with a question rather than
+a region: "is M22 drifting, and does that matter?". It reads production data
+and answers in prose over a chart, and it dispositions nothing -- no board is
+held or shipped by anything on it, which is why the analysis flow has no
+checkpointer and no escalation queue behind it. Its failures terminate in a
+message on the page. See `analysis/graph.py`, and the scoping note in
+CLAUDE.md's invariants.
+
+That page has no authentication in front of it, and neither does this process.
+An unauthenticated visitor to the queue sees the regions on one line; the same
+visitor at ``/ask`` can pull statistics for the whole plant. Operator
+authentication was a backlog item before this page existed and is a
+precondition now.
 
 Two things this deliberately does not do:
 
@@ -39,7 +55,7 @@ from aoi_agent.graph.flow import DEFAULT_MODEL, build_graph
 from aoi_agent.llm.ollama import OllamaClient
 from aoi_agent.station import images, service
 from aoi_agent.station.chart_svg import render_svg
-from aoi_agent.station.result_view import _clip, error_text, readable_rows
+from aoi_agent.station.result_view import clip, error_text, readable_rows, shown_count
 from aoi_agent.store import analysis as analysis_store
 from aoi_agent.store import escalations
 from aoi_agent.store.boards import correction_summary, corrections, resolve_candidate
@@ -52,6 +68,7 @@ templates = Jinja2Templates(directory=HERE / "templates")
 
 _graph = None
 _analysis_graph = None
+_analysis_domains = None
 
 
 def graph():
@@ -67,6 +84,26 @@ def graph():
     return _graph
 
 
+def analysis_domains():
+    """The value domains the validator enforces, read once and then held.
+
+    One snapshot, shared with the page. The graph freezes its domains into the
+    plan node's closure at first use, so a page that re-read `store_domains()`
+    on every render could tell a supervisor the store holds four days while the
+    validator was still rejecting anything over nine -- a stated coverage and an
+    enforced limit that disagree, with nothing on screen to say which is real.
+
+    Frozen rather than live on both sides, because the alternative is rebuilding
+    the graph whenever the store moves under it. Reseeding is a development
+    action and the station is restarted after one; a supervisor's session is not
+    where a changed dataset should appear halfway through.
+    """
+    global _analysis_domains
+    if _analysis_domains is None:
+        _analysis_domains = store_domains()
+    return _analysis_domains
+
+
 def analysis_graph():
     """The analysis flow, built on first use for the same reason as ``graph()``.
 
@@ -76,7 +113,8 @@ def analysis_graph():
     global _analysis_graph
     if _analysis_graph is None:
         _analysis_graph = build_analysis_graph(
-            OllamaClient(os.getenv("AOI_AGENT_MODEL", DEFAULT_MODEL))
+            OllamaClient(os.getenv("AOI_AGENT_MODEL", DEFAULT_MODEL)),
+            analysis_domains(),
         )
     return _analysis_graph
 
@@ -249,7 +287,7 @@ EXAMPLE_QUESTIONS = [
 ]
 
 
-def _analysis_context(request: Request, run: dict | None) -> dict:
+def _analysis_context(run: dict | None) -> dict:
     """Everything ``analysis.html`` renders, for both of its entrances.
 
     A rejected or unparseable plan's reasons are not a key here. They reach a
@@ -273,7 +311,11 @@ def _analysis_context(request: Request, run: dict | None) -> dict:
         "run": run,
         "examples": EXAMPLE_QUESTIONS,
         "recent": analysis_store.recent_runs(8),
-        "coverage_days": store_domains()["max_days"],
+        # The same snapshot the validator was built from, not a fresh read:
+        # see `analysis_domains`. A page that states a coverage the validator
+        # does not enforce is worse than a page whose coverage is a restart
+        # behind.
+        "coverage_days": analysis_domains()["max_days"],
         "chart_svg": render_svg(run["chart"]) if run and run.get("chart") else "",
         # Passed as a callable rather than precomputed: the results are read
         # straight out of the store and nothing here should copy them to hang a
@@ -283,6 +325,9 @@ def _analysis_context(request: Request, run: dict | None) -> dict:
         # Same reason: an error is printed as written, and Jinja would `str()`
         # a dict-valued one straight past the guard the rows go through.
         "tool_error": error_text,
+        # How many of the rows are fields the tool returned. The overflow
+        # note is a row but not an item, and the summary counted it.
+        "shown_count": shown_count,
         "waiting": len(escalations.pending()),
     }
 
@@ -290,7 +335,7 @@ def _analysis_context(request: Request, run: dict | None) -> dict:
 @app.get("/ask", response_class=HTMLResponse)
 def ask_page(request: Request):
     return templates.TemplateResponse(
-        request, "analysis.html", _analysis_context(request, None)
+        request, "analysis.html", _analysis_context(None)
     )
 
 
@@ -441,12 +486,12 @@ def ask_stream(question: str, asked_by: str = "operator"):
                                 "ok": result["ok"],
                                 # Clipped the same as every other tool-reported
                                 # string on the rendered page
-                                # (`result_view._clip`, 160 chars): a failing
+                                # (`result_view.clip`, 160 chars): a failing
                                 # tool's raw exception text is otherwise
                                 # unbounded, and a traceback-length message
                                 # becomes one unbounded row in the progress
                                 # panel.
-                                "error": _clip(result["error"]) if result["error"] else None,
+                                "error": clip(result["error"]) if result["error"] else None,
                                 "elapsed_ms": result["elapsed_ms"],
                             })
             # Persisted inside the try: if `save_run` itself raises, the
@@ -457,16 +502,12 @@ def ask_stream(question: str, asked_by: str = "operator"):
             # reconnects and reruns the whole question, looping for as long as
             # the tab stays open. See the `error` handler in analysis.html,
             # which closes the connection on exactly that native error.
-            run_id = analysis_store.save_run(
-                question=question.strip(),
-                plan=state.get("plan"),
-                results=state.get("results") or [],
-                chart=state.get("chart_spec"),
-                answer=state.get("answer", ""),
-                timings=state.get("timings_ms") or {},
-                refused=bool(state.get("refused")),
-                asked_by=asked_by,
-            )
+            # Through `analysis_service`, the same function `POST /ask` uses.
+            # Not an inlined `save_run` again: this path observes the graph in
+            # completion order, so the normalising that puts the results back
+            # in plan order lives with the write rather than in whichever of
+            # the two callers remembered it.
+            run_id = analysis_service.persist_run(state, question.strip(), asked_by)
         except Exception as error:  # noqa: BLE001 -- the stream must close cleanly
             yield _sse("error", {"message": f"{type(error).__name__}: {error}"})
             return
@@ -501,5 +542,5 @@ def ask_result(request: Request, run_id: int):
     if run is None:
         raise HTTPException(404, f"no analysis run {run_id}")
     return templates.TemplateResponse(
-        request, "analysis.html", _analysis_context(request, run)
+        request, "analysis.html", _analysis_context(run)
     )

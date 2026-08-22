@@ -57,6 +57,11 @@ class AnalysisState(TypedDict, total=False):
     plan: dict | None
     plan_errors: list[str]
     refused: bool
+    #: `time.perf_counter()` at the instant the plan node returned. Not a
+    #: duration and not shown anywhere: it is the origin `collect_node`
+    #: measures the fan-out's wall time from, and it has to be taken before
+    #: the routing that builds the `Send` list rather than inside a branch.
+    fan_out_at: float
     results: Annotated[list[ToolResult], operator.add]
     timings_ms: Annotated[dict[str, float], operator.or_]
     chart_spec: dict | None
@@ -77,6 +82,7 @@ def make_plan_node(client, domains: Domains):
                 "plan": None,
                 "plan_errors": [f"the planner did not answer ({type(error).__name__})"],
                 "refused": False,
+                "fan_out_at": time.perf_counter(),
                 "timings_ms": {"plan": (time.perf_counter() - started) * 1000},
             }
 
@@ -89,6 +95,7 @@ def make_plan_node(client, domains: Domains):
                 "plan": None,
                 "plan_errors": ["the planner's response could not be parsed as a plan"],
                 "refused": False,
+                "fan_out_at": time.perf_counter(),
                 "timings_ms": {"plan": (time.perf_counter() - started) * 1000},
             }
 
@@ -101,6 +108,7 @@ def make_plan_node(client, domains: Domains):
             "plan": plan,
             "plan_errors": errors,
             "refused": refused,
+            "fan_out_at": time.perf_counter(),
             "timings_ms": {"plan": (time.perf_counter() - started) * 1000},
         }
 
@@ -116,23 +124,52 @@ def fan_out(state: AnalysisState) -> list[Send] | str:
     """
     if state.get("plan_errors") or state.get("refused") or not state.get("plan"):
         return "report"
-    return [Send("run_tool", {"call": call}) for call in state["plan"]["calls"]]
+    return [
+        Send("run_tool", {"call": call, "position": position})
+        for position, call in enumerate(state["plan"]["calls"])
+    ]
 
 
 def run_tool_node(payload: dict) -> dict[str, Any]:
     """Receives one call as its entire state; contributes one result upward."""
-    return {"results": [run_call(payload["call"])]}
+    return {"results": [run_call(payload["call"], payload.get("position", 0))]}
 
 
 def collect_node(state: AnalysisState) -> dict[str, Any]:
-    """Join. Builds the chart and records what the branches each cost."""
+    """Join. Builds the chart and records what the fan-out actually cost.
+
+    ``tools_wall`` is measured from the moment the plan node returned to the
+    moment this join began -- the whole tool phase, scheduling included. It
+    used to be ``max(elapsed_ms)``, the longest single branch, which is a
+    *lower* bound: it excludes the superstep's own dispatch, so it reported the
+    fan-out as faster than it was. This is the one figure on the page that is
+    evidence the fan-out is real, so understating it is exactly the wrong
+    error to make; over-inclusive is the safe direction.
+
+    It is not a saving. Four independent tools are parallel because the
+    question is, and the two model calls either side of them cost around
+    twenty-five seconds regardless. ``tools_sequential`` is beside it so a
+    reader can see the ratio for what it is: the shape of the work, at a scale
+    the model calls dwarf.
+    """
     results = state.get("results") or []
     sequential = sum(r["elapsed_ms"] for r in results)
-    wall = max((r["elapsed_ms"] for r in results), default=0.0)
+    started = state.get("fan_out_at")
+    if started is None:
+        # Only when `collect_node` is called outside the graph -- nothing in
+        # the flow reaches here without `plan_node` having stamped it. Falling
+        # back to the longest branch keeps a direct call meaningful rather
+        # than reporting a wall time of zero.
+        wall = max((r["elapsed_ms"] for r in results), default=0.0)
+    else:
+        wall = (time.perf_counter() - started) * 1000
     return {
         "chart_spec": chart_spec_for(results),
         "timings_ms": {
             "tools_wall": round(wall, 1),
+            "tools_longest_branch": round(
+                max((r["elapsed_ms"] for r in results), default=0.0), 1
+            ),
             "tools_sequential": round(sequential, 1),
         },
     }

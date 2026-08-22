@@ -17,6 +17,12 @@ import json
 from typing import Any
 
 from aoi_agent.analysis.plan import PLANNABLE_TOOLS, Domains
+# The hidden-key rule lives with the walk that renders it, so there is one
+# spelling of `ground_truth` for both routes out of a tool's payload. The
+# import points at the station from the analysis layer, which is the wrong
+# direction on paper -- taken deliberately, because two copies of an invariant
+# is the failure it is meant to prevent, and `result_view` imports nothing.
+from aoi_agent.station.result_view import strip_hidden
 
 SYSTEM_PROMPT = """You plan data lookups for a PCB production line's review station.
 
@@ -211,7 +217,15 @@ def build_synthesis_messages(question: str, plan: dict, results: list[dict]) -> 
         if result["ok"]:
             rendered.append(
                 f"[{result['tool']} {json.dumps(result['args'], ensure_ascii=False)}]\n"
-                f"{json.dumps(result['data'], ensure_ascii=False)}"
+                # Through the same hidden-key check the rendered table uses.
+                # This is the second route from a tool's payload to the page:
+                # what the model is shown here, it can put in the prose, and
+                # the prose is printed verbatim. Filtering only the table
+                # would leave the station showing `ground_truth` in a
+                # sentence -- an operator's answer is the next training
+                # round's label, and a label copied off the answer key is
+                # worth nothing however it was phrased.
+                f"{json.dumps(strip_hidden(result['data']), ensure_ascii=False)}"
             )
         else:
             rendered.append(

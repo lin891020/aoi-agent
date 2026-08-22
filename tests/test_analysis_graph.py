@@ -220,7 +220,28 @@ def test_timings_are_recorded_per_tool_and_for_the_phases(stub_tools):
     assert "plan" in state["timings_ms"]
     assert "tools_wall" in state["timings_ms"]
     assert "synthesise" in state["timings_ms"]
-    assert state["timings_ms"]["tools_sequential"] >= state["timings_ms"]["tools_wall"]
+    assert (
+        state["timings_ms"]["tools_sequential"]
+        >= state["timings_ms"]["tools_longest_branch"]
+    )
+
+
+def test_the_wall_time_covers_the_scheduling_and_not_only_the_branches(stub_tools):
+    """`tools_wall` is the figure the page offers as evidence the fan-out is
+    real, and it used to be `max(elapsed_ms)` -- the longest single branch.
+
+    That excludes the superstep's own dispatch, so it reported the tool phase
+    as faster than it was: a lower bound printed as a measurement, and an
+    understatement is precisely the wrong error for the one number that is
+    supposed to be evidence. It is now measured from the plan node returning
+    to the join beginning, which cannot be less than the longest branch.
+    """
+    state = run(StubClient())
+
+    assert (
+        state["timings_ms"]["tools_wall"]
+        >= state["timings_ms"]["tools_longest_branch"]
+    )
 
 
 def test_a_planner_outage_is_not_reported_as_a_validation_failure(stub_tools):

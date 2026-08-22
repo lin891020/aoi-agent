@@ -44,6 +44,14 @@ as ``store.boards.resolve_candidate`` -- not by grepping the HTML afterwards.
 No tool returns ``ground_truth`` today; the guard exists because this function
 renders whatever a tool hands back, and the sixth tool is not written yet.
 
+``readable_rows`` is not the only route from a tool's data to the page, and a
+boundary with a second door is not a boundary. ``build_synthesis_messages``
+serialises the raw payload into the model's context and the sentence that comes
+back is rendered verbatim, so a field this walk would have dropped can reach a
+reader in prose instead. ``strip_hidden`` closes that route, using the same
+``_is_hidden`` this walk uses -- one rule about what the operator must not be
+shown, applied on both paths, rather than two that can drift.
+
 It is also deliberately not complete. ``search_standards`` returns passages that
 are paragraphs long and ``query_machine_stats`` returns a row per machine. A
 block that floods the page is one nobody reads, and a reader who needs the whole
@@ -58,6 +66,11 @@ from typing import Any
 
 #: Compared against the *normalised* key, never the raw one.
 HIDDEN_KEYS = {"ground_truth"}
+
+#: The label on the one row that is not a field of the payload. Named rather
+#: than written twice, so the count beside the block and the row it must not
+#: count cannot disagree.
+OVERFLOW_LABEL = "…"
 
 MAX_ROWS = 14
 MAX_ITEMS = 6
@@ -159,7 +172,10 @@ def _is_scalar(value: Any) -> bool:
     return value is None or isinstance(value, (str, int, float, bool))
 
 
-def _clip(text: str, limit: int = MAX_CHARS) -> str:
+def clip(text: str, limit: int = MAX_CHARS) -> str:
+    """One string, capped. Public because `station.app` caps a streamed tool
+    error with it, and a module reaching across for a private name is a
+    boundary that was never drawn."""
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
@@ -178,7 +194,7 @@ def _scalar(value: Any) -> str:
         return f"{value:.4g}"
     if isinstance(value, int):
         return str(value)
-    return _clip(" ".join(str(value).split()))
+    return clip(" ".join(str(value).split()))
 
 
 @dataclass
@@ -204,7 +220,7 @@ class _Rendered:
         holds only for the right-hand column is one a payload walks around.
         """
         self.rows = [
-            (_clip(label, MAX_LABEL), _clip(text)) for label, text in self.rows
+            (clip(label, MAX_LABEL), clip(text)) for label, text in self.rows
         ]
 
     @property
@@ -340,8 +356,50 @@ def readable_rows(data: dict | None) -> list[tuple[str, str]]:
     if dropped:
         # Stated rather than silent, and counted once for the whole payload:
         # a reader who is shown less than there was should be told so.
-        rows = [*rows, ("…", f"另外 {dropped} 項未顯示")]
+        rows = [*rows, (OVERFLOW_LABEL, f"另外 {dropped} 項未顯示")]
     return rows
+
+
+def shown_count(rows: list[tuple[str, str]]) -> int:
+    """How many of these rows are data the tool returned.
+
+    The "n things not shown" line is a note about the payload, not a field of
+    it. The page's summary counted it as one, so a payload cut from 20 fields
+    to 14 announced "15 items" -- a number that is neither what the tool
+    returned nor what the reader is looking at.
+    """
+    return sum(1 for label, _ in rows if label != OVERFLOW_LABEL)
+
+
+def strip_hidden(value: Any, path: tuple[str, ...] = ()) -> Any:
+    """The same payload with every hidden key removed, structure intact.
+
+    ``readable_rows`` is the boundary for the *table*. It is not the only route
+    from a tool's data to the page: `prompts.build_synthesis_messages` serialises
+    the raw payload into the model's context, and the sentence it writes back is
+    rendered verbatim. A model told "describe what the results show" will
+    happily reproduce a field the table would have dropped, so the invariant
+    needs enforcing on both routes or it is enforced on neither.
+
+    Two things it deliberately does not do. It does not clip, and it does not
+    whitelist shapes: the model is given the whole payload because it has to
+    describe it, and the length and repr concerns that shape the table are
+    display concerns. The key rule is the one that is about the operator's
+    judgement rather than about the page, so the key rule is the one that
+    travels. ``_is_hidden`` is shared with the table's walk, so the two cannot
+    disagree about what ``ground_truth`` is spelled like.
+    """
+    if isinstance(value, dict):
+        return {
+            key: strip_hidden(inner, (*path, str(key)))
+            for key, inner in value.items()
+            if not (_is_scalar(key) and _is_hidden((*path, str(key))))
+        }
+    if isinstance(value, (list, tuple)):
+        # The path does not grow: an index is a position, not a field name,
+        # the same reasoning as `_walk_sequence`.
+        return [strip_hidden(item, path) for item in value]
+    return value
 
 
 def error_text(data: Any) -> str | None:
@@ -360,7 +418,7 @@ def error_text(data: Any) -> str | None:
     if isinstance(value, str):
         # Clipped like every other text on the page: this one is printed
         # outside the rows block, so nothing else would cap it.
-        return _clip(" ".join(value.split()))
+        return clip(" ".join(value.split()))
     if _is_scalar(value):
         return _scalar(value)
     return "工具回報了一個無法顯示的錯誤"

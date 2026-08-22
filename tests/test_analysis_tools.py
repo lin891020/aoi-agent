@@ -7,8 +7,6 @@ catches its own failures and returns them as data.
 
 from __future__ import annotations
 
-import pytest
-
 from aoi_agent.analysis import tools
 
 

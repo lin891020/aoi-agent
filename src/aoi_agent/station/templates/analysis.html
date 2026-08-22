@@ -60,7 +60,15 @@
           <tr>
             <td class="mono">{{ r.tool }}</td>
             <td class="mono dim">{{ r.args }}</td>
-            <td class="dim">{{ (run.plan.calls[loop.index0].why) if run.plan and run.plan.calls|length > loop.index0 else '' }}</td>
+            {# `r.why`, not `run.plan.calls[loop.index0].why`. Pairing by
+               position was only ever right for `POST /ask`, where the reducer
+               applies branch writes in plan order; `GET /ask/stream` rebuilds
+               its state from arrival order, so the fastest tool's row carried
+               the slowest tool's reason -- and the stream is the normal path.
+               This column is for trust, so a wrong reason beside a right tool
+               is worse than none. The justification now travels on the result
+               itself; a run stored before it did renders this cell empty. #}
+            <td class="dim">{{ r.why or '' }}</td>
             <td class="num">{{ '%.0f'|format(r.elapsed_ms) }}ms</td>
             <td>
               {% if not r.ok %}<span class="chip warn">失敗</span>
@@ -83,7 +91,11 @@
             {% if rows %}
             <tr><td colspan="5" class="data-cell">
               <details class="data" {% if rows|length <= 6 %}open{% endif %}>
-                <summary>回傳的資料（{{ rows|length }} 項）</summary>
+                {# `shown_count(rows)`, not `rows|length`: the last row can be
+                   the "另外 n 項未顯示" note, which is a statement about the
+                   payload rather than a field of it. Counting it made a
+                   payload cut from 20 fields to 14 announce 15. #}
+                <summary>回傳的資料（{{ shown_count(rows) }} 項）</summary>
                 <table class="kv">
                   {% for label, value in rows %}
                   <tr><th class="mono dim">{{ label }}</th><td class="mono">{{ value }}</td></tr>
@@ -96,9 +108,18 @@
         {% endfor %}
         </tbody>
       </table>
+      {# The only thing on screen that shows the fan-out is real, so it is
+         stated as what it is. `tools_wall` is measured across the whole tool
+         phase, scheduling included -- not `max(elapsed_ms)`, which is the
+         longest single branch and therefore a lower bound. Both are shown,
+         because the gap between them is the scheduling and a reader who can
+         see it is not being asked to take the parallel figure on trust.
+         This is not a saving: the two model calls either side cost around
+         twenty-five seconds whatever these do. #}
       <p class="sub dim">4 &middot;
         {{ run.results|length }} 個工具 &middot;
-        平行 {{ '%.0f'|format(run.timings.tools_wall or 0) }}ms /
+        平行 {{ '%.0f'|format(run.timings.tools_wall or 0) }}ms
+        （最長的單一分支 {{ '%.0f'|format(run.timings.tools_longest_branch or 0) }}ms）/
         依序 {{ '%.0f'|format(run.timings.tools_sequential or 0) }}ms &middot;
         規劃 {{ '%.0f'|format(run.timings.plan or 0) }}ms &middot;
         撰寫 {{ '%.0f'|format(run.timings.synthesise or 0) }}ms
