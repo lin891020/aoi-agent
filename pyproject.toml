@@ -31,7 +31,7 @@ build-backend = "uv_build"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src", "tests"]
+pythonpath = ["src", "tests", "scripts"]
 markers = [
     "dataset: requires DeepPCB to be cloned into data/DeepPCB",
 ]

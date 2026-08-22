@@ -162,3 +162,29 @@ Distribution of what the agent said, against the truth:
 | short | 2 | 1 | 1 |
 | mousebite | 1 | 0 | 1 |
 | spur | 1 | 1 | 0 |
+
+### Analysis planner — does it plan the right lookups, and refuse the rest?
+
+`gpt-oss:20b`, 20 hand-written questions, each asked 3 times. Plans are scored, not answers: the tools are deterministic, so a correct plan yields correct data by construction and the errors live in the plan. The store held 9 days at the time of the run.
+
+| | questions | correct |
+|---|---|---|
+| should answer | 13 | 13/13 = 100% |
+| should refuse | 7 | 7/7 = 100% |
+| determinism | 20 | 20/20 = 100% planned the same tools across 3 runs |
+
+**Held out from the prompt.** Five of the twenty questions are few-shot examples verbatim or near-paraphrases, so on those the model is reciting rather than planning. On the remaining 15 it scored 15/15 = 100%, with 15/15 = 100% stable. That is the number to read; the headline above is the optimistic one.
+
+**Plans that scored a hit and still could not run.** 0 named the right tools and were rejected by `validate_plan` — most often a `days` beyond the 9 the store holds. Scoring counts the plan, so these are reported here rather than folded into the table.
+
+**Planner failures.** 0 question(s) produced no plan at all (model unreachable, or a response that would not parse). These score as misses, not as refusals: a timeout that counted as a refusal would make a contended machine look well-calibrated.
+
+Misses:
+
+- none
+
+**A clean sweep is a fact about the question set before it is a fact about the planner.** Nothing here found the boundary, so nothing here bounds anything: the honest reading is that these twenty questions are inside what this model does easily, not that the planner is correct. To have any resolution the set needs questions that are harder in a specific way — a window the store does not hold, an aggregate no single tool computes, a machine named only implicitly — and it needs an author who did not write the prompt.
+
+Refusal accuracy carries more weight than the count suggests. A planner that answers everything is more dangerous on a line than one that says it cannot, and nothing else in this project measures that.
+
+What this does not establish: the expected plans and the few-shot examples have the same author, so this is agreement with one opinion of the right plan and not an independent ground truth. It is a single point, not an operating-point curve, and it says nothing about whether the prose written over correct data is correct. Both are recorded in the design rather than solved.
