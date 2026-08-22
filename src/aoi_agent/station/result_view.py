@@ -62,6 +62,10 @@ HIDDEN_KEYS = {"ground_truth"}
 MAX_ROWS = 14
 MAX_ITEMS = 6
 MAX_CHARS = 160
+#: Shorter, because a label is a field name and a real one is under 30
+#: characters. A tool returning forty 500-character keys is a 17.6KB block
+#: otherwise, which defeats the cap on values by going round it.
+MAX_LABEL = 60
 
 _CAMEL = re.compile(r"(?<=[a-z0-9])(?=[A-Z])")
 _SEPARATORS = re.compile(r"[^a-z0-9]+")
@@ -70,6 +74,12 @@ _PATH = re.compile(r"[.\[\]]+")
 #: The same names with every separator gone, so ``groundtruth`` -- a spelling no
 #: amount of separator normalisation reaches -- is still the same key.
 _SQUASHED = {name.replace("_", "") for name in HIDDEN_KEYS}
+
+#: How long a composed name can be before it cannot be a hidden one any more.
+#: Read off the names rather than written down, so adding a longer one to
+#: HIDDEN_KEYS does not quietly shorten the search that has to find it.
+_LONGEST = max(len(name) for name in HIDDEN_KEYS)
+_LONGEST_SQUASHED = max(len(name) for name in _SQUASHED)
 
 # ---------------------------------------------------------------------------
 # The whitelist, as one table.
@@ -103,12 +113,6 @@ def normalise_key(key: str) -> str:
     return _SEPARATORS.sub("_", _CAMEL.sub("_", key).casefold()).strip("_")
 
 
-def _names(name: str) -> bool:
-    """True when one composed name is a hidden one, however it is spelled."""
-    normalised = normalise_key(name)
-    return normalised in HIDDEN_KEYS or normalised.replace("_", "") in _SQUASHED
-
-
 def _is_hidden(path: tuple[str, ...]) -> bool:
     """True when the path of keys that reached this value names a hidden field.
 
@@ -116,18 +120,38 @@ def _is_hidden(path: tuple[str, ...]) -> bool:
     can be split across container levels in more than one way --
     ``{"ground": {"truth": ...}}``, ``{"ground": [{"truth": ...}]}`` and
     ``{"a": {"b.ground_truth": ...}}`` all compose ``ground_truth`` -- and a
-    per-level check sees only halves of it. Every contiguous run of the path is
-    tested, and a key that is itself a path is split before testing, so the
-    question is asked once and covers every position a walk can reach.
+    per-level check sees only halves of it. So every contiguous run of the path
+    is still tested, and a key that is itself a path is split before testing.
+
+    It grows those runs one segment at a time and abandons a run as soon as it
+    is longer than the longest name it could be, which is what keeps the cost
+    linear in the length of the key. Testing every run outright was quadratic
+    in the number of segments and cubic with the normalising, and the path is
+    whatever a tool returned: ``{"a." * 2000: 1}`` took 101 seconds to render
+    one row, which is a synchronous hang of ``GET /ask/{id}`` bought with a
+    single dotted key. Nothing is given up for it -- a run longer than the name
+    cannot be the name -- so the shapes the leak table probes are unaffected.
     """
     parts = [
-        segment for key in path for segment in _PATH.split(key) if segment.strip()
+        normalised
+        for key in path
+        for segment in _PATH.split(key)
+        if (normalised := normalise_key(segment))
     ]
-    return any(
-        _names("_".join(parts[start:end]))
-        for start in range(len(parts))
-        for end in range(start + 1, len(parts) + 1)
-    )
+    for start in range(len(parts)):
+        joined = ""
+        squashed = ""
+        # By index, not `parts[start:]`: that slice copies the tail of the list
+        # on every start, which is quadratic again for a long enough key.
+        for index in range(start, len(parts)):
+            part = parts[index]
+            joined = f"{joined}_{part}" if joined else part
+            squashed += part.replace("_", "")
+            if joined in HIDDEN_KEYS or squashed in _SQUASHED:
+                return True
+            if len(joined) > _LONGEST and len(squashed) > _LONGEST_SQUASHED:
+                break  # every longer run is longer still
+    return False
 
 
 def _is_scalar(value: Any) -> bool:
@@ -135,8 +159,8 @@ def _is_scalar(value: Any) -> bool:
     return value is None or isinstance(value, (str, int, float, bool))
 
 
-def _clip(text: str) -> str:
-    return text if len(text) <= MAX_CHARS else text[: MAX_CHARS - 1] + "…"
+def _clip(text: str, limit: int = MAX_CHARS) -> str:
+    return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
 def _scalar(value: Any) -> str:
@@ -175,9 +199,13 @@ class _Rendered:
 
         Not in the callers that compose a text: there are four of them, and
         clipping in three is how a 200-item list under a record reached the
-        page as one 10.4KB row while the same list at the top was cut.
+        page as one 10.4KB row while the same list at the top was cut. Labels
+        go through it too -- a key is a value the tool chose, and a cap that
+        holds only for the right-hand column is one a payload walks around.
         """
-        self.rows = [(label, _clip(text)) for label, text in self.rows]
+        self.rows = [
+            (_clip(label, MAX_LABEL), _clip(text)) for label, text in self.rows
+        ]
 
     @property
     def inline(self) -> str:
@@ -330,7 +358,9 @@ def error_text(data: Any) -> str | None:
         return None
     value = data["error"]
     if isinstance(value, str):
-        return " ".join(value.split())
+        # Clipped like every other text on the page: this one is printed
+        # outside the rows block, so nothing else would cap it.
+        return _clip(" ".join(value.split()))
     if _is_scalar(value):
         return _scalar(value)
     return "工具回報了一個無法顯示的錯誤"

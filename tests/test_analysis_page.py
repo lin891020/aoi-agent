@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass, field
 
 import pytest
@@ -12,7 +13,13 @@ from aoi_agent.analysis import graph as analysis
 from aoi_agent.llm.ollama import ChatResult, Timing
 from aoi_agent.station import app as station_app
 from aoi_agent.station.chart_svg import render_svg
-from aoi_agent.station.result_view import MAX_CHARS, MAX_ROWS, readable_rows
+from aoi_agent.station.result_view import (
+    MAX_CHARS,
+    MAX_LABEL,
+    MAX_ROWS,
+    error_text,
+    readable_rows,
+)
 from aoi_agent.store.models import create_all, make_session_factory
 
 PLAN = {
@@ -252,7 +259,7 @@ POSITIONS = [
     ("inside a list held by a record", lambda f: {"rows": [{"m": "x", "h": [dict(f)]}]}),
 ]
 
-#: The three positions the page renders. The rest are shapes this module drops
+#: The four positions the page renders. The rest are shapes this module drops
 #: by design, and `test_every_probed_position_is_one_the_page_accounts_for`
 #: holds them to that -- a leak table over positions that render nothing would
 #: pass by doing nothing at all.
@@ -483,44 +490,102 @@ def test_a_hidden_key_nested_in_a_record_is_counted_not_silently_skipped():
 #: 300 characters each is 60KB if nothing cuts it.
 FLOOD = ["y" * 300] * 200
 
+#: The same flood on the other side of the row. A cap that holds only for
+#: values is one a payload walks around by putting its bulk in the keys: forty
+#: 500-character keys rendered a 17.6KB block.
+LONG_KEYS = {f"K{index}" * 500: index for index in range(40)}
 
-def test_the_data_view_truncates_rather_than_floods():
+#: Each way a payload can be big, and where the bulk sits in it.
+FLOODS = [
+    ("a list at the top", {"meta": 1, "hist": FLOOD}),
+    ("the same list inside a record", {"meta": {"hist": FLOOD}}),
+    ("a list of long records",
+     {"query": "open",
+      "passages": [{"document": "WI-300", "heading": "Opens",
+                    "text": "z" * 400, "distance": 0.2}] * 9}),
+    ("long keys at the top", LONG_KEYS),
+    ("long keys inside a record", {"meta": dict(LONG_KEYS)}),
+    ("long keys inside a record in a list", {"rows": [dict(LONG_KEYS)]}),
+]
+
+
+@pytest.mark.parametrize("data", [data for _, data in FLOODS],
+                         ids=[where for where, _ in FLOODS])
+def test_the_data_view_truncates_rather_than_floods(data):
     """A block that floods the page is one nobody reads.
 
-    Both list paths, because the last round clipped one of them and deleted
-    this test rather than extending it: a list that is a value of the payload,
-    and the same list one level down as a field of a record -- which is where
-    it went through unclipped, 10.4KB in a single row.
+    Both list paths, because the round before last clipped one of them and
+    deleted this test rather than extending it: a list that is a value of the
+    payload, and the same list one level down as a field of a record -- which
+    is where it went through unclipped, 10.4KB in a single row. And both sides
+    of the row, because a cap on values only is one a payload steps around by
+    putting its bulk in the keys.
     """
-    cases = {
-        "a list at the top": readable_rows({"meta": 1, "hist": FLOOD}),
-        "the same list inside a record": readable_rows({"meta": {"hist": FLOOD}}),
-        "a list of long records": readable_rows(
-            {"query": "open",
-             "passages": [{"document": "WI-300", "heading": "Opens",
-                           "text": "z" * 400, "distance": 0.2}] * 9},
-        ),
-    }
+    rows = readable_rows(data)
 
-    for where, rows in cases.items():
-        assert rows, where
-        assert len(rows) <= MAX_ROWS + 1, where
-        assert all(len(value) <= MAX_CHARS for _, value in rows), where
-        assert len("".join(v for _, v in rows)) < 2000, where
-        assert any("未顯示" in value for _, value in rows), f"{where}: silently cut"
+    assert rows
+    assert len(rows) <= MAX_ROWS + 1
+    assert all(len(label) <= MAX_LABEL for label, _ in rows), "an unclipped label"
+    assert all(len(value) <= MAX_CHARS for _, value in rows), "an unclipped value"
+    assert len("".join(label + value for label, value in rows)) < 3000
+    # Every cut says so, in one of the module's two ways: an ellipsis where a
+    # value or a label was clipped, a counted row where something was dropped
+    # whole. A payload that came back smaller with neither is the failure.
+    assert any(
+        "未顯示" in value or "…" in value or "…" in label for label, value in rows
+    ), "cut without saying so"
 
 
-def test_a_flooding_payload_does_not_flood_the_rendered_page(client, monkeypatch):
+@pytest.mark.parametrize("data", [data for _, data in FLOODS],
+                         ids=[where for where, _ in FLOODS])
+def test_a_flooding_payload_does_not_flood_the_rendered_page(client, monkeypatch,
+                                                             data):
     """The same claim where it is felt: the block on the operator's screen."""
     monkeypatch.setitem(analysis.PLANNABLE_TOOLS, "query_machine_stats",
-                        lambda **kw: {"meta": {"hist": FLOOD}})
+                        lambda **kw: data)
     page = client.post("/ask", data={"question": "M22 正常嗎"},
                        follow_redirects=True).text
 
     block = page[page.index('<details class="data"'):]
     block = block[: block.index("</details>")]
-    assert len(block) < 2000, "the returned-data block is a page of its own"
-    assert "未顯示" in block
+    assert len(block) < 4000, "the returned-data block is a page of its own"
+    assert "未顯示" in block or "…" in block, "cut without saying so"
+
+
+def test_a_pathological_key_renders_in_bounded_time():
+    """A key is whatever a tool returned, so its cost is not a hypothetical.
+
+    Checking every contiguous run of a split key was quadratic in its segments
+    and cubic with the normalising: `{"a." * 2000: 1}` took 151s on this
+    machine to render one row -- a synchronous hang of `GET /ask/{id}` bought
+    with one dotted key -- and 800 segments took 9.0s. Bounded runs and an
+    index rather than a tail slice make it 2.7ms and 1.2ms. The budget is two
+    seconds because the machine is fanless and throttles; the gap being
+    guarded is four orders of magnitude, not a factor of two.
+    """
+    for segments in (2000, 20000):
+        started = time.perf_counter()
+        rows = readable_rows({"a." * segments: 1})
+        elapsed = time.perf_counter() - started
+
+        assert rows, segments
+        assert all(len(label) <= MAX_LABEL for label, _ in rows), segments
+        assert elapsed < 2.0, f"{segments} segments took {elapsed:.1f}s"
+
+
+def test_a_tool_error_is_clipped_like_everything_else_on_the_page(client,
+                                                                  monkeypatch):
+    """It is printed outside the rows block, so nothing else caps it."""
+    monkeypatch.setitem(
+        analysis.PLANNABLE_TOOLS, "query_machine_stats",
+        lambda **kw: {"error": "the store is empty. " + "e" * 1_000_000},
+    )
+    page = client.post("/ask", data={"question": "M22 正常嗎"},
+                       follow_redirects=True).text
+
+    assert len(error_text({"error": "e" * 1_000_000})) <= MAX_CHARS
+    assert "the store is empty" in page, "the reader still gets the message"
+    assert len(page) < 20_000, "a megabyte of error is not a page"
 
 
 def test_a_tool_error_that_is_not_a_string_is_not_str_ed_onto_the_page(
