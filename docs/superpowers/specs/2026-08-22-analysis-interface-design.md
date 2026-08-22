@@ -96,10 +96,15 @@ class AnalysisState(TypedDict):
     plan: Plan | None
     plan_errors: list[str]
     results: Annotated[list[ToolResult], operator.add]
-    timings_ms: Annotated[dict[str, float], merge]
-    chart_spec: dict | None
+    timings_ms: Annotated[dict[str, float], operator.or_]
+    chart_spec: dict | None    # serialisable; the page renders it, see below
     answer: str
 ```
+
+`chart_spec` is data, not an image: the axis, the series and their labels.
+The page renders it. That is what lets a stored answer be redrawn later
+without re-running anything, and it keeps chart choice inspectable rather
+than baked into a PNG.
 
 ```
 START → plan → validate ─┬─ invalid → refuse → END
@@ -128,9 +133,11 @@ Three deliberate omissions:
 - **No checkpointer.** Nobody is in the loop, nothing suspends, nothing resumes
   days later. The disposition flow needs one because of `interrupt`; this does
   not, and adopting an unneeded framework feature is what this project just spent
-  a day removing. Reproducibility is served instead by persisting the plan and
-  the raw results, so a chart is rebuilt from stored data rather than by
-  re-running a plan that may not regenerate identically.
+  a day removing. Reproducibility is served instead by an
+  `analysis_runs` table -- question, plan, raw results, `chart_spec`, answer,
+  timings -- so a chart is rebuilt from stored data rather than by re-running
+  a plan that may not regenerate identically. It is also the log the eval
+  script and any later live view read from.
 - **The chart type is derived from the result shape**, not chosen by the model.
   Time series to a line, cross-entity comparison to bars. The LLM explains; it
   does not decide -- including about charts.
@@ -206,6 +213,12 @@ know.
 **Not covered:** synthesis can describe correct data incorrectly. The mitigation
 is that the raw results sit beside the prose, so a reader can check. This is a
 known gap, not a solved problem.
+
+## Sequencing
+
+The data decision in section 4 is independent of everything else and gates
+only the multi-period questions that are already out of scope. It can be
+taken before, during or after; the plan should not block on it.
 
 ## Open questions
 
