@@ -45,6 +45,8 @@ uv run python scripts/gate_check.py              # S0: does differencing make fa
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
 uv run python scripts/routing_report.py          # how much never reaches the LLM
+uv run python scripts/latency_report.py          # does the reason node fit the response budget?
+uv run python scripts/agent_eval.py              # does the agent layer beat the classifier? (~9 min)
 uv run python scripts/check_mcp_servers.py       # servers start and advertise tools
 uv run python -m aoi_agent board 20085294 --queue  # run a board, queue what it cannot settle
 uv run python -m aoi_agent station               # review station on :8000
@@ -90,6 +92,16 @@ uv run python -m aoi_agent queue                 # what is waiting on a person
   gitignored and rebuilt by scripts.
 
 ## Still open
+
+**The agent's verdict is worse than the classifier it second-guesses, but its
+escalation flag is well calibrated.** Measured over 60 investigated candidates:
+it overrode the vision model's class 12 times and was right once, breaking nine
+the classifier had already got right. Meanwhile it is right 87.0% on what it
+keeps against 62.2% on what it escalates -- a +24.8% gap, with zero escapes. The
+implied change is to take the classifier's class whenever the agent does not
+escalate, which scores 91.3% against the agent's 87.0% on the same set, and to
+let the LLM decide only *whether* to hand over. Not yet made; see
+docs/benchmarks.md and `scripts/agent_eval.py`.
 
 **`gpt-oss:20b` does not meet WI-300's 10s response budget.** Measured on a
 quiet machine: p90 service time 15.6s, 20 of 24 calls over. See

@@ -98,3 +98,34 @@ Of that service time, `eval_duration` accounts for 6.4s and prompt ingestion for
 Queueing check: 0.0% of mean wall time is not load, prompt or generation — the request went straight to the GPU, so the run is not contended.
 
 No request was served after an eviction.
+
+### Agent layer — does it beat the classifier, and is the escalation calibrated?
+
+`gpt-oss:20b`, 60 candidates the router sends to investigation, sampled by stride across the store. `fragment` ground truth is held out, as in training. Ran in 0 min.
+
+**Accuracy against the classifier it second-guesses**
+
+| | candidates | vision model | agent |
+|---|---|---|---|
+| all investigated | 60 | 51/60 = 85.0% | 43/60 = 71.7% |
+| agent kept | 23 | 21/23 = 91.3% | 20/23 = 87.0% |
+| agent escalated | 37 | 30/37 = 81.1% | 23/37 = 62.2% |
+
+**Calibration.** The agent's verdicts were right 87.0% of the time on what it kept and 62.2% of the time on what it handed over, a gap of +24.8%. The escalations land on the harder cases, which is what the confidence flag is for.
+
+**Where the agent overrode the classifier.** It changed the class on 12 of 60 candidates. The agent was right 1 of those times; the classifier had already been right 9 times, and 2 were wrong either way. Re-classification is costing accuracy rather than adding it. The layer's value is the escalation flag, and taking the classifier's class whenever the agent does not escalate would score 21/23 = 91.3% on the kept set, against the agent's 87.0%.
+
+**Escalation rate.** 37/60 = 61.7% of investigated candidates, which is 11.0% of the whole queue.
+
+**Escapes.** 0 of 23 kept candidates were called `false_call` while carrying a real defect.
+
+Distribution of what the agent said, against the truth:
+
+| truth | n | agent agreed | agent escalated |
+|---|---|---|---|
+| open | 27 | 27 | 15 |
+| false_call | 27 | 14 | 19 |
+| short | 3 | 1 | 1 |
+| mousebite | 1 | 0 | 1 |
+| spur | 1 | 1 | 0 |
+| copper | 1 | 0 | 1 |
