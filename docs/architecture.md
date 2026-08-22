@@ -10,6 +10,9 @@
 | LangGraph flow | route on confidence, gather evidence, hand over to a person | contain domain rules that belong in the work instructions |
 | Review station | show a person the evidence the agent had, and take their answer | re-run the flow to render a page, or show the ground truth |
 | Local LLM | explain to an operator why a region reached them | decide anything -- measured worse than the classifier at both the class and the hand-off |
+| Analysis planner (LLM) | turn a supervisor's question into a typed plan of tool calls, or refuse it | run anything, choose a chart, or answer from its own knowledge |
+| Plan validator | reject a tool, argument or value that does not exist, before any of it runs | retry, or repair a plan on the model's behalf |
+| Analysis flow | fan out over the plan, derive a chart from the result shape, then have the LLM write the prose | disposition anything -- it answers questions about boards, it does not decide about one |
 
 ## The decision path
 
@@ -80,6 +83,70 @@ The station reads the suspended state rather than re-running the flow. Re-runnin
 would spend another 20B-model inference and could hand back a different rationale
 than the one on the operator's screen.
 
+## The analysis path
+
+A second entrance, for a different person. The queue answers "what do I do with
+this region"; `/ask` answers the question a shift supervisor walks up with --
+"is M22 drifting, and does that matter". It reads the same MCP tools the
+disposition path uses and it dispositions nothing.
+
+```
+                  supervisor's question
+                            │
+                          plan            one LLM call, typed output
+                            │
+                     validate_plan
+                            │
+              ┌─────────────┴─────────────┐
+              ▼                           ▼
+        invalid: show the plan          valid
+        and every error; run            │
+        nothing                    Send(run_tool, call) × N
+                                        │
+                                   ┌────┼────┐
+                                   ▼    ▼    ▼
+                                 run  run  run    a failed branch is data,
+                                   └────┼────┘    not an exception
+                                        │
+                                     collect      chart derived from the
+                                        │         result shape
+                                        ▼
+                                   synthesise     second LLM call: prose
+                                        │
+                                        ▼
+                                      /ask
+```
+
+Validation runs in three layers before any tool executes -- the tool name, the
+argument names against the real signature, and the argument *values* against the
+domains the store actually holds. The third carries the weight, and it is the
+no-SQL invariant one level up: `line_id="L4"` raises nothing and returns
+nothing, so the chart comes back with one fewer line and the gap reads as a
+finding. A plan that fails is shown to the person, not retried.
+
+`Send` is what makes this a scheduler rather than a switch: the branch count
+comes from the plan, not from the graph's shape. It is not a latency
+optimisation and the page does not present it as one -- four real tools take
+183ms in parallel against 462ms in sequence, either side of two model calls
+costing around 25 seconds. It is the correct structure for independent work,
+and it scales as tools multiply.
+
+Two absences that are deliberate, and that the disposition path's invariants
+would otherwise appear to forbid:
+
+- **No checkpointer.** Nothing suspends, nobody is in the loop, and a question
+  is answered in one invocation. Reproducibility is served by the
+  `analysis_runs` table instead -- question, plan, raw results, chart spec,
+  answer, timings -- so a chart is redrawn from stored data rather than by
+  re-running a plan the model may not reproduce.
+- **No escalation queue.** A failure here has nothing to hand a person: no
+  board is held or shipped by anything on this page. Both invariants in
+  CLAUDE.md are scoped to the disposition path for that reason.
+
+`/ask` has no authentication in front of it, and neither does the queue. An
+unauthenticated visitor to the queue sees the regions on one line; the same
+visitor here can pull statistics for the whole plant.
+
 ## Thresholds and where they come from
 
 | constant | value | source |
@@ -108,13 +175,34 @@ inside 10s is an open measurement -- see docs/benchmarks.md.
 Every branch that can fail fails towards a person:
 
 - an unparseable verdict → escalate
-- the LLM unreachable or too slow → escalate
+- confidence below `ESCALATE_BELOW` → escalate
 - `open` at any confidence → investigate, never short-circuit
 - a candidate that fragments a real defect → held out of training, not labelled spurious
 - the process holding a suspended run dies → the run is on disk, the queue still lists it
 
+The one exception is an unreachable LLM. The decision no longer depends on it,
+so the run falls back to the classifier's own class and confidence and routes on
+those: the operator loses an explanation, not a verdict, and the queue does not
+fill with every candidate on the line.
+
 An escalation costs an operator a few seconds. The alternatives cost a shipped
 board or a silently mislabelled training set.
+
+On the analysis path a failure terminates in a message on the page, not in a
+queue, because there is no disposition waiting on it and nothing for a person to
+answer:
+
+- the planner unreachable, or a response that will not parse → "no plan was
+  produced", and nothing runs
+- a plan that fails validation → the plan and every error, and nothing runs
+- a question the data cannot answer → a refusal that states the coverage
+- one branch's tool raising → that branch returns `ok=False`; its siblings
+  finish and the answer names the one that did not
+- synthesis unreachable → the results are already correct and already on
+  screen; the prose is what is lost
+
+The direction is the same one the station takes: better to show a person "I
+cannot answer this" than a plausible wrong answer they have no way to check.
 
 ## What is real and what is simulated
 
@@ -127,3 +215,4 @@ board or a silently mislabelled training set.
 | lot / line / machine / shift | | ✓ generated, with one planted signal |
 | acceptance criteria | | ✓ original documents, not a real standard |
 | operator identity | | ✓ a free-text field; the station has no auth yet |
+| the analysis page's figures | ✓ computed from the store, by fixed queries | ✓ over the generated line metadata above |
