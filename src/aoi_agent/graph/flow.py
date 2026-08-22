@@ -76,14 +76,23 @@ You are given one region an automated optical inspection flagged, a vision
 model's reading of it, the production context around the board, and the
 acceptance criteria that apply.
 
-Decide what the region is. Set "confident" to false whenever the evidence does
-not settle it -- an operator will then look at it themselves. Guessing to avoid
-escalating is the one thing you must not do: a dismissed defect leaves the
-plant, while an escalation costs someone a few seconds.
+Your job is to explain the evidence to the operator who may have to look at this
+region. Write the explanation you would want if the board were in front of you
+and you had to decide: what the criteria require, what the production context
+suggests, and what would settle the question if it is not settled.
 
-Escalate (confident=false) when the acceptance criteria depend on a measurement
-you cannot make, when the class is `open` and the evidence is not unambiguous,
-or when two classes are similarly likely."""
+You are not the one who dispositions the region. That is decided on the vision
+model's calibrated confidence, which was measured against yours and found
+better at it. So do not write that you are flagging the region for review, or
+that you are releasing it -- you are doing neither, and an explanation that
+announces a disposition you did not make will contradict the record it is
+stored against.
+
+Also give your own reading in "verdict" and "confident". They are kept for the
+record and compared against the classifier when the layer is re-evaluated;
+nothing downstream acts on them. Answer them honestly rather than tactically:
+set "confident" false when the evidence genuinely does not settle the class,
+not to push the region towards a person."""
 
 
 def _timed(state: ReviewState, name: str, elapsed_ms: float) -> None:
