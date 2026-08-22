@@ -167,7 +167,11 @@ def _tool_catalogue() -> str:
     lines = []
     for name, function in sorted(PLANNABLE_TOOLS.items()):
         signature = inspect.signature(function)
-        summary = (function.__doc__ or "").strip().splitlines()[0]
+        # An undocumented tool costs the model one line of description.
+        # Indexing a bare [0] here cost it every plan: the catalogue is
+        # built for each one, so one docstring-less tool raised through
+        # the planner for every question asked.
+        summary = next(iter((function.__doc__ or "").strip().splitlines()), "")
         lines.append(f"- {name}{signature}\n    {summary}")
     return "\n".join(lines)
 

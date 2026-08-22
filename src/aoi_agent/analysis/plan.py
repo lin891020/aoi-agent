@@ -125,18 +125,32 @@ def store_domains() -> Domains:
     }
 
 
+#: `*args` and `**kwargs` are not arguments a plan can name or omit. Read as
+#: though they were, a catch-all signature rejects every plan that names it
+#: twice over: once for an argument it does accept, once for a parameter that
+#: does not exist to be passed.
+_VARIADIC = (inspect.Parameter.VAR_KEYWORD, inspect.Parameter.VAR_POSITIONAL)
+
+
 def _signature_errors(name: str, args: dict, position: int) -> list[str]:
     parameters = inspect.signature(PLANNABLE_TOOLS[name]).parameters
+    named = {
+        key: parameter
+        for key, parameter in parameters.items()
+        if parameter.kind not in _VARIADIC
+    }
+    takes_anything = any(p.kind is inspect.Parameter.VAR_KEYWORD for p in parameters.values())
     errors = []
 
-    for given in args:
-        if given not in parameters:
-            errors.append(
-                f"call {position}: {name} has no argument {given!r} "
-                f"(it takes {', '.join(parameters)})"
-            )
+    if not takes_anything:
+        for given in args:
+            if given not in named:
+                errors.append(
+                    f"call {position}: {name} has no argument {given!r} "
+                    f"(it takes {', '.join(named)})"
+                )
 
-    for required, parameter in parameters.items():
+    for required, parameter in named.items():
         if parameter.default is inspect.Parameter.empty and required not in args:
             errors.append(f"call {position}: {name} requires {required!r}")
 

@@ -123,3 +123,19 @@ def test_store_domains_reads_the_real_store():
     assert domains["line_id"] == {"L1", "L2", "L3"}
     assert len(domains["machine_id"]) == 6
     assert 1 <= domains["max_days"] <= 400
+
+
+def test_a_tool_taking_kwargs_accepts_arguments_rather_than_requiring_one(monkeypatch):
+    """`**kwargs` is not an argument named "kwargs" that every plan is missing,
+    and it is not a wall that rejects every argument passed through it. Read the
+    other way round -- which is how this read before -- a tool with a catch-all
+    signature is unusable: every plan naming it is rejected twice over, for an
+    argument it does accept and for one that does not exist."""
+    def catch_all(**kwargs):
+        return {}
+
+    monkeypatch.setitem(PLANNABLE_TOOLS, "search_standards", catch_all)
+
+    errors = validate_plan(plan(("search_standards", {"query": "open"})), DOMAINS)
+
+    assert errors == []

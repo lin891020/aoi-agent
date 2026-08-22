@@ -102,3 +102,16 @@ def test_the_synthesis_prompt_forbids_inventing_causes():
     system = messages[0]["content"].lower()
 
     assert "cause" in system or "causal" in system
+
+
+def test_a_tool_without_a_docstring_does_not_take_the_catalogue_down(monkeypatch):
+    """The catalogue summarises each tool from its first docstring line. A tool
+    that has no docstring must cost the model that one line of description, not
+    raise an IndexError that kills every plan the system would have made."""
+    def undocumented(query: str):
+        pass
+
+    monkeypatch.setitem(PLANNABLE_TOOLS, "search_standards", undocumented)
+    messages = build_planning_messages("anything", DOMAINS)
+
+    assert "- search_standards(query" in messages[0]["content"]
