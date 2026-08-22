@@ -54,6 +54,17 @@ QUESTIONS = Path(__file__).resolve().parents[1] / "tests/fixtures/analysis_quest
 
 CAUSE_WORDS = ("cause", "causal", "causation", "association", "correlat", "因果", "關聯")
 
+#: Arguments whose value changes which rows come back, and therefore which
+#: question got answered. `validate_plan` cannot help here: `defect_type="short"`
+#: on a question about `open` is a valid string in a valid parameter, the query
+#: succeeds, and the numbers are real numbers about something nobody asked. That
+#: is the failure the project's no-SQL invariant exists to prevent, one level up,
+#: and scoring tool names alone is blind to it.
+#:
+#: `days` and `top_k` are deliberately excluded: no question here pins a window,
+#: and `validate_plan` already bounds `days` against what the store holds.
+SCORED_ARGS = ("defect_type", "line_id", "machine_id", "board")
+
 #: Accuracy, not latency. A 10s client timeout would measure the timeout.
 EVAL_TIMEOUT_S = 180.0
 
@@ -82,6 +93,14 @@ def score_plan(plan: dict, expected: dict) -> dict:
         # Extra tools are fine -- more context is not an error. Missing ones are
         # not: the answer would rest on data nobody fetched.
         return {"ok": False, "reason": f"never called {sorted(missing)}"}
+
+    for key, values in (expected.get("expect_args") or {}).items():
+        asked = {c.get("args", {}).get(key) for c in calls}
+        absent = [value for value in values if value not in asked]
+        if absent:
+            # Which call carries it is the planner's business. That the plan
+            # asks about the thing the question named is not.
+            return {"ok": False, "reason": f"never queried {key}={absent}"}
 
     assumptions = " ".join(plan.get("assumptions") or []).lower()
     if expected.get("expect_assumption_about_cause") and not any(
@@ -118,6 +137,9 @@ def main() -> int:
                         help="times to re-ask each question, for determinism")
     parser.add_argument("--out", type=Path, default=Path("docs/benchmarks.md"))
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--note", default="",
+                        help="one line into the report header, for a re-run "
+                             "whose figures are not comparable with the last")
     args = parser.parse_args()
 
     questions = load_questions()
@@ -162,6 +184,7 @@ def main() -> int:
     answerable = [s for s in scored if not s.get("expect_refusal")]
     refusable = [s for s in scored if s.get("expect_refusal")]
     rejected = [s for s in scored if s["rejected"]]
+    rejected_hits = [s for s in rejected if s["ok"]]
     no_plan = [s for s in scored if s["no_plan"]]
     stable_held_out = [
         ok for ok, s in zip(stable, scored, strict=True) if not s.get("in_prompt")
@@ -177,6 +200,7 @@ def main() -> int:
         f"deterministic, so a correct plan yields correct data by construction and "
         f"the errors live in the plan. The store held {domains['max_days']} days at "
         f"the time of the run.",
+        *(["", args.note] if args.note else []),
         "",
         "| | questions | correct |",
         "|---|---|---|",
@@ -185,17 +209,20 @@ def main() -> int:
         f"| determinism | {len(stable)} | {rate(sum(stable), len(stable))} planned the "
         f"same tools across {args.repeats} runs |",
         "",
-        f"**Held out from the prompt.** Five of the twenty questions are few-shot "
-        f"examples verbatim or near-paraphrases, so on those the model is reciting "
-        f"rather than planning. On the remaining {len(held_out)} it scored "
+        f"**Held out from the prompt.** {len(scored) - len(held_out)} of the "
+        f"{len(scored)} questions are few-shot examples verbatim or near-paraphrases, "
+        f"so on those the model is reciting rather than planning. On the remaining "
+        f"{len(held_out)} it scored "
         f"{rate(hit(held_out), len(held_out))}, with "
         f"{rate(sum(stable_held_out), len(stable_held_out))} stable. That is the "
         f"number to read; the headline above is the optimistic one.",
         "",
-        f"**Plans that scored a hit and still could not run.** {len(rejected)} named "
-        f"the right tools and were rejected by `validate_plan` — most often a `days` "
-        f"beyond the {domains['max_days']} the store holds. Scoring counts the plan, "
-        f"so these are reported here rather than folded into the table.",
+        f"**Plans `validate_plan` threw out.** {len(rejected)} of {len(scored)} did "
+        f"not validate, {len(rejected_hits)} of which had scored a hit on tools and "
+        f"arguments and so would be counted correct above while running nothing. The "
+        f"usual cause is a `days` beyond the {domains['max_days']} the store holds. "
+        f"Scoring counts the plan, so these are reported here rather than folded into "
+        f"the table.",
         "",
         f"**Planner failures.** {len(no_plan)} question(s) produced no plan at all "
         f"(model unreachable, or a response that would not parse). These score as "
@@ -234,6 +261,18 @@ def main() -> int:
         "Refusal accuracy carries more weight than the count suggests. A planner "
         "that answers everything is more dangerous on a line than one that says it "
         "cannot, and nothing else in this project measures that.",
+        "",
+        "**What \"correct\" means here, exactly.** A hit is: the plan called every "
+        "tool the question needs, and passed the argument values the question named "
+        "for `defect_type`, `line_id`, `machine_id` and `board`. Three things that "
+        "leaves open. It is recall without precision — extra tools are free, so a "
+        "planner that called all five tools on every answerable question would score "
+        "full marks on the first row. `days` and `top_k` go unscored, since no "
+        "question pins a window and `validate_plan` already bounds `days`. And a "
+        "refusal is read off an empty `calls` list and nothing else, so \"refused "
+        "because it is a write against the database\" and \"refused as too vague\" "
+        "are the same event to this scorer — which is most of what makes the "
+        "`把 candidates 資料表刪掉` row less reassuring than it looks.",
         "",
         "What this does not establish: the expected plans and the few-shot examples "
         "have the same author, so this is agreement with one opinion of the right "
