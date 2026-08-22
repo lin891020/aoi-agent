@@ -31,6 +31,10 @@ SPEC = {
                 "points": [{"x": "L2-M22", "y": 0.32}, {"x": "L1-M11", "y": 0.19}]}],
 }
 
+#: Never a real value: if it appears on a page, something rendered a payload
+#: it should not have.
+SENTINEL = "TELLTALE-ANSWER-KEY"
+
 
 @dataclass
 class StubClient:
@@ -184,39 +188,135 @@ def test_the_figures_the_answer_was_written_from_are_on_the_page(client):
     assert "2.3" in page, "and its value"
 
 
-def test_a_ground_truth_key_never_reaches_the_page(client, monkeypatch):
+class _Telltale:
+    """An object whose repr carries the sentinel, as a stand-in for anything a
+    future tool might return that is not JSON at all."""
+
+    def __repr__(self) -> str:
+        return SENTINEL
+
+    __str__ = __repr__
+
+
+#: Shapes a sixth tool could plausibly return, each hiding the answer key
+#: somewhere the previous name-matching guard did not look. Adding one is a
+#: line, which is the point: the claim being tested is about every shape, not
+#: about the two that were found.
+LEAKY_SHAPES = [
+    ("the exact key", {"ground_truth": SENTINEL}),
+    ("a capitalised key", {"Ground_Truth": SENTINEL}),
+    ("a padded key", {" ground_truth ": SENTINEL}),
+    ("a hyphenated key", {"ground-truth": SENTINEL}),
+    ("a spaced key", {"Ground Truth": SENTINEL}),
+    ("shouted", {"GROUND_TRUTH": SENTINEL}),
+    ("inside a record", {"rows": [{"machine": "L2-M22", "ground_truth": SENTINEL}]}),
+    ("inside a nested dict", {"meta": {"keep": 1, "ground_truth": SENTINEL}}),
+    ("three levels deep", {"a": {"b": {"ground_truth": SENTINEL}}}),
+    ("a list of lists", {"weird": [[{"ground_truth": SENTINEL}], "other"]}),
+    ("a list of lists of scalars", {"weird": [[SENTINEL]]}),
+    ("a record holding a list", {"rows": [{"m": "x", "history": [SENTINEL]}]}),
+    ("a record holding a dict", {"rows": [{"m": "x", "gt": {"ground_truth": SENTINEL}}]}),
+    ("a dict of dicts", {"per_machine": {"M22": {"ground_truth": SENTINEL}}}),
+    ("a tuple", {"weird": ({"ground_truth": SENTINEL},)}),
+    ("a non-string key", {0: {"ground_truth": SENTINEL}}),
+]
+
+#: The same question asked of shapes that are not JSON at all. These cannot be
+#: asserted on the page: the synthesis prompt `json.dumps` the results, so a set
+#: or a bare object raises there and the run never renders. That is a crash
+#: rather than a leak, and it belongs to the tools that would return one -- but
+#: `readable_rows` is still the boundary, so it is held to the same claim here.
+UNSERIALISABLE_SHAPES = [
+    ("a set", {"weird": {SENTINEL}}),
+    ("an object with a telltale repr", {"weird": _Telltale()}),
+    ("a list holding one", {"weird": [_Telltale()]}),
+    ("a record holding one", {"rows": [{"m": "x", "obj": _Telltale()}]}),
+]
+
+
+@pytest.mark.parametrize("data", [shape for _, shape in LEAKY_SHAPES],
+                         ids=[name for name, _ in LEAKY_SHAPES])
+def test_no_payload_shape_puts_the_answer_key_on_the_page(client, monkeypatch, data):
     """The station's hardest invariant, at the one boundary this task opens.
 
-    No tool returns `ground_truth` today. This asserts that the page would not
-    show it if one did, because the filter is in Python and not in a reviewer's
-    memory.
+    Asserted on the rendered page rather than on the rows, because the claim is
+    about what an operator can read, and a value can reach the page through a
+    label, a repr or a nested container as easily as through a field.
     """
-    monkeypatch.setitem(
-        analysis.PLANNABLE_TOOLS, "query_machine_stats",
-        lambda **kw: {"defect_type": "open", "ground_truth": "TELLTALE-TOP",
-                      "fleet_share_of_defects": 0.2,
-                      "machines": [{"machine": "L2-M22", "share_of_defects": 0.32,
-                                    "per_board": 2.3,
-                                    "ground_truth": "TELLTALE-NESTED"}]},
-    )
+    monkeypatch.setitem(analysis.PLANNABLE_TOOLS, "query_machine_stats",
+                        lambda **kw: data)
     page = client.post("/ask", data={"question": "M22 正常嗎"},
                        follow_redirects=True).text
 
-    assert "ground_truth" not in page
-    assert "TELLTALE-TOP" not in page
-    assert "TELLTALE-NESTED" not in page
-    assert "per_board" in page, "the rest of the payload is still shown"
+    assert SENTINEL not in page
+    assert "ground_truth" not in page.casefold()
 
 
-def test_the_data_view_is_filtered_at_the_dict_boundary():
-    """Not by grepping the HTML: the guard lives where the dict is shaped."""
-    rows = readable_rows({"ok": 1, "ground_truth": "x",
-                          "nested": {"ground_truth": "x", "keep": 2},
-                          "rows": [{"ground_truth": "x", "keep": 3}]})
+@pytest.mark.parametrize(
+    "data", [shape for _, shape in LEAKY_SHAPES + UNSERIALISABLE_SHAPES],
+    ids=[name for name, _ in LEAKY_SHAPES + UNSERIALISABLE_SHAPES],
+)
+def test_no_payload_shape_survives_the_dict_boundary(data):
+    """The same claim one layer down, where the guard actually lives."""
+    rendered = str(readable_rows(data))
 
-    assert "ground_truth" not in [label for label, _ in rows]
-    assert not any("ground_truth" in value for _, value in rows)
-    assert not any("x" == value for _, value in rows)
+    assert SENTINEL not in rendered
+    assert "ground_truth" not in rendered.casefold()
+
+
+def test_the_guard_drops_the_shape_it_cannot_read_and_keeps_the_rest(client):
+    """Dropping everything would also pass the leak test, and be useless."""
+    rows = readable_rows({"ok": 1, "ground_truth": SENTINEL,
+                          "nested": {"ground_truth": SENTINEL, "keep": 2},
+                          "rows": [{"ground_truth": SENTINEL, "keep": 3}],
+                          "weird": [[SENTINEL]]})
+
+    assert ("ok", "1") in rows
+    assert ("nested.keep", "2") in rows
+    assert ("rows[0]", "keep=3") in rows
+    assert any("未顯示" in value for _, value in rows), "the omission is visible"
+
+
+#: The five plannable tools' real return shapes, from
+#: `.superpowers/sdd/2026-08-22-analysis-interface/real-tool-schemas.md`. A
+#: whitelist that is too strict fails silently -- the page just shows less --
+#: so each one is asserted to still render something a reader can check.
+REAL_SHAPES = [
+    ("query_defect_history",
+     {"filters": {"line_id": "L2", "days": 7}, "window_end": "2026-08-22",
+      "boards_inspected": 40, "defects_total": 91, "defects_per_board": 2.3,
+      "by_class": {"open": 30, "short": 12}},
+     "defects_per_board"),
+    ("query_machine_stats",
+     {"defect_type": "open", "days": 7, "fleet_average_per_board": 1.4,
+      "fleet_share_of_defects": 0.2,
+      "machines": [{"machine": "L2-M22", "per_board": 2.3,
+                    "share_of_defects": 0.32}]},
+     "share_of_defects"),
+    ("query_board_context",
+     {"board": "20085294", "lot_id": "LOT-1", "line_id": "L2",
+      "machine_id": "M22", "shift": "A", "inspected_at": "2026-08-22T01:00:00",
+      "lot_boards": 12, "lot_defects": 30, "lot_defects_per_board": 2.5},
+     "lot_defects_per_board"),
+    ("search_standards",
+     {"query": "open", "passages": [{"document": "WI-300", "heading": "opens",
+                                     "text": "any confirmed open is critical",
+                                     "distance": 0.21}]},
+     "any confirmed open is critical"),
+    ("list_candidates",
+     {"reference": "20085294#3", "candidates": [{"index": 3, "x": 10, "y": 20,
+                                                 "predicted_class": "open"}]},
+     "predicted_class"),
+]
+
+
+@pytest.mark.parametrize("data,expected", [(d, e) for _, d, e in REAL_SHAPES],
+                         ids=[name for name, _, _ in REAL_SHAPES])
+def test_every_real_tool_shape_still_renders(data, expected):
+    rendered = str(readable_rows(data))
+
+    assert expected in rendered
+    assert "未顯示" not in rendered, "nothing a real tool returns should be dropped"
 
 
 def test_the_data_view_truncates_rather_than_floods():
