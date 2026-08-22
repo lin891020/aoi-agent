@@ -193,3 +193,20 @@ table.mini tr.fleet td { color: var(--dim); border-bottom: none; }
 .chip.small { font-size: 0.72rem; padding: 0.05rem 0.4rem; }
 .dim.small { font-size: 0.72rem; }
 .meter i.hot { background: var(--warn); }
+
+/* ---- analysis ---- */
+
+.ask { display: flex; gap: 0.6rem; margin: 1rem 0 0.5rem; }
+.ask input { flex: 1; background: var(--bg); color: var(--ink);
+             border: 1px solid var(--line); border-radius: 8px;
+             padding: 0.7rem 0.9rem; font: inherit; }
+.ask button { background: var(--accent); color: #0b1220; border: 0;
+              border-radius: 8px; padding: 0.7rem 1.4rem; font: inherit;
+              font-weight: 600; cursor: pointer; }
+.example { display: inline-block; margin-right: 0.9rem; font-size: 0.85rem; }
+.answer-block { margin: 1.25rem 0; }
+.answer-block ul { margin: 0.3rem 0; padding-left: 1.1rem; color: #c9c9d0; }
+.chart { margin: 1.25rem 0; background: var(--bg); border: 1px solid var(--line);
+         border-radius: 10px; padding: 0.75rem; overflow-x: auto; }
+.recent { list-style: none; padding: 0; font-size: 0.9rem; }
+.recent li { padding: 0.35rem 0; border-bottom: 1px solid #26262c; }

@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Ask &middot; production data{% endblock %}
+{% block content %}
+<section class="panel">
+  <h1>問一個關於產線的問題</h1>
+
+  <form class="ask" method="post" action="/ask">
+    <input type="text" name="question" autocomplete="off" autofocus
+           value="{{ run.question if run else '' }}"
+           placeholder="例如：L2-M22 的 open 是不是不尋常？">
+    <button type="submit">問</button>
+  </form>
+
+  {# The form posts and redirects, with no JavaScript involved. A live
+     progress panel belongs here, below the form and above the answer, and
+     must stay additive: with scripting off this page still answers. #}
+
+  <p class="sub">試試看：
+    {% for example in examples %}
+      <a class="example" href="#" onclick="document.querySelector('.ask input').value=this.textContent;return false">{{ example }}</a>
+    {% endfor %}
+  </p>
+  <p class="sim">資料涵蓋最近 {{ coverage_days }} 天。超出這個範圍的問題會被拒答，而不是用最接近的窗口代答。產線 metadata 是模擬的；驗收標準是本專案自撰文件，不是 IPC-A-610。</p>
+
+  {% if plan_errors %}
+    <div class="handover">
+      <span class="label">這個計畫沒有執行</span>
+      <ul>{% for e in plan_errors %}<li>{{ e }}</li>{% endfor %}</ul>
+    </div>
+  {% endif %}
+
+  {% if run %}
+    <div class="answer-block">
+      <h2>1 &middot; 它怎麼理解你的問題</h2>
+      <p>{{ run.plan.interpretation if run.plan else run.answer }}</p>
+    </div>
+
+    {% if run.plan and run.plan.assumptions %}
+    <div class="answer-block">
+      <h2>3 &middot; 它假設了什麼</h2>
+      <ul>{% for a in run.plan.assumptions %}<li>{{ a }}</li>{% endfor %}</ul>
+    </div>
+    {% endif %}
+
+    {% if run.results %}
+    <div class="answer-block">
+      <h2>2 &middot; 它呼叫了什麼</h2>
+      <table class="queue">
+        <thead><tr><th>工具</th><th>參數</th><th>為什麼</th><th class="num">耗時</th><th></th></tr></thead>
+        <tbody>
+        {% for r in run.results %}
+          <tr>
+            <td class="mono">{{ r.tool }}</td>
+            <td class="mono dim">{{ r.args }}</td>
+            <td class="dim">{{ (run.plan.calls[loop.index0].why) if run.plan and run.plan.calls|length > loop.index0 else '' }}</td>
+            <td class="num">{{ '%.0f'|format(r.elapsed_ms) }}ms</td>
+            <td>
+              {% if not r.ok %}<span class="chip warn">失敗</span>
+              {% elif r.data and r.data.error %}<span class="chip warn">查無資料</span>
+              {% else %}<span class="chip done">ok</span>{% endif %}
+            </td>
+          </tr>
+          {# A tool that answers with {"error": ...} returned, so the call is
+             ok; it just has nothing to say. Shown as neither a success nor a
+             crash, because it is neither. #}
+          {% if not r.ok %}<tr><td colspan="5" class="dim">{{ r.error }}</td></tr>
+          {% elif r.data and r.data.error %}<tr><td colspan="5" class="dim">工具回報：{{ r.data.error }}</td></tr>{% endif %}
+        {% endfor %}
+        </tbody>
+      </table>
+      <p class="sub dim">4 &middot;
+        {{ run.results|length }} 個工具 &middot;
+        平行 {{ '%.0f'|format(run.timings.tools_wall or 0) }}ms /
+        依序 {{ '%.0f'|format(run.timings.tools_sequential or 0) }}ms &middot;
+        規劃 {{ '%.0f'|format(run.timings.plan or 0) }}ms &middot;
+        撰寫 {{ '%.0f'|format(run.timings.synthesise or 0) }}ms
+      </p>
+    </div>
+    {% endif %}
+
+    {% if chart_svg %}
+    <figure class="chart">{{ chart_svg|safe }}</figure>
+    {% endif %}
+
+    <div class="answer-block">
+      <h2>5 &middot; 回答</h2>
+      <p>{{ run.answer }}</p>
+    </div>
+  {% endif %}
+
+  {% if recent %}
+    <h2>最近問過的</h2>
+    <ul class="recent">
+      {% for r in recent %}
+        <li><a href="/ask/{{ r.id }}">{{ r.question }}</a>
+            {% if r.refused %}<span class="chip">拒答</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</section>
+{% endblock %}
