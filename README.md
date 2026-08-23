@@ -1,6 +1,7 @@
 # AOI-Agent
 
 [![tests](https://github.com/lin891020/aoi-agent/actions/workflows/tests.yml/badge.svg)](https://github.com/lin891020/aoi-agent/actions/workflows/tests.yml)
+&nbsp;·&nbsp; [繁體中文](README.zh-TW.md)
 
 **Every board the AOI flags gets a second look — from a model, not a person.**
 
@@ -29,18 +30,173 @@ not interchangeable, so the model is reported as a curve against an escape
 budget rather than as a single number. (For reference: 96.5% overall accuracy.)
 
 And **82.2% of candidates never reach a language model at all** — they are
-dispositioned by the vision model in **2.5ms each on CPU** (p50, single
-candidate, 300 calls; 7.3ms on MPS, which loses at a batch of one). The LLM is
+dispositioned by the vision model in **2.5 ms each on CPU** (p50, single
+candidate, 300 calls; 7.3 ms on MPS, which loses at a batch of one). The LLM is
 spent only on the 17.8% that is genuinely ambiguous, which is what makes a 20B
 model affordable at line rate.
 
-That figure used to read "tens of milliseconds" and had no run behind it. It is
-now measured — see
-[re-verifier latency](docs/benchmarks.md#re-verifier-latency--what-one-candidate-costs-and-on-what-hardware),
-which also answers whether a re-verification station needs a GPU at all. It does
-not.
+Full report: [docs/benchmarks.md](docs/benchmarks.md). Every number below points
+at the section it came from.
 
-Full report: [docs/benchmarks.md](docs/benchmarks.md).
+## What measurement changed here
+
+The interesting part of this repository is not the pipeline. It is the five
+things that were measured and turned out to be wrong — three of them in the
+project's own favour — and what the measurement did to the code afterwards.
+
+### The LLM was on the decision path. It was measured, and taken off it.
+
+The original design had a local LLM read the evidence and produce the verdict.
+Measured over 60 candidates the router sends to investigation, it scored
+**43/60 = 71.7%** against the classifier's **51/60 = 85.0%** on the same
+regions. It changed the class on 12 of them and was right **once**; the
+classifier had already been right on 9, and 2 were wrong either way.
+
+Its `confident` flag — the thing that chose who needed a person — also lost, to
+a plain threshold on the number the classifier had already produced. So both
+jobs went back to the model that is better at them: `route_after_reason` routes
+on `ESCALATE_BELOW`, `decide_node` takes `model_class`, and the LLM writes the
+rationale the operator reads. It explains; it no longer decides who reads it.
+The re-run after the change is in the same file: **27/30 = 90.0%** for the
+system as it now stands, against **22/30 = 73.3%** for the counterfactual it
+replaced.
+
+The measurement is pinned in the code that acts on it — `decide_node`'s
+docstring carries the 12-and-1, and
+`test_the_classifier_class_stands_when_the_llm_disagrees` fails if the verdict
+comes off the LLM again.
+
+What it does not establish: 60 candidates, one model (`gpt-oss:20b` at
+`think="low"`), one prompt. It is a result about this classifier and this
+prompt, not about language models.
+→ [the run](docs/benchmarks.md#agent-layer--does-it-beat-the-classifier-and-is-the-escalation-calibrated)
+
+### The planner was graded on questions its author never saw.
+
+A second entrance, `/ask`, turns a supervisor's question into a typed plan of
+tool calls or refuses it. Graded on 20 questions written by the person who wrote
+the prompt, it scored 100% — which says more about the question set than about
+the planner, and the section says so.
+
+So seventy more were written by three authors blind to the prompt, the few-shot
+examples and the fixture: thirty-five from an author told nothing about the
+tools and asked to write what a shift supervisor would type, thirty-five from an
+author given only the tool signatures and asked to probe the boundary, and the
+expected plans from a third who read the tools and the store but not the prompt.
+
+**55/70 = 79%**, and the shape of the failure is the point:
+
+| | questions | correct |
+|---|---|---|
+| should answer | 42 | **27/42 = 64%** |
+| should refuse | 28 | **28/28 = 100%** |
+
+Seven of the fifteen misses are refusals of questions it should have answered.
+It is **timid, not reckless**, which is the survivable direction on a line: a
+planner that answers everything is more dangerous than one that says it cannot.
+Graded by severity, the questions whose right answer the grader called
+unarguable score 42/51 = 82%; the ones where graders could reasonably disagree
+score 13/18 = 72%. Seven of the seventy cannot be passed by any plan at all —
+the grader pinned an argument onto a tool that does not take it — and they are
+counted as misses anyway; over the remaining 63 the score is 55/63 = 87%.
+
+The set also found two real defects that the score does not contain:
+
+- `query_machine_stats` defaults to `days=14` and the store holds 9. A plan that
+  omits the argument runs, returns the whole 9-day span, and labels it `14`.
+- **No tool returns a false-call rate at any aggregate level**, in a system
+  whose entire subject is false calls. Six of the supervisor's thirty-five
+  questions ask for one, per machine or per shift or per line. Refusing them is
+  correct for the system as built and is the right answer to the wrong question.
+  Neither has been papered over, because adding a tool to pass a set is how a
+  measurement stops measuring.
+
+What it does not establish: the questions were written by LLM authors working
+from different briefs, not by a real shift supervisor, so this bounds the shapes
+those briefs produce and nothing else. Plans are scored, not prose — whether the
+sentence written over correct data is correct is unmeasured.
+→ [the independent run](docs/benchmarks.md#analysis-planner-asked-by-someone-else--does-it-plan-the-right-lookups-and-refuse-the-rest)
+
+### The criteria retrieval was answering about one class out of another's rules.
+
+Found by reading the queue, not by a failing test. All five escalations in the
+store told the operator that an open must be judged by whether it sits inside a
+pad. No document says that: it is WI-206's rule and it governs pin holes. WI-201
+says any confirmed open is critical, because continuity is binary.
+
+Measured over six classes × six real phrasings at `top_k=2`, **27.8% of
+retrieved passages came from the wrong class's work instruction** — worst for
+`short` at 67%, and on the disposition path's own `open` query the pin-hole
+disposition section ranked *first*, ahead of WI-201's own. The fix is at the
+retrieval boundary rather than in the prompt: every document declares the class
+it governs, the declaration rides on every passage, and a caller with a class in
+hand gets that class's document plus the two that govern every class. Now
+**0.0%**, held by tests over the real documents.
+
+The project's standing defence — the LLM only explains, the classifier decides —
+does not cover this. The fabricated rule went to the people who *do* decide, and
+it pointed at releasing a critical defect. The eight explanations already written
+under the old retrieval are marked in place rather than deleted or regenerated.
+
+What it does not establish: this counts which document a passage came from, not
+whether the passage answers the question the operator has. For `open` it still
+returns how to *disposition* one, when the person looking at the images needs to
+know how to *confirm* one. That is a documents problem now, and it is open.
+→ [the contamination table](docs/benchmarks.md#cross-class-contamination-in-the-criteria-retrieval)
+
+### Two thresholds cited sources that did not say what they claimed.
+
+`ESCALATE_BELOW` was cited as "the lowest threshold adding no escape to the
+budget" and no sweep of it had ever been run. `CONFIDENT` was cited to a clause
+of WI-300 that names no number. The sweep was then written, and it found the
+first claim false in both directions: the lowest zero-escape threshold on this
+split is **0.875**, not the 0.90 the code carried, and 0.90 had not come from
+any sweep — it was a round number that happened to be conservative.
+
+Neither number shipped. 0.875 clears the highest-confidence real defect that
+branch would dismiss by **0.003**, which is a test split read to three decimal
+places. The value that needs no split is the dismissal threshold itself:
+`ESCALATE_BELOW` is now *equal* to it, which empties by construction the only
+band in which the agent branch could dismiss a real defect. **The agent branch
+may confirm a defect; it may never dismiss one** — and that survives a retrain,
+where a swept number would have to be swept again and silently would not be. It
+cost 47 more escalations out of 8,143 candidates, 0.6% of the queue.
+
+`CONFIDENT` turned out not to be a quality gate at all. `confirm_node` and
+`decide_node` write the same verdict, so anywhere at or above `ESCALATE_BELOW`
+it changes **zero** dispositions and adds zero escapes; swept to 0.999 it still
+changes zero. It decides who gets an LLM call and a written rationale, not what
+happens to a board. What it must not do is fall *below* `ESCALATE_BELOW`, where
+it starts confirming, unreviewed, regions the flow would have handed to a
+person. The constraint is the citation; the value inside it is a dial.
+
+Every threshold now cites a script a reader can run or a line in a document that
+states the number, and **29 tests fail** if a value drifts from its source, if a
+source stops resolving, or if a threshold reaches the code with no row in the
+table.
+→ [the sweep](docs/benchmarks.md#threshold-sweep--escalate_below-and-confident-2026-08-23--commit-68e90b6)
+· [the table](docs/architecture.md#thresholds-and-where-they-come-from)
+
+### The whole-line escape rate was overstated by nearly an order of magnitude.
+
+It read **5.4%**. It is **0.61%**. The old figure added a 5.0% "AOI stage miss
+rate" to the re-verifier's own, under the sentence "already gone and no
+threshold recovers them" — which was true of 7 defects and was being applied to
+157. The 5.0% never counted defects the detector failed to find; it counted
+defects whose best candidate did not clear DeepPCB's IoU 0.33 cut, and 150 of
+those 157 have a candidate sitting on them. A statistic about how tightly this
+detector draws a box was being published as a detection failure.
+
+Recounted on defects rather than boxes, it is two numbers and not one:
+**0.22%** never flagged at all (7 of 3,140 — unrecoverable) and **0.38%**
+flagged and then dismissed by the re-verifier (the number the dismissal
+threshold governs). Adding them into one headline is what produced the 5.4%,
+and it told a reader to go tune the thing that cannot move.
+
+This one was wrong in the project's favour: it charged 150 defects to a stage
+that had not failed, while removing them from the only measurement that could
+contradict it.
+→ [the accounting](docs/benchmarks.md#whole-line-escape-rate-recounted-on-defects-instead-of-boxes)
 
 ## How it works
 
@@ -50,24 +206,32 @@ template ─┐
 test ─────┘            "AOI simulator"                              │
                                                                     ▼
                                                         ResNet-18 re-verifier
+                                                     class + calibrated P(fc)
                                                                     │
-                                                    ┌───────────────┴────────────┐
-                                          confident dismissal          everything else
-                                          or confident defect                 │
-                                                    │                         ▼
-                                                    │              production context
-                                                    │              + acceptance criteria
-                                                    │                (three MCP tools)
-                                                    │                         │
-                                                    │                         ▼
-                                                    │                  local LLM weighs
-                                                    │                    the evidence
-                                                    │                         │
-                                                    │              ┌──────────┴────────┐
-                                                    ▼              ▼                   ▼
-                                                 verdict        verdict          escalate to
-                                                                                  an operator
+                        ┌───────────────────────────┬───────────────┴───────────┐
+                        ▼                           ▼                           ▼
+                P(false call) ≥ .915          conf ≥ .95 and a          everything else
+                                            defect other than `open`            │
+                        │                           │                           ▼
+                        │                           │              production context
+                        │                           │            + criteria for that class
+                        │                           │               (three MCP tools)
+                        │                           │                           │
+                        │                           │                           ▼
+                        │                           │            LLM writes the rationale
+                        │                           │                           │
+                        │                           │                  conf ≥ .915 ?
+                        │                           │              ┌────────────┴──────────┐
+                        ▼                           ▼              ▼                       ▼
+                     dismiss                     confirm    classifier's class      escalate to
+                                                                  stands            an operator
 ```
+
+Every disposition on that diagram is the classifier's. Until 2026-08-23 the
+bottom-middle box read "the LLM's verdict" and the escalation edge was routed by
+the LLM's own opinion of its confidence; both were measured against the
+classifier they second-guessed, both lost, and both were removed. The LLM's
+output now reaches exactly one place — the sentence on the operator's screen.
 
 ### Where the false calls come from
 
@@ -121,7 +285,8 @@ else:
 - the model's class, confidence and P(false call), plus the 64 px window it
   actually classified — if that window is off the region, a disagreement is a
   cropping bug, not a classifier one.
-- the production context and the acceptance criteria the agent retrieved.
+- the production context and the acceptance criteria the agent retrieved, now
+  scoped to the class being asked about.
 - why the agent declined to decide.
 
 Two things it deliberately does not do. It **never shows the ground truth**: the
@@ -147,10 +312,36 @@ again, whereas the other order drops an operator's answer silently.
 This is also what makes the graph honest. With an in-memory checkpointer the
 hand-off looks right inside a single CLI run and loses the queue the moment the
 process exits; `interrupt` is then a prompt wearing a graph's clothes.
+`tests/test_checkpoint_durability.py` raises an escalation in an interpreter
+that then exits, and finishes it from a second one.
+
+## Asking the line a question — `/ask`
+
+A second entrance, for a different person. The queue answers "what do I do with
+this region"; `/ask` answers what a shift supervisor walks up with — "is M22
+drifting, and does that matter". It reads the same MCP tools the disposition
+path uses, and it dispositions nothing.
+
+One LLM call produces a typed plan of tool calls. `validate_plan` checks it in
+three layers before anything runs — the tool name, the argument names against
+the real signature, and the argument *values* against the domains the store
+actually holds — and a plan that fails is shown to the person with every error,
+not retried. The tools then fan out over `Send`, a failed branch returns data
+rather than raising, the chart is derived from the result *shape* rather than
+chosen by the model, and a second LLM call writes the prose over figures that
+are printed beside it.
+
+The fan-out is the shape of the work — the facts are independent — and not a
+latency optimisation. Two model calls dominate the wall time by orders of
+magnitude, so nothing here presents it as a speed-up.
+
+How well the planner does this is the blind eval
+[above](#the-planner-was-graded-on-questions-its-author-never-saw); the prose it
+writes at the end is not measured at all.
 
 ### Why there is no text-to-SQL
 
-`query_production` exposes typed parameters over a fixed query set. The model
+The production tools expose typed parameters over a fixed query set. The model
 fills parameters; it does not write SQL.
 
 This is a judgement about the failure mode, not the difficulty. A generated
@@ -158,6 +349,9 @@ query that is syntactically valid but semantically wrong returns a
 plausible-looking number with no error, and in a disposition context a plausible
 wrong number is worse than a crash — it gets acted on. Parameter filling
 exercises the same tool-calling ability while keeping the query set reviewable.
+It is also why `/ask` validates argument *values*: `line_id="L4"` raises nothing
+and returns nothing, so the chart comes back with one fewer line and the gap
+reads as a finding rather than as an answer.
 
 ## The tools
 
@@ -203,6 +397,31 @@ To use them from Claude Desktop, add to `claude_desktop_config.json`:
 }
 ```
 
+## What one candidate costs
+
+The re-verifier is a ResNet-18 over a 3×64×64 stack (template, test,
+difference): **42.7 MB on disk, 11.2 M parameters**, and 2.50 ms per candidate
+at p50 on CPU (p90 2.53 ms, 300 calls, 4 torch threads). The timed path is the
+one the pipeline runs — uint8 to float, to the device, forward, softmax, back to
+the host — because timing the bare forward hides a transfer that on MPS is not
+free.
+
+**At a batch of one the GPU is the slower device**: MPS p50 is 7.34 ms, 2.9×
+slower, because on a model this small dispatching the forward costs more than
+running it. MPS only overtakes at batch 8. A station judging one region at a
+time should not use one; the seeding pass, which classifies a whole board at
+once, should.
+
+Two results that are easy to undo by accident: sustained CPU inference throttles
+about 20% past the first minute on this fanless chassis, and CPU per-candidate
+cost gets *worse* past batch 8 by several-fold — a property of the model's CPU
+convolution path, not of this machine's core count, checked across thread
+counts. Batch at 8 on CPU.
+
+This section used to read "tens of milliseconds" with no run behind it. It was
+wrong by more than an order of magnitude, in the pessimistic direction.
+→ [the run](docs/benchmarks.md#re-verifier-latency--what-one-candidate-costs-and-on-what-hardware)
+
 ## Running it
 
 ```bash
@@ -220,9 +439,21 @@ uv run python -m aoi_agent board 20085294                # run a board through t
 uv run python -m aoi_agent corrections                   # where operators overruled the model
 ```
 
+The measurements above are scripts, not screenshots — `threshold_sweep.py`,
+`retrieval_report.py`, `escape_accounting.py`, `opening_kernel_sweep.py`,
+`reverifier_latency.py`, `agent_eval.py`, `analysis_eval.py`. Each appends to
+`docs/benchmarks.md`, newest last, and nothing there is edited in place.
+
 Requires [Ollama](https://ollama.com) with a tool-calling model (`gpt-oss:20b`
 by default). Everything runs locally; nothing leaves the machine, which on a
 production line is a requirement rather than a preference.
+
+**691 tests.** 683 of them run on a clean checkout in CI — they build their own
+store, their own Chroma collection and their own boards in a tmpdir, and stub
+the model rather than calling it. The other 8 want the 231 MB DeepPCB clone on
+disk and carry a `dataset` marker; the CI job lists them by name at the end of
+every run, because a green tick over a silently shrinking suite is what that job
+exists to prevent.
 
 ### Running it in a container
 
@@ -255,17 +486,8 @@ explanation step needs the container to be able to reach it.
   one.** 0.22% of defects (7 of 3,140 on the test split) have no candidate on
   them at all — nothing recovers those. A further 0.38% are flagged and then
   dismissed by the re-verifier, which is what the dismissal threshold governs.
-  See [the accounting](docs/benchmarks.md#whole-line-escape-rate-recounted-on-defects-instead-of-boxes).
-
-  This bullet read "the simulator misses 5.0% of defects outright, against 0.47%
-  added by the re-verifier — 5.4% for the line as a whole" until 2026-08-23, and
-  said the AOI stage dominated. It does not. The 5.0% was the share of defects
-  whose best candidate failed DeepPCB's IoU 0.33 cut, and 150 of those 157 have
-  a candidate sitting on them — the detector found them and drew a box a median
-  0.51× the size of the annotator's. Measured with the model in the loop, 145 of
-  the 150 reach an operator. A box-tightness statistic was being published as a
-  detection failure, and the sentence that carried it — "already gone and no
-  threshold recovers them" — was true of seven defects and applied to 157.
+  What this figure used to say, and why it was nine times too large, is
+  [above](#the-whole-line-escape-rate-was-overstated-by-nearly-an-order-of-magnitude).
 - Escapes concentrate in the `open` class (1.35% at the ≤0.5% budget) — thin
   breaks in a trace, the hardest thing to tell from a registration artefact.
   The flow routes every `open` to investigation regardless of confidence for
@@ -286,6 +508,17 @@ explanation step needs the container to be able to reach it.
   The constant did not move, and it does not move without re-running
   [that sweep](docs/benchmarks.md#the-opening-kernel--what-the-seven-lost-defects-would-cost-to-recover).
   A real AOI is noisier than this one.
+- **The criteria still answer the wrong question for the operator.** Scoping
+  fixed which document a passage comes from. It did not fix what the passage
+  says: for `open` the retrieved rule is that any confirmed open is critical,
+  which is how to *disposition* one, not how to *confirm* one — and confirming
+  is what the person in front of the images is doing. That is a documents
+  problem now.
+- **`gpt-oss:20b` misses WI-300's 10 s response budget** — p90 service time
+  15.6 s on a verified-quiet machine, 20 of 24 calls over. It gates nothing,
+  because the LLM is off the decision path and an operator waits for a verdict
+  rather than for an explanation. It would gate something again the moment
+  either of those changed.
 - **Production context is simulated.** Public defect datasets ship no lot
   numbers or machine ids. Boards are assigned to machines by rank on open-defect
   share, which plants a specific, documented signal on one station so the
@@ -295,16 +528,36 @@ explanation step needs the container to be able to reach it.
 
 ## Not yet done
 
-- **Agent-layer latency benchmarks** and a model comparison across
-  `gpt-oss:20b`, `qwen3:14b` and `qwen2.5:14b`. A single tool decision measures
-  ~1.5–2.9 s at 22 tok/s on an uncontended GPU; the numbers worth publishing
-  need the machine to itself.
-- **The review station UI.** The escalation path currently ends at a CLI
-  prompt. `interrupt` is the architectural centrepiece and it deserves a screen
-  where an operator sees the template, the board, the flagged region and the
-  evidence side by side.
+- **No authentication, on either page.** This was a backlog item until `/ask`
+  made it a precondition. Two costs. `reviewer` is a free-text field, so the
+  corrections that feed retraining carry no trustworthy identity — demonstrated
+  the hard way, when five regions were clicked through without domain knowledge,
+  four of them wrong, and nothing in the system could distinguish those labels
+  from an expert's; they had to be deleted by hand. And an unauthenticated
+  visitor to the queue sees the regions on one line, while the same visitor at
+  `/ask` can pull production statistics for the whole plant. This is the item
+  that should block the station running anywhere but a laptop.
+- **The synthesis prose is unmeasured.** The planner is graded on plans and the
+  tools are deterministic, so correct data is established. Whether the paragraph
+  written over that data is correct is not, and a plausible wrong sentence next
+  to correct figures is the failure mode this project spends the rest of its
+  time avoiding. Scoring it needs a rubric and a grader who did not write the
+  prompt, on the pattern of the planner set.
 - **Retraining from operator corrections.** The decision history records them
-  (`uv run python -m aoi_agent corrections`); nothing consumes them yet.
-- **Quantisation and edge inference** — INT8, ONNX, and the size/latency/accuracy
-  trade-off. A re-verification station is an edge deployment and latency is a
-  hard constraint there.
+  (`uv run python -m aoi_agent corrections`); nothing consumes them yet, and the
+  identity gap above has to close first or the next round trains on anonymous
+  clicks.
+- **Quantisation and edge inference** — INT8, ONNX, and the size/latency
+  trade-off. Not started. The measurement above scopes it: at 2.5 ms per
+  candidate on CPU there is no latency problem to solve, so this is about
+  memory and portability on a box beside a conveyor, and it should be reported
+  as such rather than as a speed-up.
+- **A model comparison** across `gpt-oss:20b`, `qwen3:14b` and `qwen2.5:14b`.
+  The reason node's latency is now measured on one model; whether a smaller one
+  fits WI-300's budget and still writes a usable rationale is not.
+- **A board browser**, so the 82% the agent settled is visible and not only the
+  queue. Today the station shows what the system could not decide, which is the
+  least flattering and least complete view of it.
+- **Timestamps are stored UTC and displayed UTC, unlabelled.** On a quality
+  record read at UTC+8 that is an eight-hour lie. Store UTC, render local, say
+  which.
