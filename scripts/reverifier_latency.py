@@ -50,6 +50,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 import resource
 import statistics
 import subprocess
@@ -205,6 +206,60 @@ def throttle_verdict(
     )
 
 
+#: Command fragments that mean something else may be on the GPU.
+#:
+#: `ollama ps` does not report any of these. It knows about Ollama's own
+#: resident models and nothing else, so a torch/MPS job in another shell can
+#: saturate the same silicon while the residency check comes back clean. That
+#: is not hypothetical -- the first run of this benchmark was discarded because
+#: a concurrent torchvision detector benchmark held MPS throughout it and
+#: `ollama ps` showed nothing unusual. `.py` is in the list because that is
+#: what a torch job looks like from the outside; `mediaanalysisd` is here
+#: because macOS runs it on the GPU without being asked.
+GPU_CLAIMANTS = ("llama-server", "mlx", "mediaanalysisd", ".py")
+
+#: Below this a process is idling, not computing. `pet server` and the editor's
+#: python helpers sit at zero all day and would otherwise block every run.
+BUSY_CPU_PERCENT = 5.0
+
+
+def competing_processes(
+    ps_output: str, own_pid: int, min_cpu: float = BUSY_CPU_PERCENT
+) -> list[str]:
+    """Processes busy enough to be sharing the GPU, from `ps -Ao pid,pcpu,command`.
+
+    The residency check this pairs with only sees Ollama. This one sees whatever
+    else is computing, which on a single fanless laptop shared between several
+    agents is the failure that actually happens.
+    """
+    found = []
+    for line in ps_output.strip().splitlines():
+        parts = line.split(None, 2)
+        if len(parts) < 3:
+            continue
+        pid_text, cpu_text, command = parts
+        try:
+            pid, cpu = int(pid_text), float(cpu_text)
+        except ValueError:
+            continue          # the header row
+        if pid == own_pid or cpu < min_cpu:
+            continue
+        if not any(marker in command for marker in GPU_CLAIMANTS):
+            continue
+        found.append(f"{pid} {cpu:.0f}% {command[:110]}")
+    return found
+
+
+def process_table() -> str:
+    try:
+        return subprocess.run(
+            ["ps", "-Ao", "pid,pcpu,command"],
+            capture_output=True, text=True, timeout=15,
+        ).stdout
+    except (OSError, subprocess.SubprocessError) as error:
+        return f"(ps unavailable: {error})"
+
+
 def resident_models(ps_output: str) -> list[str]:
     """Model names in `ollama ps` output. Anything here means something else is
     holding the GPU and the run is not measuring this machine idle."""
@@ -255,12 +310,25 @@ def render(results: dict) -> list[str]:
         "RSS covers both sets of weights rather than one station's footprint. Both "
         "are stated rather than corrected for.",
         "",
+        "Contention was checked two ways, because one of them is not enough. "
+        "`ollama ps` reports Ollama's own resident models and nothing else, so a "
+        "torch/MPS job in another shell saturates the same GPU while that check "
+        "comes back clean. The second check is a process sweep for anything busy "
+        "enough to be computing -- `llama-server`, any running `.py`, `mlx`, "
+        "`mediaanalysisd`. Both are recorded below.",
+        "",
         "```",
         "ollama ps before the run",
         results["ps_before"],
         "",
+        "busy processes before the run",
+        "\n".join(results["busy_before"]) or "(none)",
+        "",
         "ollama ps after the run",
         results["ps_after"],
+        "",
+        "busy processes after the run",
+        "\n".join(results["busy_after"]) or "(none)",
         "```",
         "",
         "#### Single candidate, warm",
@@ -399,7 +467,7 @@ def synchronise(device) -> None:
         torch.cuda.synchronize()
 
 
-def classify_once(model, device, patches: np.ndarray) -> None:
+def classify_once(model, device, patches: np.ndarray) -> np.ndarray:
     """Exactly what `ReVerifier.classify_batch` does to a stack of patches.
 
     Mirrored here rather than called, because the real method starts from board
@@ -563,8 +631,10 @@ def main() -> int:
     parser.add_argument("--iterations", type=int, default=300,
                         help="timed single-candidate classifications per device")
     parser.add_argument("--batch-repeats", type=int, default=30)
-    parser.add_argument("--soak", type=float, default=90.0,
-                        help="seconds of sustained load per device")
+    parser.add_argument("--soak", type=float, default=150.0,
+                        help="seconds of sustained load per device; must clear the "
+                             "60s thermal boundary by enough to give steady state a "
+                             "sample worth a percentile")
     parser.add_argument("--soak-batch", type=int, default=16)
     parser.add_argument("--out", type=Path, default=Path("docs/benchmarks.md"))
     parser.add_argument("--dry-run", action="store_true", help="print, do not append")
@@ -591,13 +661,21 @@ def main() -> int:
         f"(mean {per_board.mean():.1f}, max {per_board.max()})"
     )
 
+    own = os.getpid()
     ps_before = ollama_ps()
+    busy_before = competing_processes(process_table(), own)
     print(f"\nollama ps before:\n{ps_before}\n")
-    contended = resident_models(ps_before)
+    print(
+        "busy processes before:\n  "
+        + ("\n  ".join(busy_before) if busy_before else "(none)")
+        + "\n"
+    )
+    contended = resident_models(ps_before) + busy_before
     if contended:
         print(
-            f"WARNING: {', '.join(contended)} resident -- something else holds the "
-            f"GPU and these numbers measure contention, not this machine.",
+            "WARNING: something else is computing on this machine. These numbers "
+            "would measure contention, not the model:\n  "
+            + "\n  ".join(contended),
             file=sys.stderr,
         )
 
@@ -615,8 +693,13 @@ def main() -> int:
     print(f"  build_patch p50 {patch_build['p50']:.3f}ms")
 
     ps_after = ollama_ps()
+    busy_after = competing_processes(process_table(), own)
     print(f"\nollama ps after:\n{ps_after}")
-    contended = contended or resident_models(ps_after)
+    print(
+        "busy processes after:\n  "
+        + ("\n  ".join(busy_after) if busy_after else "(none)")
+    )
+    contended = contended or resident_models(ps_after) + busy_after
 
     by_name = {d["name"]: d for d in measured}
     cpu = by_name["cpu"]
@@ -632,6 +715,8 @@ def main() -> int:
         "cpu_threads": torch.get_num_threads(),
         "ps_before": ps_before,
         "ps_after": ps_after,
+        "busy_before": busy_before,
+        "busy_after": busy_after,
         "devices": measured,
         "batch_sizes": [s for s in SWEEP_BATCHES if s in cpu["batches"]],
         "pipeline_batch": pipeline_batch,

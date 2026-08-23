@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from reverifier_latency import (
     claim_verdict,
+    competing_processes,
     edge_implication,
     format_ms,
     magnitude_phrase,
@@ -182,6 +183,8 @@ def results_fixture() -> dict:
         "cpu_threads": 10,
         "ps_before": "NAME  ID  SIZE",
         "ps_after": "NAME  ID  SIZE",
+        "busy_before": [],
+        "busy_after": [],
         "devices": [device("MPS", 2.0), device("CPU", 6.0)],
         "batch_sizes": [1, 16],
         "pipeline_batch": 16,
@@ -242,3 +245,55 @@ def test_render_carries_the_verdict_on_the_old_claim():
     text = "\n".join(render(results_fixture()))
     assert "tens of milliseconds" in text
     assert "wrong" in text
+
+
+PS_TABLE = """  PID  %CPU COMMAND
+17103   0.6 /opt/homebrew/opt/ollama/bin/ollama serve
+60535   2.1 /opt/homebrew/Cellar/ollama/.../llama-server --model /Users/x/blobs/sha256-e7b
+93044  26.1 /Users/lin1020/Projects/aoi-agent/.venv/bin/python3 bench_tv.py --arch fcos
+94100 170.6 /System/Library/PrivateFrameworks/MediaAnalysis.framework/.../mediaanalysisd
+29197   0.0 /Users/lin1020/.vscode/extensions/.../python-env-tools/bin/pet server
+  713   5.7 /System/Library/CoreServices/Finder.app/Contents/MacOS/Finder
+"""
+
+
+def test_competing_processes_catches_the_torch_job_ollama_ps_cannot_see():
+    # The whole point of the second check. `ollama ps` reports only Ollama's own
+    # models, so this FCOS benchmark saturating MPS is invisible to it.
+    found = competing_processes(PS_TABLE, own_pid=1)
+    assert any("bench_tv.py" in line for line in found)
+
+
+def test_competing_processes_catches_macos_own_gpu_user():
+    found = competing_processes(PS_TABLE, own_pid=1)
+    assert any("mediaanalysisd" in line for line in found)
+
+
+def test_competing_processes_ignores_idle_helpers_and_unrelated_apps():
+    found = competing_processes(PS_TABLE, own_pid=1)
+    # `pet server` matches no claimant marker and sits at 0% anyway.
+    assert not any("pet server" in line for line in found)
+    # Finder is busy but is not a GPU claimant by any of the markers.
+    assert not any("Finder" in line for line in found)
+    # `ollama serve` is the supervisor, not the runner; it holds no weights.
+    assert not any("ollama serve" in line for line in found)
+
+
+def test_competing_processes_does_not_flag_the_benchmark_itself():
+    table = PS_TABLE + "99999  80.0 /usr/bin/python3 scripts/reverifier_latency.py\n"
+    assert not any("reverifier_latency" in line
+                   for line in competing_processes(table, own_pid=99999))
+
+
+def test_competing_processes_is_quiet_on_a_quiet_machine():
+    assert competing_processes("  PID  %CPU COMMAND\n", own_pid=1) == []
+
+
+def test_render_records_both_contention_checks():
+    results = results_fixture()
+    results["busy_before"] = ["93044 26% bench_tv.py --arch fcos"]
+    text = "\n".join(render(results))
+    assert "busy processes before the run" in text
+    assert "bench_tv.py" in text
+    # And the reader is told why one check is not enough.
+    assert "reports Ollama's own resident models and nothing else" in text
