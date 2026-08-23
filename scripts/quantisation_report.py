@@ -421,22 +421,26 @@ def render(results: dict) -> list[str]:
         "",
         "#### Footprint",
         "",
-        "| engine | on disk | of FP32 | peak RSS while serving |",
+        "| engine | on disk | of FP32 | RSS added by loading it |",
         "|---|---|---|---|",
     ]
     for engine in engines:
         lines.append(
             f"| {engine['label']} | {engine['size_mb']:.1f}MB | "
             f"{engine['size_mb'] / by_key[baseline]['size_mb']:.0%} | "
-            f"{engine['rss_mb']:.0f}MB |"
+            f"{engine['rss_added_mb']:.0f}MB |"
         )
 
     lines += [
         "",
-        "Peak RSS is measured as a high-water mark over the whole process, so "
-        "each engine's figure includes everything loaded before it. The column "
-        "is a floor on the footprint, not an isolated measurement of one engine, "
-        "and it is stated rather than corrected for.",
+        f"Peak RSS across the whole process was "
+        f"**{results['peak_rss_mb']:.0f}MB**, but that figure covers four engines "
+        f"held at once and describes no station. The column above is the live "
+        f"resident set before and after each engine was loaded, which is the "
+        f"number a box gets sized on. It is charged to the engine, not to the "
+        f"process: the arena an allocator has already grown does not shrink "
+        f"between engines, so these are a floor rather than an isolated "
+        f"measurement, and they are stated rather than corrected for.",
         "",
         results["line_rate"],
         "",
@@ -532,6 +536,27 @@ def onnx_soak(runner, patches: np.ndarray, batch: int, seconds: float) -> list[t
         samples.append((offset, (time.perf_counter() - began) * 1000))
         index += 1
     return samples
+
+
+def current_rss_mb() -> float:
+    """This process's resident set *right now*, in MB.
+
+    `resource.getrusage` only reports the high-water mark, which is the same
+    number for every engine once four sets of weights have been loaded in one
+    process -- true, and useless to anyone sizing a box for one of them. This
+    reads the live figure so each engine can be charged for what loading it
+    actually added.
+    """
+    import subprocess
+
+    try:
+        output = subprocess.run(
+            ["ps", "-o", "rss=", "-p", str(os.getpid())],
+            capture_output=True, text=True, timeout=10,
+        ).stdout.strip()
+        return int(output) / 1024
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return float("nan")
 
 
 def score_split(runner, patches: np.ndarray, chunk: int = 64) -> np.ndarray:
@@ -631,6 +656,17 @@ def main() -> int:
         def probabilities(self, chunk):
             return torch_probabilities(chunk)
 
+    class _FreshTorchRunner:
+        """The same path, over a checkpoint loaded for the cold measurement."""
+
+        def __init__(self, verifier):
+            self.verifier = verifier
+
+        def probabilities(self, chunk):
+            with torch.no_grad():
+                batch = torch.from_numpy(chunk).float().div_(255.0)
+                return torch.softmax(self.verifier.model(batch), dim=1).numpy()
+
     runners = {
         "fp32_torch": (_TorchRunner(), args.checkpoint.stat().st_size / (1024 * 1024)),
         "fp32_onnx": (OnnxReVerifier(fp32_onnx, threads=torch.get_num_threads()),
@@ -681,23 +717,31 @@ def main() -> int:
 
     # --- latency, same loop for every engine ---------------------------------
     engines = []
-    for key, (runner, size_mb) in runners.items():
+    for key, (_, size_mb) in runners.items():
         print(f"\n=== {labels_for[key]} ===")
+        # A fresh load, timed, because a station restarting mid-shift pays it
+        # -- and because reusing the runner scored above would time nothing.
+        before_rss = current_rss_mb()
         began = time.perf_counter()
-        cold_runner = (
-            _TorchRunner() if key == "fp32_torch"
-            else OnnxReVerifier(
+        if key == "fp32_torch":
+            cold_verifier = ReVerifier(args.checkpoint, device="cpu")
+            cold_runner = _FreshTorchRunner(cold_verifier)
+        else:
+            cold_runner = OnnxReVerifier(
                 {"fp32_onnx": fp32_onnx, "int8_dynamic": int8_dynamic,
                  "int8_static": int8_static}[key],
                 threads=torch.get_num_threads(),
             )
-        )
         load_ms = (time.perf_counter() - began) * 1000
+        rss_added = current_rss_mb() - before_rss
         began = time.perf_counter()
         cold_runner.probabilities(np.ascontiguousarray(patches[:1]))
         cold_ms = (time.perf_counter() - began) * 1000
         print(f"  load {load_ms:.0f}ms   first inference {cold_ms:.2f}ms")
 
+        # Everything from here uses the runner that was just loaded, so cold
+        # and warm are the same object warming up rather than two objects.
+        runner = cold_runner
         onnx_timed_series(runner, patches, 1, WARMUP_ITERATIONS)
         single = summarise(onnx_timed_series(runner, patches, 1, args.iterations))
         print(f"  single p50 {single['p50']:.2f}ms  p90 {single['p90']:.2f}ms")
@@ -730,7 +774,7 @@ def main() -> int:
             "soak_early": summarise(early) if early else None,
             "soak_late": summarise(late) if late else None,
             "throttle": throttle_verdict(early, late),
-            "rss_mb": peak_rss_mb(),
+            "rss_added_mb": rss_added,
         })
 
     ps_after = ollama_ps()
@@ -788,6 +832,7 @@ def main() -> int:
         "pipeline_batch_bucket": min(SWEEP_BATCHES,
                                      key=lambda b: abs(b - pipeline_batch)),
         "soak_s": args.soak,
+        "peak_rss_mb": peak_rss_mb(),
         "thermal_split_s": 60.0,
         "ps_before": ps_before,
         "ps_after": ps_after,

@@ -214,7 +214,7 @@ def engine(key: str, label: str, p50: float, size_mb: float) -> dict:
         "soak_early": summarise([p50] * 10),
         "soak_late": summarise([p50 * 1.05] * 10),
         "throttle": throttle_verdict([p50] * 10, [p50 * 1.05] * 10),
-        "rss_mb": 900.0,
+        "rss_added_mb": 96.0,
     }
 
 
@@ -255,6 +255,7 @@ def results_fixture() -> dict:
         "pipeline_batch": 8,
         "pipeline_batch_bucket": 8,
         "soak_s": 150.0,
+        "peak_rss_mb": 1046.0,
         "thermal_split_s": 60.0,
         "ps_before": "NAME  ID  SIZE",
         "ps_after": "NAME  ID  SIZE",
@@ -335,7 +336,13 @@ def test_render_tables_have_a_separator_matching_their_columns():
         assert line.count("|") == following.count("|"), line
 
 
-def test_render_states_that_peak_rss_is_a_floor_not_an_isolated_figure():
+def test_render_charges_memory_to_the_engine_not_to_the_process():
+    # Peak RSS over a process holding four engines describes no station. The
+    # column has to be what loading one of them added.
     text = "\n".join(render(results_fixture()))
-    assert "high-water mark" in text
-    assert "not an isolated measurement" in text
+    assert "RSS added by loading it" in text
+    assert "96MB" in text
+    # And the whole-process figure is still stated, with its caveat attached.
+    assert "1046MB" in text
+    assert "describes no station" in text
+    assert "a floor rather than an isolated measurement" in text
