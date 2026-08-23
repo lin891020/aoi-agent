@@ -73,6 +73,26 @@ class DetectorConfig:
     real AOI does, so the false calls it produces come from other causes and
     the counts are conservative. Set to ``0`` to see the registration
     artefacts.
+
+    It also erases seven real defects on the test split -- every one of them a
+    sub-3px notch, whisker or filament whose difference blob is 24 to 133
+    pixels and which a 3x3 opening takes to zero. Those seven are the whole of
+    this line's unrecoverable escape rate. The trade was swept on 2026-08-23
+    and the value kept: recovering them costs thousands of additional false
+    calls per defect the re-verifier actually keeps, and multiplies the
+    candidate count under misregistration, which is the condition the opening
+    exists for. The numbers are in docs/benchmarks.md, from
+    `scripts/opening_kernel_sweep.py`. Do not lower this without re-running
+    that sweep -- it is a trade, and it has a curve.
+    """
+
+    open_shape: str = "rect"
+    """Structuring element for the opening: ``rect``, ``cross`` or ``ellipse``.
+
+    Only the sweep uses anything but ``rect``. A 3x3 cross survives on five
+    cells in a plus where a 3x3 square needs all nine, so it keeps features a
+    square erases -- fewer of them than a 2x2 square does, and at a lower
+    false-call cost. Neither was taken; see the sweep.
     """
 
     dilate_kernel: int = 5
@@ -86,6 +106,27 @@ class DetectorConfig:
 
     pad: int = 4
     """Padding added around each blob so the patch keeps some context."""
+
+
+#: Structuring-element shapes the opening understands. ``rect`` is what ships;
+#: the others exist so the opening-kernel sweep can price them against it.
+OPENING_SHAPES = {
+    "rect": cv2.MORPH_RECT,
+    "cross": cv2.MORPH_CROSS,
+    "ellipse": cv2.MORPH_ELLIPSE,
+}
+
+
+def opening_element(config: DetectorConfig) -> np.ndarray:
+    """The structuring element the opening uses, from the config."""
+    try:
+        shape = OPENING_SHAPES[config.open_shape]
+    except KeyError:
+        raise ValueError(
+            f"unknown open_shape {config.open_shape!r}; "
+            f"expected one of {sorted(OPENING_SHAPES)}"
+        ) from None
+    return cv2.getStructuringElement(shape, (config.open_kernel, config.open_kernel))
 
 
 def apply_perturbation(
@@ -136,8 +177,7 @@ def detect(
     _, mask = cv2.threshold(diff, config.threshold, 255, cv2.THRESH_BINARY)
 
     if config.open_kernel > 0:
-        kernel = np.ones((config.open_kernel, config.open_kernel), np.uint8)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, opening_element(config))
 
     if config.dilate_kernel > 0:
         kernel = np.ones((config.dilate_kernel, config.dilate_kernel), np.uint8)
