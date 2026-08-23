@@ -12,6 +12,9 @@ __pycache__/
 .venv/
 .DS_Store
 .pytest_cache/
+# The station's operator file. Passphrases are stored as PBKDF2 records rather
+# than in the clear, which is not a reason to publish one.
+data/operators
 data/aoi_agent.db
 data/checkpoints.db*
 data/chroma/
