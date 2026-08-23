@@ -730,3 +730,65 @@ Thread count moves the batch-8 figure and leaves the batch-16 figure essentially
 
 **What this means for an edge deployment.** The CPU figure is the one to size on: a re-verification station is a box beside a conveyor, not a laptop with a GPU. At 2.50ms per candidate single-shot and 1,002 candidates/second batched, on CPU alone, the model is not the constraint -- a board carrying twenty candidates is re-verified in well under a second, and the AOI stage in front of it takes longer. The 43MB checkpoint fits anywhere. The open INT8/ONNX work is therefore about memory and portability, not about latency: there is no latency problem here to solve.
 
+## 2026-08-23 · commit 2421939
+
+### Whole-line escape rate, recounted on defects instead of boxes
+
+Was **5.4%**. Is **0.61%**. The old figure added an AOI-stage miss rate of 5.0% to the re-verifier's 0.47%, under the sentence "Defects the AOI never caught are already gone and no threshold recovers them". That sentence was true of 7 defects on this split and was being applied to 157.
+
+The 5.0% was never a count of defects the detector failed to find. It counted defects whose best candidate did not clear DeepPCB's IoU 0.33 cut, and 150 of those 157 have a candidate sitting on them -- 95.5%. A matched candidate is on median 0.51x the area of the hand-drawn box it matches, so the whole distribution of best-IoUs piles up just under the cut: median 0.29 against a cut of 0.33. That is a statistic about how tightly this detector draws a box. It was published as a detection failure.
+
+Measured on the test split: 500 boards, 3140 ground-truth defects, the shipped checkpoint, dismissal threshold 0.915.
+
+#### What happens to every defect on the split
+
+| outcome | defects | share | recoverable by a threshold? |
+|---|---|---|---|
+| reaches a person, via a candidate that also clears the IoU cut | 2975 | 94.75% | n/a -- reviewed |
+| reaches a person, but only via a candidate the IoU rule calls a miss | 146 | 4.65% | n/a -- reviewed |
+| flagged, and the re-verifier dismissed every candidate on it | 12 | 0.38% | yes -- this is the dismissal threshold |
+| **never flagged: not one candidate overlaps it** | 7 | 0.22% | **no** |
+
+The third and fourth rows are the escapes: **19 defects, 0.61%**. The second row -- 146 defects -- is what the old number was charging to the line. Every one of them is on an operator's screen.
+
+#### The miss rate is mostly the cut
+
+| detection rule | defects counted missed | share of defects |
+|---|---|---|
+| IoU ≥ 0.50 | 1489 | 47.42% |
+| IoU ≥ 0.40 | 487 | 15.51% |
+| IoU ≥ 0.33 | 157 | 5.00%  ← published as the AOI escape rate |
+| IoU ≥ 0.30 | 98 | 3.12% |
+| IoU ≥ 0.25 | 58 | 1.85% |
+| IoU ≥ 0.20 | 38 | 1.21% |
+| IoU ≥ 0.10 | 17 | 0.54% |
+| any overlap at all | 7 | **0.22%** |
+
+Nothing about the detector changes down that column. Only the cut does. The bottom row is the only one that describes a defect this line cannot see, and it is the one that belongs in an escape rate.
+
+#### The composition
+
+- **never flagged: 0.22%** of defects (7/3140) -- unrecoverable. No threshold, no model and no retrain reaches these; the pixels never reach the classifier.
+- **dismissed by the re-verifier: 0.38%** of the 3133 defects that did reach it (12) -- this is the number the dismissal threshold governs, and the one QP-110's 0.5% budget is written about.
+- **whole line: 0.61%** (0.22% + 0.998 × 0.38%), against 19/3140 = 0.61% counted directly.
+
+Two numbers, not one. They are not interchangeable and adding them into a single headline is what produced the 5.4%: one of them is a knob and the other is a wall. Reporting only the sum tells a reader to go tune the thing that cannot move.
+
+The re-verifier's own escape rate is quoted as 0.38% here and 0.47% in the operating-point table above. Both are right and they count different things: the table counts *candidates* carrying a defect label that were dismissed, this counts *defects* every covering candidate was dismissed on. A defect flagged by three candidates escapes only if all three go, and a defect whose only candidate is a held-out fragment is in this count and not in that one.
+
+#### Where the escapes are
+
+| defect class | on the split | never flagged | dismissed | escape rate |
+|---|---|---|---|---|
+| open | 659 | 2 | 4 | 0.91% |
+| mousebite | 586 | 2 | 3 | 0.85% |
+| spur | 483 | 1 | 0 | 0.21% |
+| short | 478 | 1 | 3 | 0.84% |
+| pin-hole | 470 | 1 | 0 | 0.21% |
+| copper | 464 | 0 | 2 | 0.43% |
+
+The never-flagged 7 are spread over 7 boards, no board contributing more than one, so this is not one bad scan. What they have in common is a cause, and it is in the detector rather than in the data -- see the opening-kernel sweep.
+
+#### What changed in the code
+
+`scripts/report.py` no longer computes a whole-line figure. It had a `--aoi-escape-rate` argument defaulting to 0.050, a number carried over by hand from `build_patches.py`'s miss print, and it had no access to the two things the composition needs: whether anything was flagged on a defect, and what the model did with it. This script owns that section now. `system_escape_rate` is unchanged and still correct -- it was being fed the wrong stage rate, not computing the wrong thing.
