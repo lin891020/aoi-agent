@@ -26,6 +26,7 @@ def _as_dict(escalation: Escalation, candidate: CandidateRecord, board: Board) -
         "thread_id": escalation.thread_id,
         "reason": escalation.reason,
         "agent_verdict": escalation.agent_verdict,
+        "explanation_status": escalation.explanation_status,
         "status": escalation.status,
         "raised_at": escalation.raised_at.isoformat() if escalation.raised_at else None,
         "model_class": candidate.predicted_class,
@@ -55,7 +56,11 @@ def _resolve(session, reference: str) -> CandidateRecord | None:
 
 
 def raise_escalation(
-    reference: str, thread_id: str, reason: str, agent_verdict: str | None = None
+    reference: str,
+    thread_id: str,
+    reason: str,
+    agent_verdict: str | None = None,
+    explanation_status: str | None = None,
 ) -> bool:
     """Put a suspended run on the queue, or refresh one already there.
 
@@ -73,6 +78,7 @@ def raise_escalation(
         if existing is not None:
             existing.reason = reason
             existing.agent_verdict = agent_verdict
+            existing.explanation_status = explanation_status
             existing.status = "pending"
             existing.resolved_at = None
         else:
@@ -82,6 +88,7 @@ def raise_escalation(
                     thread_id=thread_id,
                     reason=reason,
                     agent_verdict=agent_verdict,
+                    explanation_status=explanation_status,
                     status="pending",
                 )
             )
@@ -141,3 +148,25 @@ def counts() -> dict[str, int]:
             .group_by(Escalation.status)
         ).all()
         return {status: count for status, count in rows}
+
+
+def explanation_counts() -> dict[str, int]:
+    """How many pending regions carry an explanation, and how many do not.
+
+    WI-300's rationale-deadline clause requires this to be answerable: "a
+    station shall be able to report how many of its dispositions carry no
+    written rationale, and for what reason". It was not answerable before
+    2026-08-23 -- an unexplained region and an explained one looked the same in
+    every table, and the only trace of the difference was a ``ReadTimeout``
+    inside a string an operator was invited to read as a rationale.
+
+    Keyed by ``explanation_status``; ``unknown`` covers rows written before the
+    column existed.
+    """
+    with session_factory()() as session:
+        rows = session.execute(
+            select(Escalation.explanation_status, func.count(Escalation.id))
+            .where(Escalation.status == "pending")
+            .group_by(Escalation.explanation_status)
+        ).all()
+        return {status or "unknown": count for status, count in rows}

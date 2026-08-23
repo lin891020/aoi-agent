@@ -28,6 +28,16 @@
   </div>
   {% endif %}
 
+  {# A missing explanation is shown as a missing explanation. It used to arrive
+     here as `the model did not answer (ReadTimeout)` in the paragraph above,
+     which reads like something the model concluded. #}
+  {% if explanation_notice %}
+  <div class="handover no-explanation">
+    <span class="label">no written explanation</span>
+    <p>{{ explanation_notice }}</p>
+  </div>
+  {% endif %}
+
   <figure class="triptych">
     <img src="/c/{{ stem }}/{{ index }}/triptych.png" alt="template, test and difference around the flagged region">
     <figcaption>

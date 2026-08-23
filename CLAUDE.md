@@ -120,9 +120,15 @@ board is back under the unscoped reading.
   queue does not fill with every candidate on the line. This bullet said
   "unparseable verdict" escalates until 2026-08-23, which had been false since
   `route_after_reason` stopped reading the LLM -- above `ESCALATE_BELOW` an
-  unparseable response is dispositioned like any other. The parse failure is
-  recorded in the rationale, which is what the operator reads. Pinned by
-  `test_an_unparseable_verdict_at_0_93_is_decided_anyway`. The analysis flow's failures terminate in a message on the page
+  unparseable response is dispositioned like any other. What the failure costs
+  is the explanation, and that absence is now a first-class state --
+  `explanation_status`, one of `timed_out`, `unreachable` or `unparsed` -- shown
+  to the operator as a notice and counted by
+  `uv run python -m aoi_agent explanations`. It used to be an error string in
+  the rationale field, which read like something the model had concluded and
+  which nothing counted. Pinned by
+  `test_an_unparseable_verdict_at_0_93_is_decided_anyway` and
+  `tests/test_explanation_status.py`. The analysis flow's failures terminate in a message on the page
   instead -- an unplanned question, a rejected plan, a branch whose tool raised.
   There is no disposition waiting on any of them and nothing for a person to
   answer, so a queue entry would be a task nobody can close.

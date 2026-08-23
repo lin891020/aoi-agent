@@ -114,6 +114,19 @@ class ReviewDecision(Base):
 
     reviewer: Mapped[str | None] = mapped_column(String(64), nullable=True)
     rationale: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+
+    explanation_status: Mapped[str | None] = mapped_column(
+        String(16), nullable=True, index=True
+    )
+    """``ok``, or why this decision carries no written rationale.
+
+    Indexed because WI-300 requires the absence to be countable: "a station
+    shall be able to report how many of its dispositions carry no written
+    rationale, and for what reason". A count is what makes the failure visible
+    -- the queue held one escalation reading ``the model did not answer
+    (ReadTimeout)`` and no way to ask how many more there had been. ``None`` on
+    a human decision, which was never going to have one."""
+
     decided_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     candidate: Mapped[CandidateRecord] = relationship(back_populates="decisions")
@@ -143,6 +156,14 @@ class Escalation(Base):
 
     agent_verdict: Mapped[str | None] = mapped_column(String(16), nullable=True)
     """What the agent leaned towards. A suggestion, never pre-selected."""
+
+    explanation_status: Mapped[str | None] = mapped_column(
+        String(16), nullable=True, index=True
+    )
+    """``ok``, or why this region reached the queue with no explanation.
+
+    The queue renders it as a notice rather than as a rationale, and
+    ``escalations.explanation_counts`` reports it."""
 
     status: Mapped[str] = mapped_column(String(16), index=True, default="pending")
     """``pending`` or ``resolved``."""

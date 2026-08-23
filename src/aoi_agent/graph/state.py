@@ -28,6 +28,18 @@ class ReviewState(TypedDict, total=False):
     agent_verdict: str
     agent_confident: bool
 
+    explanation_status: str
+    """``ok``, or why no explanation was written.
+
+    A first-class state rather than an error string in ``agent_rationale``.
+    The station's queue held an escalation whose entire evidence panel read
+    ``the model did not answer (ReadTimeout)``: it told the operator nothing,
+    it read as though it were a rationale, and nothing counted how many others
+    there were. ``agent_rationale`` is now empty when no explanation exists --
+    WI-300 forbids filling the gap with anything -- and this field carries the
+    reason, in a column a report can group by. See ``graph.flow.NO_EXPLANATION``.
+    """
+
     # Filled by escalate / finalize
     escalation_reason: str
     human_verdict: str

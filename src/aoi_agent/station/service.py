@@ -70,13 +70,19 @@ def start_review(graph, reference: str) -> dict[str, Any]:
             thread_for(reference),
             payload.get("reason", "model was not confident"),
             payload.get("agent_verdict"),
+            # Carried onto the queue row so the station can say "no explanation
+            # was written, and here is why" instead of showing an error string
+            # where a rationale belongs -- and so the absences can be counted,
+            # which WI-300's rationale-deadline clause requires and nothing did.
+            payload.get("explanation_status"),
         )
     else:
         record_decision(
             reference,
             state["verdict"],
             state["decided_by"],
-            rationale=state.get("agent_rationale"),
+            rationale=state.get("agent_rationale") or None,
+            explanation_status=state.get("explanation_status"),
         )
     return state
 

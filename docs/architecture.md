@@ -259,8 +259,14 @@ response that will not parse. Both used to escalate and neither does now,
 because the decision no longer depends on the LLM -- the run falls back to the
 classifier's own class and confidence and routes on those. Above
 `ESCALATE_BELOW` that means an unparseable verdict is dispositioned, not
-escalated; the parse failure is recorded in the rationale the operator would
-read. This list said "an unparseable verdict → escalate" until 2026-08-23,
+escalated. What is lost is the explanation, and the loss is recorded rather
+than papered over: `explanation_status` carries `timed_out`, `unreachable` or
+`unparsed`, the station renders a notice from it, and
+`uv run python -m aoi_agent explanations` counts them. Until 2026-08-23 the
+rationale field carried an exception class name instead -- the queue held an
+escalation whose entire content was `the model did not answer (ReadTimeout)` --
+and nothing counted how many there had been.
+This list said "an unparseable verdict → escalate" until 2026-08-23,
 which was left over from when the LLM decided. The operator loses an
 explanation, not a verdict, and the queue does not fill with every candidate on
 the line.

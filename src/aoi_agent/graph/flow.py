@@ -34,7 +34,7 @@ from langgraph.types import interrupt
 
 from aoi_agent.graph.checkpoint import make_checkpointer
 from aoi_agent.graph.state import ReviewState
-from aoi_agent.llm.ollama import OllamaClient
+from aoi_agent.llm.ollama import EXPLANATION_DEADLINE_S, OllamaClient
 from aoi_agent.mcp_servers.classify import classify_defect
 from aoi_agent.mcp_servers.production import query_board_context, query_machine_stats
 from aoi_agent.mcp_servers.standards import search_standards
@@ -105,6 +105,54 @@ ESCALATE_BELOW = DEFAULT_DISMISS_THRESHOLD
 #: within it is a dial. ``docs/architecture.md`` cited "WI-300 decision
 #: authority" until 2026-08-23, and WI-300 states no such number.
 CONFIDENT = 0.95
+
+#: ``explanation_status`` when the operator has a written explanation.
+EXPLAINED = "ok"
+
+#: ``explanation_status`` when they do not, and what to tell them instead.
+#:
+#: These are the three ways the only remaining job of the LLM can fail. None of
+#: them changes a disposition -- ``decide_node`` reads ``model_class`` and
+#: ``route_after_reason`` reads ``model_confidence``, both of which exist before
+#: this node is entered -- so each one costs an explanation and nothing else.
+#:
+#: They are keys, not prose, because WI-300 requires the absence to be *counted*
+#: and a station cannot group by a sentence. The sentence beside each is what an
+#: operator reads; ``the model did not answer (ReadTimeout)``, which is what the
+#: queue used to show, is a stack trace with the stack removed.
+NO_EXPLANATION = {
+    "timed_out": (
+        "No explanation was written: the model did not answer within the "
+        f"{EXPLANATION_DEADLINE_S:.0f}-second explanation deadline."
+    ),
+    "unreachable": (
+        "No explanation was written: the model could not be reached."
+    ),
+    "unparsed": (
+        "No explanation was written: the model answered, but not in the format "
+        "the station can read."
+    ),
+}
+
+#: Appended to each of the above. The operator's first question on seeing a
+#: missing explanation is whether the disposition beside it is also missing.
+DISPOSITION_UNAFFECTED = (
+    " The disposition beside it is the re-verification model's and was not "
+    "affected -- the explanation is what is lost, not the verdict."
+)
+
+
+def explanation_notice(status: str) -> str:
+    """What to show a person where the explanation would have been.
+
+    Not a rationale, and deliberately not stored in the rationale column: WI-300
+    forbids filling the gap by any means, so this is rendered from the status
+    rather than written into the record as though the model had said it.
+    """
+    if status == EXPLAINED or status not in NO_EXPLANATION:
+        return ""
+    return NO_EXPLANATION[status] + DISPOSITION_UNAFFECTED
+
 
 VERDICT_SCHEMA = {
     "type": "object",
@@ -276,14 +324,23 @@ Give your verdict."""
             )
         except (httpx.HTTPError, OSError) as error:
             # The model being unreachable or too slow is an operational
-            # problem, not a verdict. Fail towards the human: an escalated
-            # candidate costs someone a few seconds, whereas a crashed run
-            # leaves a flagged board with no disposition at all.
+            # problem, not a verdict, and it is not a rationale either. The
+            # rationale stays empty and ``explanation_status`` records what
+            # happened, so the station can render a sentence a person can act
+            # on and a report can count how often this fires. Writing
+            # ``the model did not answer (ReadTimeout)`` into the operator's
+            # evidence panel, which is what this did until 2026-08-23, told
+            # nobody anything and was counted by nothing.
             _timed(state, "reason", (time.perf_counter() - started) * 1000)
             return {
                 "agent_verdict": state["model_class"],
                 "agent_confident": False,
-                "agent_rationale": f"the model did not answer ({type(error).__name__})",
+                "agent_rationale": "",
+                "explanation_status": (
+                    "timed_out"
+                    if isinstance(error, httpx.TimeoutException)
+                    else "unreachable"
+                ),
                 "timings_ms": state["timings_ms"],
                 "trace": state["trace"],
             }
@@ -291,12 +348,18 @@ Give your verdict."""
         try:
             parsed = json.loads(result.text)
         except json.JSONDecodeError:
-            # An unparseable verdict is not a verdict. Escalate rather than
-            # guess at what the model meant.
-            parsed = {
-                "verdict": state["model_class"],
-                "confident": False,
-                "rationale": "the model's response could not be parsed",
+            # The model answered and the answer is unreadable. Same outcome as
+            # above: no rationale, a recorded reason, and a disposition that
+            # never depended on either.
+            _timed(state, "reason", (time.perf_counter() - started) * 1000)
+            state["timings_ms"]["reason_eval"] = round(result.timing.eval_ms, 1)
+            return {
+                "agent_verdict": state["model_class"],
+                "agent_confident": False,
+                "agent_rationale": "",
+                "explanation_status": "unparsed",
+                "timings_ms": state["timings_ms"],
+                "trace": state["trace"],
             }
 
         _timed(state, "reason", (time.perf_counter() - started) * 1000)
@@ -305,6 +368,7 @@ Give your verdict."""
             "agent_verdict": parsed["verdict"],
             "agent_confident": bool(parsed["confident"]),
             "agent_rationale": parsed["rationale"],
+            "explanation_status": EXPLAINED,
             "timings_ms": state["timings_ms"],
             "trace": state["trace"],
         }
@@ -339,6 +403,21 @@ def route_after_reason(state: ReviewState) -> str:
     )
 
 
+def handover_reason(state: ReviewState) -> str:
+    """Why this region is in front of a person, stated in its own terms.
+
+    Not the LLM's rationale, which is an explanation of the evidence and is
+    sometimes absent. This sentence is always available, because the thing it
+    describes -- ``route_after_reason`` reading ``model_confidence`` -- is the
+    only thing that puts a region on the queue.
+    """
+    return (
+        f"the re-verification model's confidence of "
+        f"{state['model_confidence']:.3f} is below the {ESCALATE_BELOW:.3f} "
+        f"escalation threshold"
+    )
+
+
 def escalate_node(state: ReviewState) -> dict[str, Any]:
     """Suspend and wait for a person.
 
@@ -346,10 +425,12 @@ def escalate_node(state: ReviewState) -> dict[str, Any]:
     answer in a second or in two days; resuming replays nothing and re-runs no
     tools.
     """
+    reason = state.get("agent_rationale") or handover_reason(state)
     answer = interrupt(
         {
             "candidate_ref": state["candidate_ref"],
-            "reason": state.get("agent_rationale", "model was not confident"),
+            "reason": reason,
+            "explanation_status": state.get("explanation_status", EXPLAINED),
             "model_class": state["model_class"],
             "model_confidence": state["model_confidence"],
             "agent_verdict": state.get("agent_verdict"),
@@ -360,7 +441,7 @@ def escalate_node(state: ReviewState) -> dict[str, Any]:
     return {
         "human_verdict": answer.get("verdict"),
         "human_reviewer": answer.get("reviewer", "operator"),
-        "escalation_reason": state.get("agent_rationale", ""),
+        "escalation_reason": reason,
         "trace": state["trace"],
     }
 

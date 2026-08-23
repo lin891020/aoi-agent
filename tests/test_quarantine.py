@@ -44,8 +44,15 @@ def test_a_correct_open_explanation_is_left_alone():
 
 
 def test_an_outage_note_is_left_alone():
-    """The LLM being unreachable writes its own reason, and it cites nothing."""
+    """An outage leaves the rationale empty and records why elsewhere, so the
+    scanner sees ``None``. The literal below is what the column held before
+    2026-08-23, kept because old rows still carry it."""
     assert not is_fabricated("the model did not answer (ReadTimeout)", "open")
+    assert not is_fabricated(
+        "No explanation was written: the model did not answer within the "
+        "60-second explanation deadline.",
+        "open",
+    )
 
 
 def test_nothing_is_read_out_of_an_empty_rationale():

@@ -4,6 +4,7 @@
     uv run python -m aoi_agent board 20085293 --queue
     uv run python -m aoi_agent queue
     uv run python -m aoi_agent corrections
+    uv run python -m aoi_agent explanations
     uv run python -m aoi_agent station
 
 ``--queue`` is the normal production shape: the line does not stop to ask a
@@ -18,13 +19,14 @@ from __future__ import annotations
 import argparse
 import sys
 
-from aoi_agent.graph.flow import DEFAULT_MODEL, build_graph
+from aoi_agent.graph.flow import DEFAULT_MODEL, build_graph, explanation_notice
 from aoi_agent.llm.ollama import OllamaClient
 from aoi_agent.station import service
 from aoi_agent.store import escalations
 from aoi_agent.store.boards import (
     candidates_for_board,
     corrections,
+    explanation_status_counts,
     sample_board_stems,
 )
 
@@ -45,6 +47,8 @@ def _print_result(reference: str, state: dict) -> None:
           f"by {state.get('decided_by', '?')}")
     if state.get("agent_rationale"):
         print(f"      {state['agent_rationale']}")
+    elif explanation_notice(state.get("explanation_status", "")):
+        print(f"      {explanation_notice(state['explanation_status'])}")
     timings = state.get("timings_ms", {})
     if timings:
         parts = " ".join(f"{k} {v:.0f}ms" for k, v in timings.items())
@@ -91,6 +95,39 @@ def _cmd_queue() -> int:
     return 0
 
 
+def _cmd_explanations() -> int:
+    """How many automated dispositions carry no written rationale, and why.
+
+    WI-300 requires this to be answerable, and until 2026-08-23 it was not: an
+    explained region and an unexplained one were the same row in every table,
+    and the only trace of the difference was a ``ReadTimeout`` sitting where a
+    rationale belonged. The LLM's only remaining job is writing these, so the
+    rate at which that job fails is the health of the layer.
+    """
+    decisions = explanation_status_counts()
+    queued = escalations.explanation_counts()
+    if not decisions and not queued:
+        print("no automated dispositions recorded yet")
+        return 0
+
+    def _report(label: str, counts: dict[str, int]) -> None:
+        total = sum(counts.values())
+        explained = counts.get("ok", 0)
+        print(f"{label}: {total}")
+        if not total:
+            return
+        print(f"  explained          {explained:>6}  {explained / total:6.1%}")
+        for status, count in sorted(counts.items()):
+            if status == "ok":
+                continue
+            print(f"  {status:<18} {count:>6}  {count / total:6.1%}")
+
+    _report("automated dispositions", decisions)
+    print()
+    _report("waiting on a person", queued)
+    return 0
+
+
 def _cmd_corrections() -> int:
     rows = corrections()
     if not rows:
@@ -134,6 +171,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("boards", help="list boards in the store")
     sub.add_parser("queue", help="show what is waiting on a person")
     sub.add_parser("corrections", help="show where operators overruled the model")
+    sub.add_parser("explanations",
+                   help="how many dispositions carry no written rationale, and why")
 
     station = sub.add_parser("station", help="serve the review station")
     station.add_argument("--host", default="127.0.0.1")
@@ -149,6 +188,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_queue()
     if args.command == "corrections":
         return _cmd_corrections()
+    if args.command == "explanations":
+        return _cmd_explanations()
     if args.command == "station":
         return _cmd_station(args.host, args.port)
 

@@ -318,7 +318,8 @@ def test_an_unparseable_verdict_reaches_a_person_at_a_confidence_of_0_55(stub_to
     state, _ = run(graph)
 
     assert "__interrupt__" in state
-    assert state["agent_rationale"] == "the model's response could not be parsed"
+    assert state["agent_rationale"] == ""
+    assert state["explanation_status"] == "unparsed"
 
 
 def test_an_unparseable_verdict_at_0_93_is_decided_anyway(stub_tools):
@@ -338,7 +339,8 @@ def test_an_unparseable_verdict_at_0_93_is_decided_anyway(stub_tools):
     assert "__interrupt__" not in state
     assert state["verdict"] == "open", "the classifier's class, not the unparsed text"
     assert state["decided_by"] == "agent"
-    assert state["agent_rationale"] == "the model's response could not be parsed"
+    assert state["agent_rationale"] == ""
+    assert state["explanation_status"] == "unparsed"
 
 
 def test_an_unreachable_model_at_0_55_reaches_a_person_rather_than_crashing(stub_tools):
@@ -358,7 +360,15 @@ def test_an_unreachable_model_at_0_55_reaches_a_person_rather_than_crashing(stub
     state, config = run(graph)
 
     assert "__interrupt__" in state
-    assert "did not answer" in state["__interrupt__"][0].value["reason"]
+    payload = state["__interrupt__"][0].value
+    assert payload["explanation_status"] == "timed_out"
+    # The handover reason is the confidence, and it always was -- the LLM's
+    # failure never sent anything to a person. Until 2026-08-23 this field
+    # carried `the model did not answer (ReadTimeout)`, which told the operator
+    # neither why the region was in front of them nor what to do about it.
+    assert "0.550" in payload["reason"]
+    assert "escalation threshold" in payload["reason"]
+    assert state["agent_rationale"] == ""
 
     resumed = graph.invoke(
         Command(resume={"verdict": "open", "reviewer": "mike"}), config=config

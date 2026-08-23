@@ -95,6 +95,11 @@ td.reason { color: var(--dim); font-size: 0.88rem; max-width: 34rem; }
 }
 .handover p { margin: 0.3rem 0; }
 
+/* A missing explanation reads as an absence, not as a second rationale. */
+.handover.no-explanation { border-left-style: dashed; background: #1c1c22; }
+.handover.no-explanation p { color: var(--dim); }
+.sub.warn-line { color: var(--warn); }
+
 .triptych {
   margin: 0; background: var(--panel); border: 1px solid var(--line);
   border-radius: 10px; padding: 0.75rem; overflow-x: auto;

@@ -9,7 +9,7 @@ from __future__ import annotations
 from functools import lru_cache
 
 import numpy as np
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from aoi_agent.data.deeppcb import load_split
 from aoi_agent.store.models import Board, CandidateRecord, make_session_factory
@@ -105,6 +105,7 @@ def record_decision(
     source: str,
     reviewer: str | None = None,
     rationale: str | None = None,
+    explanation_status: str | None = None,
 ) -> bool:
     """Append a verdict to a candidate's decision history.
 
@@ -136,6 +137,7 @@ def record_decision(
                 source=source,
                 reviewer=reviewer,
                 rationale=rationale,
+                explanation_status=explanation_status,
             )
         )
         session.commit()
@@ -225,3 +227,27 @@ def correction_summary(limit: int = 1000) -> dict:
             for name in classes
         ],
     }
+
+
+def explanation_status_counts() -> dict[str, int]:
+    """Automated dispositions grouped by whether they carry a written rationale.
+
+    WI-300's rationale-deadline clause makes this mandatory: "a station shall be
+    able to report how many of its dispositions carry no written rationale, and
+    for what reason". Scoped to ``model`` and ``agent`` rows, because a human
+    decision was never going to have one and counting it as a miss would bury
+    the number this exists to surface.
+
+    ``unknown`` is rows written before the column existed. It is not folded into
+    ``ok``: a decision whose explanation state was never recorded is not a
+    decision known to have been explained.
+    """
+    from aoi_agent.store.models import ReviewDecision
+
+    with session_factory()() as session:
+        rows = session.execute(
+            select(ReviewDecision.explanation_status, func.count(ReviewDecision.id))
+            .where(ReviewDecision.source.in_(("model", "agent")))
+            .group_by(ReviewDecision.explanation_status)
+        ).all()
+        return {status or "unknown": count for status, count in rows}

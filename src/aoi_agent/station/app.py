@@ -51,7 +51,7 @@ from fastapi.templating import Jinja2Templates
 from aoi_agent.analysis import service as analysis_service
 from aoi_agent.analysis.graph import build_analysis_graph
 from aoi_agent.analysis.plan import store_domains
-from aoi_agent.graph.flow import DEFAULT_MODEL, build_graph
+from aoi_agent.graph.flow import DEFAULT_MODEL, build_graph, explanation_notice
 from aoi_agent.llm.ollama import OllamaClient
 from aoi_agent.station import images, service
 from aoi_agent.station.chart_svg import render_svg
@@ -142,8 +142,16 @@ def _next_pending(after: str | None = None) -> str | None:
 @app.get("/", response_class=HTMLResponse)
 def queue_page(request: Request):
     queue = escalations.pending()
+    # Counted on the page rather than left to a report nobody runs. The LLM's
+    # only remaining job is writing these, so a shift in which it wrote none is
+    # a thing the person watching the queue should be able to see happening.
+    unexplained = sum(
+        1 for row in queue if (row["explanation_status"] or "ok") != "ok"
+    )
     return templates.TemplateResponse(
-        request, "queue.html", {"queue": queue, "waiting": len(queue)}
+        request,
+        "queue.html",
+        {"queue": queue, "waiting": len(queue), "unexplained": unexplained},
     )
 
 
@@ -189,6 +197,12 @@ def station_page(request: Request, stem: str, index: int):
             "candidate": record,
             "escalation": escalation,
             "state": state,
+            # Rendered from the status, never stored as though the model had
+            # written it. WI-300: an absent rationale is absent, and the gap is
+            # not to be filled by any other means.
+            "explanation_notice": explanation_notice(
+                (escalation or {}).get("explanation_status") or ""
+            ),
             "options": service.VERDICT_OPTIONS,
             "waiting": len(escalations.pending()),
             "next_reference": _next_pending(after=reference),

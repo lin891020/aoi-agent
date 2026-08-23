@@ -8,6 +8,14 @@
     declined to guess at. Oldest first.
   </p>
 
+  {% if unexplained %}
+  <p class="sub warn-line">
+    {{ unexplained }} of {{ queue|length }} carry no written explanation. The
+    disposition on each is the re-verification model's and is unaffected; what
+    is missing is the paragraph the operator reads.
+  </p>
+  {% endif %}
+
   {% if not queue %}
     <p class="empty">
       Nothing waiting.<br>
@@ -34,7 +42,12 @@
         <td class="num">{{ '%.3f'|format(row.model_confidence) }}</td>
         <td class="num">{{ '%.3f'|format(row.false_call_probability) }}</td>
         <td class="dim">{{ row.line_id }} / {{ row.machine_id }} &middot; {{ row.shift }}</td>
-        <td class="reason">{{ row.reason }}</td>
+        <td class="reason">
+          {{ row.reason }}
+          {% if row.explanation_status and row.explanation_status != 'ok' %}
+            <span class="chip warn">no explanation</span>
+          {% endif %}
+        </td>
         <td><a class="go" href="/c/{{ row.board_stem }}/{{ row.index }}">review &rarr;</a></td>
       </tr>
       {% endfor %}
