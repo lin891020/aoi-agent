@@ -74,12 +74,12 @@ def test_every_invariant_in_the_document_is_accounted_for():
 
 
 def test_the_published_counts_are_what_the_registry_says():
-    """7 enforced, 4 partly enforced, 1 unenforceable -- the numbers in
+    """9 enforced, 2 partly enforced, 1 unenforceable -- the numbers in
     docs/benchmarks.md. Changing one means republishing the other."""
     counts = {status: 0 for status in (ENFORCED, PARTIAL, UNENFORCEABLE)}
     for entry in REGISTRY:
         counts[entry.status] += 1
-    assert counts == {ENFORCED: 7, PARTIAL: 4, UNENFORCEABLE: 1}, (
+    assert counts == {ENFORCED: 9, PARTIAL: 2, UNENFORCEABLE: 1}, (
         f"{counts} -- if this is an improvement, say so in docs/benchmarks.md "
         "and move the number here"
     )

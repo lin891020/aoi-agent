@@ -97,22 +97,33 @@ class Entry:
 REGISTRY: tuple[Entry, ...] = (
     Entry(
         match="Report an operating-point curve",
-        status=PARTIAL,
+        status=ENFORCED,
         tests=(
             "tests/test_operating_point.py::test_escape_budget_is_respected",
             "tests/test_operating_point.py::test_review_reduction_rises_as_the_threshold_falls",
             "tests/test_operating_point.py::test_unreachable_budget_returns_none",
             "tests/test_operating_point.py::test_system_escape_rate_compounds_both_stages",
+            "tests/test_report_curve.py::test_the_report_sweeps_more_than_one_escape_budget",
+            "tests/test_report_curve.py::test_every_budget_is_published_with_what_it_costs_and_what_it_buys",
+            "tests/test_report_curve.py::test_the_published_points_are_a_trade_off_and_not_one_point_repeated",
+            "tests/test_report_curve.py::test_accuracy_is_not_the_headline",
         ),
         note=(
-            "The curve itself is held: the sweep, the escape budget and the "
-            "two-stage compounding all fail when the arithmetic moves."
+            "Both the arithmetic and the publication. The sweep, the escape "
+            "budget and the two-stage compounding fail when the arithmetic "
+            "moves; the report itself is now generated in the suite over a "
+            "synthetic split with a real trade-off in it, and held to a row per "
+            "budget carrying the escape rate achieved and the review removed, "
+            "with accuracy after the curve and unemphasised. Values are compared "
+            "numerically against `sweep` and columns read by header, so "
+            "rewording the report is free."
         ),
-        gap=(
-            "Nothing imports scripts/report.py. Emptying its BUDGETS list -- so "
-            "it publishes one accuracy and no curve -- leaves the suite green."
+        proved_by=(
+            "BUDGETS = [] in scripts/report.py: 691 passed before "
+            "tests/test_report_curve.py existed, 3 failed after. BUDGETS = "
+            "[0.005]: 3 failed. The accuracy line moved above the table and "
+            "bolded: 1 failed."
         ),
-        proved_by="BUDGETS = [] in scripts/report.py: 691 passed",
     ),
     Entry(
         match="The LLM explains; it does not decide",
@@ -190,26 +201,40 @@ REGISTRY: tuple[Entry, ...] = (
     ),
     Entry(
         match="No free-form text-to-SQL",
-        status=PARTIAL,
+        status=ENFORCED,
         tests=(
             "tests/test_analysis_plan.py::test_an_unknown_tool_is_rejected",
             "tests/test_analysis_plan.py::test_an_unknown_argument_name_is_rejected",
             "tests/test_analysis_plan.py::test_a_legal_looking_value_outside_its_domain_is_rejected",
             "tests/test_analysis_plan.py::test_classify_defect_is_not_plannable",
             "tests/test_analysis_plan.py::test_this_files_domains_carry_every_key_the_validator_looks_up",
+            "tests/test_analysis_registry.py::test_the_registry_as_it_stands_accounts_for_every_parameter_it_exposes",
+            "tests/test_analysis_registry.py::test_a_tool_taking_free_text_query_language_cannot_be_registered",
+            "tests/test_analysis_registry.py::test_calling_the_query_language_an_identifier_does_not_get_it_registered",
+            "tests/test_analysis_registry.py::test_free_text_declared_on_a_module_that_can_reach_the_store_is_refused",
+            "tests/test_analysis_registry.py::test_search_standards_still_registers_with_its_free_text_intact",
         ),
         note=(
-            "The validator is held hard against the registry that exists: an "
-            "unknown tool, an unknown argument and an out-of-domain value are all "
-            "refused before anything runs."
+            "Both the call and the surface. The validator is held hard against "
+            "the registry that exists -- unknown tool, unknown argument, "
+            "out-of-domain value all refused before anything runs -- and the "
+            "registry itself now has to account for every parameter it exposes, "
+            "at import, or the module does not load. A signature cannot tell a "
+            "retrieval query from a query language, so the account is declared "
+            "per parameter and backed by what can be checked: the corpus has to "
+            "exist, the tool's module and the corpus module are checked "
+            "statically for a route to the store, and the tool's body for SQL "
+            "built out of a string. The last test is the control -- "
+            "search_standards takes arbitrary prose and must go on registering."
         ),
-        gap=(
-            "Nothing pins the registry's own parameter surface. Adding "
-            "run_query(sql: str) to PLANNABLE_TOOLS and executing what it is "
-            "handed passes all five: `sql` is a known argument of a known tool "
-            "and the value has no domain to be outside of."
+        proved_by=(
+            "run_query(sql: str) added to production.py and to the registry, "
+            "three ways: undeclared, declared an identifier, and declared a "
+            "retrieval query over the standards corpus. 691 passed before this "
+            "gate existed; each of the three now stops the module importing, on "
+            "the unaccounted parameter, on text(), and on the module's route to "
+            "the store respectively."
         ),
-        proved_by="run_query(sql: str) added to PLANNABLE_TOOLS: 691 passed",
     ),
     Entry(
         match="The fan-out is the shape of the work",

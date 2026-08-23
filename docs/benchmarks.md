@@ -903,45 +903,46 @@ mutation is recorded in the registry beside the claim it supports.
 | Criteria come from that class's document | `defect_class` dropped from the flow's `search_standards` call | 2 |
 | Thresholds cite something a reader can open | `ESCALATE_BELOW` set to 0.80 | 3 |
 | Split train/val by image, never by patch | `split_by_image` shuffles patch indices | **0 → 5** |
-| Report an operating-point curve | `BUDGETS = []` in `scripts/report.py` | **0** |
-| No free-form text-to-SQL | `run_query(sql: str)` added to `PLANNABLE_TOOLS` | **0** |
+| Report an operating-point curve | `BUDGETS = []` in `scripts/report.py` | **0 → 3** |
+| " | `BUDGETS = [0.005]` -- one row is not a curve | **0 → 3** |
+| " | the accuracy line moved above the table and bolded | **0 → 1** |
+| No free-form text-to-SQL | `run_query(sql: str)` registered, undeclared | **0 → the module will not import** |
+| " | the same, declared an identifier | **0 → the module will not import** |
+| " | the same, declared a retrieval query over the standards corpus | **0 → the module will not import** |
 | The fan-out is not a latency optimisation | the graph's docstring rewritten to call it a speed-up | **0** |
 | Use the official DeepPCB split | `load_split` reads `trainval.txt` for both splits | 3, all dataset-marked |
 
-The bold rows are the ones with nothing behind them. `0 → 5` is the one this
-branch closed.
+The bold rows are the ones that had nothing behind them when the audit ran.
+Three are now closed -- the arrow is what the same mutation costs today -- and
+the two that remain are described under the count.
 
 #### The count
 
-**7 enforced, 4 partly enforced, 1 unenforceable.**
+**9 enforced, 2 partly enforced, 1 unenforceable.** It was 7 / 4 / 1 when the
+audit was written; the two that moved are described below.
 
 - **enforced** — breaking it fails a named test that runs in CI: the LLM off the
   decision path, the escalation direction, checkpoint durability, the
-  `ground_truth` boundary, class-scoped retrieval, threshold citations, and the
-  train/val split as of this branch.
+  `ground_truth` boundary, class-scoped retrieval, threshold citations, the
+  train/val split, the operating-point curve, and the no-SQL rule.
 - **partly enforced** — a real part of the rule is held and a named part is not:
-  - *Report an operating-point curve.* The sweep, the escape budget and the
-    two-stage compounding all fail when the arithmetic moves. Nothing imports
-    `scripts/report.py`, so emptying its budget list -- publishing one accuracy
-    and no curve -- leaves the suite green.
-  - *No free-form text-to-SQL.* The validator is held hard against the registry
-    that exists: unknown tool, unknown argument, out-of-domain value all refused
-    before anything runs. Nothing pins the registry's own parameter surface, so
-    `run_query(sql: str)` passes all of it -- `sql` is a known argument of a
-    known tool, and the value has no domain to be outside of.
   - *The fan-out is not a latency optimisation.* The comparison the claim rests
     on is measured, stored per run and rendered, and `tools_wall` is held to
     cover the scheduling rather than only the slowest branch. The prohibition
-    itself is on prose, and no test reads prose.
+    itself is on prose, and no test reads prose. Not closable in the terms it
+    is written in, and left `partial` rather than reworded into something a
+    test can reach.
   - *Use the official DeepPCB split.* The only test that would catch a re-split
     is dataset-marked, so CI never runs it -- and it checks a count, so a
-    size-preserving reshuffle of the same 1,500 boards passes.
+    size-preserving reshuffle of the same 1,500 boards passes. Closing it means
+    pinning the split's *content* -- a digest of the two file lists -- and
+    running that in CI without the 231MB clone. Tractable, not done here.
 - **unenforceable** — *Say what is simulated.* Prose discipline. No assertion
   distinguishes an honest sentence from a missing one. It is declared
   unenforceable with a reason rather than counted as passing, which is the whole
   point of having the category.
 
-#### The gap this branch closed
+#### The first gap closed: `split_by_image`
 
 `split_by_image` is the highest-value one on that list and it had no test at
 all. Every published number in this project -- the operating point, the escape
@@ -956,6 +957,66 @@ cut -- left all 691 tests green. `tests/test_train_split.py` now fails five ways
 on that mutation, naming the boards that straddle the split. One of its tests
 runs the same assertion against a deliberately leaking split, so a guard that
 has quietly stopped being able to fire fails rather than passes.
+
+#### Closing the report gap: run the report in the suite
+
+"Report an operating-point curve, never bare accuracy" is the first rule in
+CLAUDE.md and it was the one nothing could notice being broken. The arithmetic
+under it was tested hard -- `sweep`, `best_at_escape_budget` and the two-stage
+compounding all fail when they move -- but no test imported `scripts/report.py`,
+which is the part a reader actually sees.
+
+`tests/test_report_curve.py` generates the report over a synthetic split with a
+real cost trade-off built into it (100 defects and 300 false calls, both spread
+across the probability range, so a tighter budget really does force a higher
+threshold), computes the operating points independently from `sweep`, and holds
+the published document to four things: it sweeps several budgets spanning a
+range a line might choose between; every budget comes back as a row carrying
+both halves of the trade-off, matched numerically against the sweep; the review
+removed rises across the rows rather than repeating one point; and accuracy
+appears after the curve, unemphasised.
+
+None of that is a string match on today's wording. Columns are found by a word
+in their header, figures are parsed as percentages and compared to the sweep
+within half of the last decimal place, so the report can be rewritten freely and
+only the curve is load-bearing.
+
+#### Closing the SQL gap: a signature cannot tell, so the registration declares
+
+The no-SQL invariant was enforced against the *arguments a plan passes*: unknown
+tool, unknown argument, out-of-domain value, all refused before anything runs.
+Nothing looked at the *surface the registry offers*, which is why
+`run_query(sql: str)` passed all five tests -- `sql` was a known argument of a
+known tool holding a value with no domain to be outside of.
+
+The obvious fix does not work. `search_standards(query: str, top_k=3)` is a
+registered tool that takes arbitrary free text, and it is the same signature as
+`run_query(sql: str)`; banning `str` parameters, or `str` parameters named
+`query`, would break a working feature and stop nothing, because renaming `sql`
+to `query` is free. Nothing in a Python signature distinguishes prose handed to
+an embedding index from syntax handed to a query engine.
+
+What does distinguish them is where the text lands and what comes back.
+Retrieval text reaches a Chroma index over the markdown in `data/standards/` --
+no engine, no schema, no query language -- and returns passages carrying their
+document, heading and text, so a wrong retrieval is visibly the wrong passage. A
+query language reaches an engine and returns a number whose derivation is gone,
+and in a disposition context a plausible wrong number is worse than a crash,
+because it is acted on.
+
+So the registry is now a tuple of `Registration`s, each accounting for every
+parameter its tool exposes: a closed domain checked per call, an identifier used
+as a value and never parsed, or free text declared over a named document corpus.
+An unaccounted parameter raises `UnregistrableTool` at import -- the tool cannot
+be registered at all, and the analysis path does not load. The declarations are
+backed as far as they can be: the corpus has to be one the system has, the
+tool's module and the corpus module are both read statically for a route to the
+store, and the tool's own body for SQL built out of a string.
+
+What is left is a declaration, and a determined author could write a false one.
+That is deliberate and it is the honest limit of the mechanism: the lie is then
+a line of source in the registry with a name on the commit, instead of a
+signature that slid past five green tests.
 
 #### What this method does not establish
 
