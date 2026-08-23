@@ -1,5 +1,7 @@
 # AOI-Agent
 
+[![tests](https://github.com/lin891020/aoi-agent/actions/workflows/tests.yml/badge.svg)](https://github.com/lin891020/aoi-agent/actions/workflows/tests.yml)
+
 **Every board the AOI flags gets a second look — from a model, not a person.**
 
 Automated optical inspection on a PCB line is tuned for recall, so it over-flags.
@@ -210,6 +212,31 @@ uv run python -m aoi_agent corrections                   # where operators overr
 Requires [Ollama](https://ollama.com) with a tool-calling model (`gpt-oss:20b`
 by default). Everything runs locally; nothing leaves the machine, which on a
 production line is a requirement rather than a preference.
+
+### Running it in a container
+
+```bash
+docker build -t aoi-agent .
+docker run --rm -p 8000:8000 \
+  -v "$PWD/data:/app/data" -v "$PWD/models:/app/models" \
+  aoi-agent                                              # the station on :8000
+docker run --rm -v "$PWD/data:/app/data" -v "$PWD/models:/app/models" \
+  aoi-agent python -m aoi_agent queue                    # or any CLI subcommand
+```
+
+Nothing heavy is in the image. The dataset, the patches, the weights, the
+SQLite store and the Chroma index are all built by the scripts above and are
+all gitignored; they arrive on the two mounts, and the image holds only the
+code and its wheels. Run it with nothing mounted and you get a station that
+starts against an empty queue, which is a clearer failure than a crash on
+import.
+
+Two things the container is not. It has no GPU: a Linux image gets torch's CPU
+build, which is deliberate — the CUDA wheels drag in several gigabytes of
+runtime for hardware this project has never had, so `pyproject.toml` resolves
+linux against PyTorch's CPU index and leaves macOS on PyPI, where MPS still
+works. And it has no model server: Ollama stays on the host, so the flow's
+explanation step needs the container to be able to reach it.
 
 ## Known limits
 

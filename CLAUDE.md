@@ -65,6 +65,11 @@ uv run python scripts/check_mcp_servers.py       # servers start and advertise t
 uv run python -m aoi_agent board 20085294 --queue  # run a board, queue what it cannot settle
 uv run python -m aoi_agent station               # review station on :8000 -- the queue, and /ask
 uv run python -m aoi_agent queue                 # what is waiting on a person
+
+docker build -t aoi-agent .                      # CPU torch; nothing heavy baked in
+docker run --rm -p 8000:8000 \
+  -v "$PWD/data:/app/data" -v "$PWD/models:/app/models" aoi-agent
+                                                 # the station, containerised
 ```
 
 ## Invariants — do not quietly change these
