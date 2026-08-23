@@ -792,3 +792,64 @@ The never-flagged 7 are spread over 7 boards, no board contributing more than on
 #### What changed in the code
 
 `scripts/report.py` no longer computes a whole-line figure. It had a `--aoi-escape-rate` argument defaulting to 0.050, a number carried over by hand from `build_patches.py`'s miss print, and it had no access to the two things the composition needs: whether anything was flagged on a defect, and what the model did with it. This script owns that section now. `system_escape_rate` is unchanged and still correct -- it was being fed the wrong stage rate, not computing the wrong thing.
+
+## 2026-08-23 · commit fd743df
+
+### The opening kernel — what the seven lost defects would cost to recover
+
+`open_kernel = 3` erases 7 real defects on the test split before connected components ever runs. That is the whole of this line's unrecoverable escape rate (0.22%, see the accounting above), and it is a detector setting rather than a property of the data. So: sweep it.
+
+500 boards, 3140 ground-truth defects. The perturbed columns re-run the same boards under `gate_check.py`'s production conditions -- 2px template shift, sigma 6.0 noise, 1.03 gain, seeded per board. That is the condition the opening exists for, so it is the column that prices it.
+
+| opening | defects nothing is flagged on | unmatched at IoU 0.33 | false calls/board | candidates/board | false calls/board, misregistered |
+|---|---|---|---|---|---|
+| none (a no-op; 1x1 is the same row) | 7 (0.22%) | 167 (5.32%) | 123.24 | 153.38 | 59.22 |
+| 2x2 square | 0 (0.00%) | 58 (1.85%) | 39.17 | 51.50 | 64.59 |
+| 3x3 cross | 2 (0.06%) | 43 (1.37%) | 19.47 | 28.83 | 48.05 |
+| **3x3 square** ← shipped | 7 (0.22%) | 157 (5.00%) | 10.29 | 18.14 | 31.25 |
+| 4x4 square | 255 (8.12%) | 733 (23.34%) | 3.52 | 9.79 | 8.51 |
+| 5x5 square | 799 (25.45%) | 1279 (40.73%) | 0.74 | 5.66 | 2.51 |
+
+Two things in that table are not obvious.
+
+**Removing the opening entirely does not remove the problem.** With no opening the sliver noise merges under the 5x5 dilation into components that blow past `max_area`, and the detector drops those as registration failures -- so it loses 7 defects of its own while carrying 12x the false calls. The curve has no free end; it has a middle.
+
+**The unmatched-at-IoU column moves a long way and means almost nothing.** A tighter opening leaves more of a defect standing, so the box is tighter and clears the cut. Those defects were reaching an operator either way -- that is the whole finding of the section above, and the column is here so nobody re-derives a recall improvement from it. The column that matters is the first one.
+
+#### The trade, priced
+
+| opening | defects recovered | of those, the re-verifier keeps | added false calls/board | added false calls per defect actually kept |
+|---|---|---|---|---|
+| none | 7/7 | 4 | +112.95 | **14,119** |
+| 2x2 square | 7/7 | 5 | +28.88 | **2,888** |
+| 3x3 cross | 5/7 | 5 | +9.18 | **918** |
+
+The middle column is the one that decides this, and it needs its caveat said out loud: the checkpoint was trained on `open_kernel=3` patches, so a candidate only a smaller kernel produces is out of its distribution. This is what the line would do *today*, not what a retrained line would do. It is still the right question to ask first, because a recovered candidate the model then dismisses is a defect that escaped one stage later with the false calls still on the bill.
+
+#### Decision: `open_kernel` stays at 3
+
+The cheapest setting that recovers anything is **3x3 cross**, at **918 additional false calls per defect the model then keeps**. It buys 5 of 7.
+
+Recovering all 7 needs **2x2 square** at 2,888 each -- and the model keeps only 5 of what it recovers, so 2 of the 7 escape one stage later with the false calls still on the bill.
+
+Under misregistration the bill rises again: 48 false calls per board for 3x3 cross against the shipped 31. That is the column that describes a real line -- DeepPCB ships pre-registered, and the opening is in the detector precisely because a line that is not pre-registered leaves slivers along every trace edge.
+
+Set against all of that: 0.22% of defects, on a project whose headline is how much review it removes. Buying them back means every board carries 1.6x to 8.5x the candidates, the checkpoint is invalidated, the operating point has to be re-swept, every routing number moves -- and the model, as it stands, dismisses part of what the change recovers. **The sweep does not support the change, so the constant does not move.**
+
+What the sweep does support is naming the condition. Revisit this if the line's escape budget is ever written against the whole line rather than the re-verification stage, or if an escaped `open` is repriced -- these are the only defects here that no threshold reaches, and the lever that reaches them is this one and not the model.
+
+#### Why these 7 and not others
+
+| board | class | ground-truth box | difference pixels | after the 3x3 opening | max half-width |
+|---|---|---|---|---|---|
+| 12100016 | open | 27x30 | 54 | 0 | 1.37 px |
+| 12100046 | pin-hole | 41x33 | 56 | 0 | 1.37 px |
+| 12100153 | open | 33x29 | 133 | 0 | 1.37 px |
+| 20085314 | mousebite | 25x27 | 50 | 0 | 0.96 px |
+| 20085319 | mousebite | 26x28 | 24 | 0 | 1.37 px |
+| 44000028 | spur | 29x51 | 93 | 0 | 0.96 px |
+| 90100019 | short | 32x39 | 115 | 0 | 1.37 px |
+
+Every one goes to zero. A blob survives an NxN opening only where it contains a fully-enclosed NxN square, and the widest of these is 1.37 px from its own edge at the thickest point -- under the 1.5 px a 3x3 square needs. They are **thin, not small**: the difference blobs run 24-133 pixels, which is well clear of `min_area`. Nothing downstream ever gets the chance to reject them; the mask is already empty.
+
+They are spread over 7 boards, one each, so this is a property of the detector rather than of a bad scan. `DetectorConfig.open_shape` was added for this sweep and defaults to `rect`, which is what shipped and what still ships.

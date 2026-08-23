@@ -273,10 +273,19 @@ explanation step needs the container to be able to reach it.
 - **DeepPCB ships pre-registered and binarised**, which removes the two largest
   real-world sources of false calls. Its defects are also partly augmented onto
   the boards by the dataset authors rather than occurring naturally.
-- The simulator's 3×3 opening kernel erases the thin slivers misregistration
-  leaves along trace edges. Measured: a 2 px template shift changes 456 pixels
-  on a synthetic board and yields zero candidates at the default settings. A
-  real AOI is noisier than this one.
+- **The 3×3 opening kernel is where the 0.22% goes, and it stays anyway.** It
+  erases the thin slivers misregistration leaves along trace edges — measured, a
+  2 px template shift changes 456 pixels on a synthetic board and yields zero
+  candidates at the default settings — and it also erases all seven of the
+  defects nothing is flagged on. Each is thin rather than small: a 24–133 pixel
+  difference blob, at most 1.37 px from its own edge at the thickest point,
+  against the 1.5 px a 3×3 square needs to survive. Swept, recovering them costs
+  918 (3×3 cross, five of seven) to 2,888 (2×2 square, all seven) additional
+  false calls per defect the re-verifier then keeps, and 1.6–8.5× the candidates
+  on every board — before the misregistered column, where the bill rises again.
+  The constant did not move, and it does not move without re-running
+  [that sweep](docs/benchmarks.md#the-opening-kernel--what-the-seven-lost-defects-would-cost-to-recover).
+  A real AOI is noisier than this one.
 - **Production context is simulated.** Public defect datasets ship no lot
   numbers or machine ids. Boards are assigned to machines by rank on open-defect
   share, which plants a specific, documented signal on one station so the
