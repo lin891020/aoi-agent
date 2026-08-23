@@ -33,7 +33,7 @@ src/aoi_agent/
     cli.py
 scripts/                    gate_check, build_patches, train, report, seed_store,
                             analysis_eval, ...
-tests/                      610 tests; dataset-dependent ones behind `-m dataset`
+tests/                      620 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -48,7 +48,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 610 tests, no GPU needed, no model called
+uv run pytest                                    # 620 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
@@ -94,12 +94,18 @@ board is back under the unscoped reading.
   against the real signatures and value domains before it runs, and the chart is
   derived from the result shape rather than chosen by the model. What the LLM
   contributes at either end is language.
-- **On the disposition path, every failure escalates to a human, except an LLM
-  outage.** Unparseable verdict, `open` below the threshold, anything under
-  `ESCALATE_BELOW` -- all route to a person. An unreachable LLM no longer does,
-  because the decision no longer depends on it: the operator loses an
-  explanation, not a verdict, and the queue does not fill with every candidate
-  on the line. The analysis flow's failures terminate in a message on the page
+- **On the disposition path, every failure escalates to a human, except the
+  LLM's own.** `open` below the threshold, anything under `ESCALATE_BELOW` --
+  all route to a person. The LLM's two failures no longer do, because the
+  decision no longer depends on it: an unreachable model and a response that
+  will not parse both fall back to the classifier's class and confidence and
+  route on those, so the operator loses an explanation, not a verdict, and the
+  queue does not fill with every candidate on the line. This bullet said
+  "unparseable verdict" escalates until 2026-08-23, which had been false since
+  `route_after_reason` stopped reading the LLM -- above `ESCALATE_BELOW` an
+  unparseable response is dispositioned like any other. The parse failure is
+  recorded in the rationale, which is what the operator reads. Pinned by
+  `test_an_unparseable_verdict_at_0_93_is_decided_anyway`. The analysis flow's failures terminate in a message on the page
   instead -- an unplanned question, a rejected plan, a branch whose tool raised.
   There is no disposition waiting on any of them and nothing for a person to
   answer, so a queue entry would be a task nobody can close.

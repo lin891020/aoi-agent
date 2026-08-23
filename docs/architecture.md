@@ -174,16 +174,24 @@ inside 10s is an open measurement -- see docs/benchmarks.md.
 
 Every branch that can fail fails towards a person:
 
-- an unparseable verdict → escalate
 - confidence below `ESCALATE_BELOW` → escalate
 - `open` at any confidence → investigate, never short-circuit
 - a candidate that fragments a real defect → held out of training, not labelled spurious
-- the process holding a suspended run dies → the run is on disk, the queue still lists it
+- the process holding a suspended run dies → the run is on disk, the queue still
+  lists it, and a second process finishes it --
+  `tests/test_checkpoint_durability.py` raises the escalation in an interpreter
+  that then exits
 
-The one exception is an unreachable LLM. The decision no longer depends on it,
-so the run falls back to the classifier's own class and confidence and routes on
-those: the operator loses an explanation, not a verdict, and the queue does not
-fill with every candidate on the line.
+The exceptions are the LLM's own two failures: an unreachable model, and a
+response that will not parse. Both used to escalate and neither does now,
+because the decision no longer depends on the LLM -- the run falls back to the
+classifier's own class and confidence and routes on those. Above
+`ESCALATE_BELOW` that means an unparseable verdict is dispositioned, not
+escalated; the parse failure is recorded in the rationale the operator would
+read. This list said "an unparseable verdict → escalate" until 2026-08-23,
+which was left over from when the LLM decided. The operator loses an
+explanation, not a verdict, and the queue does not fill with every candidate on
+the line.
 
 An escalation costs an operator a few seconds. The alternatives cost a shipped
 board or a silently mislabelled training set.
