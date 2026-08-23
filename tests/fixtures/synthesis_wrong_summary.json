@@ -1,0 +1,92 @@
+{
+  "why": "A checker built by the author of the thing it checks can be lenient without anyone noticing, and a taxonomy nothing can fail reads exactly like a clean result. This fixture is the control: one run's real results, a faithful summary of them that must produce no finding, and a corrupted summary carrying one instance of every kind that must produce all five. If the corrupted half stops failing, the checker has gone blind; if the faithful half starts failing, it has gone loud.",
+  "plan": {
+    "interpretation": "Whether line L1's defect load is unusual against L2, and what the criteria say about opens.",
+    "assumptions": [
+      "Unusual means compared with the other line over the same window."
+    ],
+    "calls": [
+      {"tool": "query_defect_history", "args": {"line_id": "L1", "days": 7}, "why": "L1's counts"},
+      {"tool": "query_defect_history", "args": {"line_id": "L2", "days": 7}, "why": "L2, as the comparison"},
+      {"tool": "search_standards", "args": {"query": "open circuit acceptance", "top_k": 2, "defect_class": "open"}, "why": "what the criteria require"},
+      {"tool": "query_machine_stats", "args": {"defect_type": "open", "days": 7}, "why": "which machine carries the opens"}
+    ]
+  },
+  "results": [
+    {
+      "tool": "query_defect_history",
+      "args": {"line_id": "L1", "days": 7},
+      "why": "L1's counts",
+      "position": 0,
+      "ok": true,
+      "data": {
+        "filters": {"lot_id": null, "line_id": "L1", "machine_id": null, "defect_type": null, "days": 7},
+        "window_end": "2026-08-09T13:36:00",
+        "boards_inspected": 137,
+        "defects_total": 966,
+        "defects_per_board": 7.05,
+        "by_class": {"copper": 138, "mousebite": 188, "open": 175, "pin-hole": 152, "short": 162, "spur": 151}
+      },
+      "error": null,
+      "elapsed_ms": 8.6
+    },
+    {
+      "tool": "query_defect_history",
+      "args": {"line_id": "L2", "days": 7},
+      "why": "L2, as the comparison",
+      "position": 1,
+      "ok": true,
+      "data": {
+        "filters": {"lot_id": null, "line_id": "L2", "machine_id": null, "defect_type": null, "days": 7},
+        "window_end": "2026-08-09T13:36:00",
+        "boards_inspected": 142,
+        "defects_total": 1049,
+        "defects_per_board": 7.39,
+        "by_class": {"copper": 128, "mousebite": 181, "open": 302, "pin-hole": 146, "short": 163, "spur": 129}
+      },
+      "error": null,
+      "elapsed_ms": 7.9
+    },
+    {
+      "tool": "search_standards",
+      "args": {"query": "open circuit acceptance", "top_k": 2, "defect_class": "open"},
+      "why": "what the criteria require",
+      "position": 2,
+      "ok": true,
+      "data": {
+        "query": "open circuit acceptance",
+        "defect_class": "open",
+        "passages": [
+          {
+            "document": "open-circuit",
+            "heading": "Classification",
+            "text": "Classification\n\nAny confirmed open is a **critical defect**. There is no width or length below\nwhich an open is acceptable, because continuity is binary.",
+            "distance": 1.1291,
+            "governs": "open"
+          }
+        ]
+      },
+      "error": null,
+      "elapsed_ms": 74.9
+    },
+    {
+      "tool": "query_machine_stats",
+      "args": {"defect_type": "open", "days": 7},
+      "why": "which machine carries the opens",
+      "position": 3,
+      "ok": false,
+      "data": null,
+      "error": "OperationalError: database is locked",
+      "elapsed_ms": 12.0
+    }
+  ],
+  "faithful": "Line L1 inspected 137 boards and recorded 966 defects, an average of 7.05 per board: copper 138, mousebite 188, open 175, pin-hole 152, short 162, spur 151.\nLine L2 inspected 142 boards and recorded 1,049 defects, an average of 7.39 per board: copper 128, mousebite 181, open 302, pin-hole 146, short 163, spur 129.\nThe criteria retrieved for open state that any confirmed open is a critical defect, with no width or length below which an open is acceptable.\nquery_machine_stats failed, so the per-machine comparison is missing from this answer.",
+  "corrupted": "Line L1 inspected 137 boards and recorded 1,412 defects, with open at 302.\nAcross the same window the open count on L2 has increased sharply, and the rise is due to a solder paste change at the screen printer.\nWI-206 sets the acceptance limit for a spur at 30% of the pad width.",
+  "expected_kinds": {
+    "fabricated_figure": "1412, which appears in no payload",
+    "misattributed_figure": "302 is L2's open count, printed under L1",
+    "unsupported_claim": "a movement over time, and a cause, in one sentence",
+    "unhedged_gap": "query_machine_stats failed and the prose reads as complete",
+    "misquoted_criterion": "WI-206 was never retrieved, and no passage governs spur"
+  }
+}
