@@ -12,7 +12,7 @@ from typing import Any
 
 from langgraph.types import Command
 
-from aoi_agent.provenance import DecisionProvenance
+from aoi_agent.provenance import DecisionProvenance, ReviewerIdentity
 from aoi_agent.store import dispositions, escalations
 from aoi_agent.store.boards import record_decision
 
@@ -91,8 +91,17 @@ def start_review(graph, reference: str) -> dict[str, Any]:
     return state
 
 
-def resume_review(graph, reference: str, verdict: str, reviewer: str) -> dict[str, Any]:
+def resume_review(
+    graph, reference: str, verdict: str, identity: ReviewerIdentity
+) -> dict[str, Any]:
     """Hand an operator's verdict back to the suspended run.
+
+    ``identity`` is a ``ReviewerIdentity`` rather than a name, and it is not
+    optional. Both callers get one from a mechanism rather than from a field:
+    the station off its signed session, the CLI off the host account. A name
+    this function could be handed as a string is a name any caller could
+    invent, and the point of the whole exercise is that a training label can be
+    weighed by who produced it.
 
     The decision is recorded before the queue entry is closed. If the process
     dies between the two, the candidate stays on the queue and gets looked at
@@ -100,17 +109,26 @@ def resume_review(graph, reference: str, verdict: str, reviewer: str) -> dict[st
     """
     if verdict not in VERDICT_OPTIONS:
         raise ValueError(f"{verdict!r} is not one of {VERDICT_OPTIONS}")
+    if not identity.is_attributable:
+        # Refused here as well as in ``record_decision``, and deliberately
+        # before the graph is resumed: an unattributable answer must not
+        # consume the interrupt, or the region leaves the queue and the
+        # verdict has nowhere to go.
+        raise ValueError(
+            f"{reference} cannot be answered by an unattributable reviewer "
+            f"({identity.method})"
+        )
 
     queued = escalations.get(thread_for(reference))
     state = graph.invoke(
-        Command(resume={"verdict": verdict, "reviewer": reviewer}),
+        Command(resume={"verdict": verdict, "reviewer": identity.name}),
         config=_config(reference),
     )
     record_decision(
         reference,
         verdict,
         "human",
-        reviewer,
+        identity,
         queued["reason"] if queued else None,
         # The state came back through the checkpointer, so this is the model
         # the operator was actually shown -- which may not be the checkpoint on
@@ -120,10 +138,10 @@ def resume_review(graph, reference: str, verdict: str, reviewer: str) -> dict[st
     )
     escalations.resolve_escalation(thread_for(reference))
     # Whoever answered the last outstanding region on this board is the
-    # authority the board-level record names. That identity is a free-text
-    # field until the station has authentication, and the record says so by
-    # carrying it verbatim rather than by rounding it up to "a person".
-    settle_board(reference, reviewer)
+    # authority the board-level record names -- and since 2026-08-23 that name
+    # came from somewhere: the station's session or the host account, never a
+    # form field.
+    settle_board(reference, identity.name)
     return state
 
 

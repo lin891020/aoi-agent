@@ -30,6 +30,7 @@ from datetime import datetime
 
 import pytest
 
+from aoi_agent.provenance import ReviewerIdentity
 from aoi_agent.store import boards, escalations
 from aoi_agent.store.models import (
     Board,
@@ -125,7 +126,8 @@ def store(tmp_path, monkeypatch):
         session.commit()
 
     # Only the first has an operator's verdict behind it.
-    boards.record_decision(f"{STEM}#0", "short", "human", reviewer="mike")
+    boards.record_decision(f"{STEM}#0", "short", "human",
+                           identity=ReviewerIdentity.signed_in("mike"))
     return factory
 
 

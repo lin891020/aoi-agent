@@ -262,6 +262,7 @@ def decision_provenance(stem: str) -> list[dict]:
                     "verdict": decision.verdict if decision else None,
                     "source": decision.source if decision else None,
                     "reviewer": decision.reviewer if decision else None,
+                    "reviewer_auth": decision.reviewer_auth if decision else None,
                     "model_digest": decision.model_digest if decision else None,
                     "thresholds_json": decision.thresholds_json if decision else None,
                     "code_version": decision.code_version if decision else None,

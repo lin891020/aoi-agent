@@ -19,6 +19,14 @@
     <span class="badge">
       <b hx-get="/queue-count" hx-trigger="every 10s" hx-swap="innerHTML">{{ waiting }}</b> waiting
     </span>
+    {# Who the station thinks is answering. Shown on every page rather than only
+       on the verdict form: the name is what goes on the label, and an operator
+       who finds somebody else's session open should see that before they
+       answer a region, not after. #}
+    <form class="who" method="post" action="/logout">
+      <span class="mono">{{ request.state.operator }}</span>
+      <button type="submit">sign out</button>
+    </form>
   </header>
   <main>{% block content %}{% endblock %}</main>
   {% block script %}{% endblock %}

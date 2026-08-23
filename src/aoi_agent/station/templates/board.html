@@ -77,7 +77,12 @@
             <span class="dim">&mdash;</span>
           {% endif %}
         </td>
-        <td class="dim">{{ row.reviewer or row.source or '&mdash;'|safe }}</td>
+        <td class="dim">
+          {{ row.reviewer or row.source or '&mdash;'|safe }}
+          {% if row.reviewer and row.reviewer_auth %}
+            <span class="mono small {{ 'dim' if row.reviewer_auth == 'signed_in' else 'warn' }}">{{ row.reviewer_auth }}</span>
+          {% endif %}
+        </td>
         <td class="mono small {{ 'warn' if row.model_digest in absences else 'dim' }}">
           {{ row.model_digest or 'null' }}
         </td>

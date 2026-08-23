@@ -21,6 +21,7 @@ from aoi_agent.station.result_view import (
     readable_rows,
 )
 from aoi_agent.store.models import create_all, make_session_factory
+from conftest import sign_in
 
 PLAN = {
     "interpretation": "M22 against the fleet",
@@ -55,7 +56,7 @@ class StubClient:
 
 
 @pytest.fixture
-def client(tmp_path, monkeypatch):
+def client(tmp_path, monkeypatch, operators):
     url = f"sqlite:///{tmp_path / 'a.db'}"
     create_all(url)
     monkeypatch.setattr("aoi_agent.store.boards._session_factory",
@@ -70,7 +71,10 @@ def client(tmp_path, monkeypatch):
         station_app, "_analysis_graph",
         analysis.build_analysis_graph(StubClient(), DOMAINS),
     )
-    return TestClient(station_app.app)
+    # `/ask` reads production statistics for the whole plant, which is the
+    # exposure that made authentication a precondition rather than a backlog
+    # item. Signed in through the real form; refusal is in test_attribution.py.
+    return sign_in(TestClient(station_app.app))
 
 
 def test_the_svg_draws_one_rect_per_point_and_labels_the_axes():

@@ -27,6 +27,7 @@ import pytest
 from fastapi.testclient import TestClient
 from langgraph.checkpoint.memory import InMemorySaver
 
+from conftest import sign_in
 from aoi_agent.graph import flow
 from aoi_agent.station import app as station_app
 from aoi_agent.station import service
@@ -38,7 +39,7 @@ from aoi_agent.store.models import (
     create_all,
     make_session_factory,
 )
-from aoi_agent.provenance import DecisionProvenance
+from aoi_agent.provenance import DecisionProvenance, ReviewerIdentity
 from test_graph import STUB_DIGEST, StubClient, stub_tools  # noqa: F401  (fixture)
 
 #: An automated decision written straight into the store still has to say
@@ -207,25 +208,26 @@ def test_the_handover_reason_is_the_confidence_not_the_outage(store, stub_tools)
     assert row["explanation_status"] == "timed_out"
 
 
-def test_the_queue_page_flags_the_absence_and_counts_it(store, stub_tools, monkeypatch):  # noqa: F811
+def test_the_queue_page_flags_the_absence_and_counts_it(store, stub_tools, monkeypatch,  # noqa: F811
+                                                        operators):
     graph = flow.build_graph(SlowClient(), InMemorySaver())
     service.start_review(graph, REFERENCE)
     monkeypatch.setattr(station_app, "_graph", graph)
 
-    body = TestClient(station_app.app).get("/").text
+    body = sign_in(TestClient(station_app.app)).get("/").text
     assert "no explanation" in body
     assert "1 of 1 carry no written explanation" in body
     assert "ReadTimeout" not in body
 
 
 def test_the_region_page_shows_an_absence_rather_than_a_rationale(
-    store, stub_tools, monkeypatch  # noqa: F811
+    store, stub_tools, monkeypatch, operators  # noqa: F811
 ):
     graph = flow.build_graph(SlowClient(), InMemorySaver())
     service.start_review(graph, REFERENCE)
     monkeypatch.setattr(station_app, "_graph", graph)
 
-    body = TestClient(station_app.app).get(f"/c/{STEM}/0").text
+    body = sign_in(TestClient(station_app.app)).get(f"/c/{STEM}/0").text
     assert "no written explanation" in body
     assert "No explanation was written" in body
     assert "ReadTimeout" not in body
@@ -279,7 +281,8 @@ def test_a_human_decision_is_left_out_of_the_count(store):
     boards.record_decision(
         REFERENCE, "open", "agent", explanation_status="ok", provenance=PROVENANCE
     )
-    boards.record_decision(REFERENCE, "short", "human", reviewer="mike")
+    boards.record_decision(REFERENCE, "short", "human",
+                           identity=ReviewerIdentity.signed_in("mike"))
     assert boards.explanation_status_counts() == {"ok": 1}
 
 

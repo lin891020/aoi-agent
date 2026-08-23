@@ -234,3 +234,34 @@ table.kv td { padding: 0.15rem 0; vertical-align: top; }
             border: 1px solid var(--line); border-radius: 10px; }
 .progress ul { list-style: none; padding: 0; margin: 0.5rem 0 0;
                font-family: var(--mono); font-size: 0.85rem; line-height: 1.9; }
+
+/* The signed-in operator, and the way in. */
+.who { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
+.who span { color: var(--dim); }
+.who button {
+  background: none; border: 1px solid var(--line); border-radius: 6px;
+  color: var(--dim); font: inherit; font-size: 0.78rem;
+  padding: 0.15rem 0.5rem; cursor: pointer;
+}
+.who button:hover { color: var(--ink); border-color: var(--accent); }
+
+.signin { max-width: 26rem; margin: 12vh auto 0; padding: 0 1.25rem; }
+.signin h1 { font-size: 1.25rem; margin: 0 0 1.25rem; }
+.signin-form {
+  display: flex; flex-direction: column; gap: 0.9rem;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; padding: 1.25rem 1.5rem 1.4rem;
+}
+.signin-form label {
+  display: flex; flex-direction: column; gap: 0.35rem;
+  font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em;
+  color: var(--dim);
+}
+.signin-form input {
+  background: var(--bg); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 6px; padding: 0.45rem 0.6rem; font: inherit;
+  text-transform: none; letter-spacing: 0;
+}
+.signin-form button { justify-content: center; cursor: pointer; }
+.signin-error { margin: 0; color: var(--danger); font-size: 0.85rem; }
+.signin-note { font-size: 0.82rem; line-height: 1.6; margin-top: 1.25rem; }

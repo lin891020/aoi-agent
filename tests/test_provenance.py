@@ -36,12 +36,14 @@ from fastapi.testclient import TestClient
 from langgraph.checkpoint.memory import InMemorySaver
 from sqlalchemy import create_engine, inspect, text
 
+from conftest import sign_in
 from aoi_agent.graph import flow
 from aoi_agent.provenance import (
     UNAVAILABLE,
     UNKNOWN,
     UNRECORDED,
     DecisionProvenance,
+    ReviewerIdentity,
     checkpoint_digest,
     code_version,
 )
@@ -60,6 +62,8 @@ from test_graph import STUB_DIGEST, StubClient, stub_tools  # noqa: F401  (fixtu
 
 STEM = "20085293"
 REFERENCE = f"{STEM}#0"
+
+MIKE = ReviewerIdentity.signed_in("mike")
 
 ANOTHER = DecisionProvenance(
     model_digest="sha256:ffffffffffffffff",
@@ -230,7 +234,7 @@ def test_an_operators_answer_is_attributed_to_the_model_they_were_shown(
     """
     graph = flow.build_graph(StubClient(confident=False), InMemorySaver())
     service.start_review(graph, REFERENCE)
-    service.resume_review(graph, REFERENCE, "copper", "mike")
+    service.resume_review(graph, REFERENCE, "copper", MIKE)
 
     with store() as session:
         human = (
@@ -249,7 +253,7 @@ def test_an_operators_answer_is_never_refused_for_want_of_provenance(store):
     thing in the system and the next training round's ground truth -- to protect
     a column. The gap is named instead.
     """
-    assert boards.record_decision(REFERENCE, "short", "human", reviewer="mike")
+    assert boards.record_decision(REFERENCE, "short", "human", identity=MIKE)
 
     with store() as session:
         row = session.query(ReviewDecision).one()
@@ -414,7 +418,7 @@ def test_board_dispositions_accumulate_rather_than_overwrite(store):
     _decide(f"{STEM}#1", "false_call")
     dispositions.record(STEM)
 
-    boards.record_decision(REFERENCE, "false_call", "human", reviewer="mike")
+    boards.record_decision(REFERENCE, "false_call", "human", identity=MIKE)
     dispositions.record(STEM, decided_by="mike")
 
     history = dispositions.history(STEM)
@@ -430,7 +434,7 @@ def test_the_operator_who_answered_the_last_region_is_the_authority(
     _decide(REFERENCE, "false_call")
     graph = flow.build_graph(StubClient(confident=False), InMemorySaver())
     service.start_review(graph, f"{STEM}#1")
-    service.resume_review(graph, f"{STEM}#1", "false_call", "mike")
+    service.resume_review(graph, f"{STEM}#1", "false_call", MIKE)
 
     latest = dispositions.latest(STEM)
     assert latest["decided_by"] == "mike"
@@ -468,20 +472,22 @@ def test_the_board_record_never_carries_the_ground_truth(store):
 # ---- where it answers the question --------------------------------------
 
 
-def test_the_board_page_shows_what_decided_each_region(store, monkeypatch):
+def test_the_board_page_shows_what_decided_each_region(store, monkeypatch, operators):
     monkeypatch.setattr(station_app, "_graph", object())
     _decide(REFERENCE, "false_call")
     dispositions.record(STEM)
 
-    body = TestClient(station_app.app).get(f"/board/{STEM}").text
+    body = sign_in(TestClient(station_app.app)).get(f"/board/{STEM}").text
     assert STUB_DIGEST in body
     assert "released" in body or "held" in body
     assert "mousebite" not in body, "the answer key is not on this page either"
 
 
-def test_the_board_page_is_404_for_a_board_the_store_does_not_hold(store, monkeypatch):
+def test_the_board_page_is_404_for_a_board_the_store_does_not_hold(store, monkeypatch,
+                                                                  operators):
     monkeypatch.setattr(station_app, "_graph", object())
-    assert TestClient(station_app.app).get("/board/99999999").status_code == 404
+    client = sign_in(TestClient(station_app.app))
+    assert client.get("/board/99999999").status_code == 404
 
 
 def test_the_cli_answers_the_auditors_question(store, capsys):

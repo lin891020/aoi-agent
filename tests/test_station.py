@@ -13,14 +13,19 @@ from fastapi.testclient import TestClient
 from langgraph.checkpoint.memory import InMemorySaver
 
 from aoi_agent.graph import flow
+from aoi_agent.provenance import ReviewerIdentity
 from aoi_agent.station import app as station_app
 from aoi_agent.station import service
 from aoi_agent.store import boards, escalations
 from aoi_agent.store.models import Board, CandidateRecord, create_all, make_session_factory
+from conftest import sign_in
 from test_graph import StubClient, stub_tools  # noqa: F401  (fixture)
 
 STEM = "20085293"
 REFERENCE = f"{STEM}#0"
+
+#: The operator the suite signs in as, as the store records them.
+MIKE = ReviewerIdentity.signed_in("mike")
 
 
 @pytest.fixture
@@ -60,9 +65,15 @@ def graph(stub_tools):  # noqa: F811
 
 
 @pytest.fixture
-def client(store, graph, monkeypatch):
+def client(store, graph, monkeypatch, operators):
+    """Signed in, because every page is behind a session now.
+
+    The sign-in is a real form post against the real credential file, not a
+    fixture that reaches past the check -- see `conftest.sign_in`. What an
+    unauthenticated client gets instead is `tests/test_attribution.py`.
+    """
     monkeypatch.setattr(station_app, "_graph", graph)
-    return TestClient(station_app.app)
+    return sign_in(TestClient(station_app.app))
 
 
 # ---- the queue ----------------------------------------------------------
@@ -99,7 +110,7 @@ def test_a_region_already_waiting_is_not_re_run(store, graph):
 
 def test_answering_resolves_the_queue_entry_and_records_the_decision(store, graph):
     service.start_review(graph, REFERENCE)
-    state = service.resume_review(graph, REFERENCE, "mousebite", "mike")
+    state = service.resume_review(graph, REFERENCE, "mousebite", MIKE)
 
     assert state["decided_by"] == "human"
     assert escalations.pending() == []
@@ -113,7 +124,7 @@ def test_answering_resolves_the_queue_entry_and_records_the_decision(store, grap
 def test_a_verdict_outside_the_class_list_is_refused(store, graph):
     service.start_review(graph, REFERENCE)
     with pytest.raises(ValueError):
-        service.resume_review(graph, REFERENCE, "looks bad", "mike")
+        service.resume_review(graph, REFERENCE, "looks bad", MIKE)
 
 
 # ---- the pages ----------------------------------------------------------
@@ -161,7 +172,7 @@ def test_submitting_a_verdict_resumes_the_run(client, graph):
     service.start_review(graph, REFERENCE)
     response = client.post(
         f"/c/{STEM}/0/verdict",
-        data={"verdict": "mousebite", "reviewer": "mike"},
+        data={"verdict": "mousebite"},
         follow_redirects=False,
     )
 
@@ -255,9 +266,9 @@ def test_the_model_patch_is_the_window_the_model_saw(client):
 # ---- corrections -------------------------------------------------------
 
 
-def _answer(client, index: int, verdict: str, reviewer: str = "mike") -> None:
-    client.post(f"/c/{STEM}/{index}/verdict",
-                data={"verdict": verdict, "reviewer": reviewer},
+def _answer(client, index: int, verdict: str) -> None:
+    """Answer one region as whoever the client signed in as."""
+    client.post(f"/c/{STEM}/{index}/verdict", data={"verdict": verdict},
                 follow_redirects=False)
 
 
@@ -309,9 +320,9 @@ def test_the_summary_ranks_the_worst_class_first(store):
     overturned has to be the one at the top."""
     from aoi_agent.store.boards import record_decision
 
-    record_decision(REFERENCE, "copper", "human", "mike")
-    record_decision(REFERENCE, "spur", "human", "mike")
-    record_decision(f"{STEM}#1", "short", "human", "mike")  # agrees with the model
+    record_decision(REFERENCE, "copper", "human", MIKE)
+    record_decision(REFERENCE, "spur", "human", MIKE)
+    record_decision(f"{STEM}#1", "short", "human", MIKE)  # agrees with the model
 
     summary = boards.correction_summary()
     assert summary["by_model_class"][0]["model_said"] == "open"
@@ -340,7 +351,7 @@ def test_raised_and_resolved_are_stamped_by_the_same_clock(store, graph):
     from aoi_agent.store.models import Escalation
 
     service.start_review(graph, REFERENCE)
-    service.resume_review(graph, REFERENCE, "copper", "mike")
+    service.resume_review(graph, REFERENCE, "copper", MIKE)
 
     with boards.session_factory()() as session:
         row = session.execute(select(Escalation)).scalar()

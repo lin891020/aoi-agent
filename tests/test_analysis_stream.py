@@ -14,6 +14,7 @@ from aoi_agent.llm.ollama import ChatResult, Timing
 from aoi_agent.station import app as station_app
 from aoi_agent.store import analysis as analysis_store
 from aoi_agent.store.models import create_all, make_session_factory
+from conftest import sign_in
 
 PLAN = {
     "interpretation": "M22 against the fleet",
@@ -40,7 +41,7 @@ class StubClient:
 
 
 @pytest.fixture
-def client(tmp_path, monkeypatch):
+def client(tmp_path, monkeypatch, operators):
     url = f"sqlite:///{tmp_path / 'a.db'}"
     create_all(url)
     monkeypatch.setattr("aoi_agent.store.boards._session_factory",
@@ -49,7 +50,7 @@ def client(tmp_path, monkeypatch):
         monkeypatch.setitem(analysis.PLANNABLE_TOOLS, name, lambda **kw: {"ok": 1})
     monkeypatch.setattr(station_app, "_analysis_graph",
                         analysis.build_analysis_graph(StubClient(), DOMAINS))
-    return TestClient(station_app.app)
+    return sign_in(TestClient(station_app.app))
 
 
 def events(body: str) -> list[dict]:

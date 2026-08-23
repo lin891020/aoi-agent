@@ -115,6 +115,31 @@ class ReviewDecision(Base):
     """``model``, ``agent`` or ``human``."""
 
     reviewer: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    """Who answered, where a person did. ``NULL`` on an automated row, which is
+    the truthful value there and is read together with ``reviewer_auth``."""
+
+    reviewer_auth: Mapped[str | None] = mapped_column(String(16), nullable=True, index=True)
+    """What stands behind that name.
+
+    ``mike`` typed into a text box and ``mike`` read off a signed session are
+    the same four characters and are not the same claim, and until 2026-08-23
+    this table could only hold the first. The corrections it feeds are the next
+    training round's labels, so the distinction is not administrative: an
+    expert's judgement and an anonymous click were indistinguishable rows, and
+    the only remedy anyone had was to delete five of them by hand.
+
+    ``signed_in`` the station authenticated the operator and took the name from
+    the session; ``host_account`` the CLI attributed it to the OS account;
+    ``automated`` no person was involved and the provenance columns answer
+    instead; ``unrecorded`` the row predates this column. Indexed because
+    selecting a training set by it is the point of having it.
+
+    Nullable in the schema for the reason ``model_digest`` is -- SQLite cannot
+    add a NOT NULL column to a populated table. What holds it is
+    ``store.boards.record_decision``, which will not write a ``human`` row
+    whose identity is not attributable, and the migration, which leaves no
+    ``NULL`` behind."""
+
     rationale: Mapped[str | None] = mapped_column(String(2048), nullable=True)
 
     explanation_status: Mapped[str | None] = mapped_column(
@@ -332,6 +357,7 @@ ADDED_COLUMNS: dict[str, dict[str, str]] = {
         "model_digest": "VARCHAR(80)",
         "thresholds_json": "VARCHAR(256)",
         "code_version": "VARCHAR(64)",
+        "reviewer_auth": "VARCHAR(16)",
     },
     "escalations": {"explanation_status": "VARCHAR(16)"},
 }
@@ -357,6 +383,14 @@ BACKFILL_ON_ADD: dict[str, dict[str, str]] = {
         "model_digest": UNRECORDED,
         "thresholds_json": UNRECORDED,
         "code_version": UNRECORDED,
+        # The same argument, one column over. Every one of the 9,140 rows this
+        # store held on 2026-08-23 has ``reviewer`` NULL, and NULL would have
+        # to mean both "written before anyone recorded how a reviewer was
+        # identified" and "no reviewer, because no person was involved" -- and
+        # the second is a fact about a model decision worth stating. So the
+        # migration stamps the first meaning and ``record_decision`` writes
+        # ``automated`` for the second.
+        "reviewer_auth": UNRECORDED,
     },
 }
 

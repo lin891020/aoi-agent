@@ -1,9 +1,21 @@
-"""What produced a decision: which weights, which thresholds, which code.
+"""What produced a decision -- which weights, which thresholds, which code --
+and, for the half of them a person made, who made it and how that name was
+established.
 
 A quality record that cannot name the model behind a disposition cannot be
 revisited. When a metric moves next month, "which model produced these
 dispositions, and under what thresholds" is the first question, and until
 2026-08-23 this store could not answer it for any of its 9,140 rows.
+
+The same sentence is true one column over. A human decision is the next
+training round's label, and a label that cannot name who made it is a label
+nobody can weigh: an expert's judgement and a click looked identical in this
+store, which is not a hypothetical -- five regions were clicked through without
+the domain knowledge to judge them, four of the five were wrong, and the only
+way anyone could act on that was to delete all five by hand. So
+``ReviewerIdentity`` sits beside ``DecisionProvenance`` here rather than in a
+module of its own: they are one question asked of the two kinds of decider, and
+they share the vocabulary of absences below.
 
 Three things identify an automated decision, and each one is *derived* rather
 than declared:
@@ -42,6 +54,7 @@ introduce an import cycle will eventually be dropped from one of them.
 
 from __future__ import annotations
 
+import getpass
 import hashlib
 import json
 import os
@@ -62,6 +75,32 @@ UNKNOWN = "unknown"
 #: provenance. An automated decision carrying one of these is not attributable
 #: and ``store.boards.record_decision`` refuses to write it.
 ABSENCES = (UNRECORDED, UNAVAILABLE)
+
+#: How a reviewer's name was established. Stored in ``reviewer_auth`` beside
+#: the name itself, because the name alone says nothing about what stands
+#: behind it -- ``mike`` typed into a text box and ``mike`` taken off a signed
+#: session cookie are the same eight characters and are not the same claim.
+#:
+#: ``signed_in``     the station authenticated the operator against its
+#:                   credential file and read the name off the session, not off
+#:                   the form. The only method a browser can produce.
+#: ``host_account``  a decision written by the CLI, attributed to the operating
+#:                   system account running it. Derived rather than typed, and
+#:                   no weaker than the store's own file permissions: anyone who
+#:                   can run the CLI can already write the database directly.
+#: ``automated``     no person was involved. Not an absence -- it is the
+#:                   positive statement that this row has no reviewer by
+#:                   construction, and the provenance columns carry the answer
+#:                   instead. This is what distinguishes a model decision
+#:                   written today from the 9,140 rows that predate the column
+#:                   and read ``unrecorded``.
+SIGNED_IN = "signed_in"
+HOST_ACCOUNT = "host_account"
+AUTOMATED = "automated"
+
+#: The two methods that name a person. A ``human`` decision carrying anything
+#: else is not attributable and ``store.boards.record_decision`` refuses it.
+ATTRIBUTED_METHODS = (SIGNED_IN, HOST_ACCOUNT)
 
 #: How much of the SHA-256 is kept. Sixteen hex characters is 64 bits: enough
 #: that two checkpoints colliding is not a thing that happens, short enough to
@@ -184,3 +223,69 @@ class DecisionProvenance:
             thresholds=dict(payload.get("thresholds") or {}),
             code_version=str(payload.get("code_version") or UNKNOWN),
         )
+
+
+@dataclass(frozen=True)
+class ReviewerIdentity:
+    """Who made a decision, and what stands behind that name.
+
+    The name is half a record. ``reviewer`` was free text from the first commit
+    of this project until 2026-08-23, which meant the corrections feeding the
+    next training round carried a string an operator typed and nothing else --
+    an expert's label and an anonymous click were the same row shape. The
+    method is the other half, and it is what makes the pair worth keeping: a
+    retraining export can select on it, which it could not do on a name.
+
+    Constructed through the three classmethods rather than by hand, so the
+    method can never be asserted by whoever is writing the row. ``signed_in``
+    is issued by ``station.auth`` after it has verified a credential;
+    ``host_account`` reads the OS; ``automated`` names no one on purpose.
+    """
+
+    name: str | None
+    method: str
+
+    @classmethod
+    def signed_in(cls, name: str) -> "ReviewerIdentity":
+        """An operator the station authenticated. See ``station.auth``."""
+        return cls(name=(name or "").strip()[:64] or None, method=SIGNED_IN)
+
+    @classmethod
+    def host_account(cls, name: str | None = None) -> "ReviewerIdentity":
+        """Whoever is running the CLI, according to the operating system.
+
+        Derived, not typed, for the same reason the model digest is: a value
+        somebody supplies is a value somebody can supply wrongly. It is a
+        weaker claim than ``signed_in`` and says so by being a different word --
+        it names an account on one machine, not a person who proved anything.
+        That is honest rather than generous: the CLI runs beside the SQLite
+        file, and anyone who can run it can write the table with ``sqlite3``.
+        """
+        if name is None:
+            try:
+                name = getpass.getuser()
+            except Exception:  # noqa: BLE001 -- no passwd entry, no environment
+                name = ""
+        return cls(name=(name or "").strip()[:64] or None, method=HOST_ACCOUNT)
+
+    @classmethod
+    def automated(cls) -> "ReviewerIdentity":
+        """No person. The provenance columns are this row's answer."""
+        return cls(name=None, method=AUTOMATED)
+
+    @property
+    def is_attributable(self) -> bool:
+        """Does this name a person some mechanism stands behind?
+
+        Stripped rather than taken as given: the classmethods normalise, but a
+        record built directly is still a record this has to answer for, and a
+        name of three spaces is not a name.
+        """
+        return bool((self.name or "").strip()) and self.method in ATTRIBUTED_METHODS
+
+    def columns(self) -> dict:
+        """The two column values, ready to hand to a row."""
+        return {
+            "reviewer": (self.name or "").strip()[:64] or None,
+            "reviewer_auth": self.method,
+        }

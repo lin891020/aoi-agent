@@ -74,6 +74,7 @@
         <th class="num">conf</th>
         <th>person said</th>
         <th>reviewer</th>
+        <th>attribution</th>
         <th>when</th>
       </tr>
     </thead>
@@ -99,6 +100,12 @@
           {% endif %}
         </td>
         <td class="dim">{{ row.reviewer or '&mdash;'|safe }}</td>
+        {# The name and what stands behind it, in two columns rather than one.
+           A retraining round can select on this; a reader can see at a glance
+           how much of the page it would keep. #}
+        <td class="mono small {{ 'dim' if row.attribution == 'signed_in' else 'warn' }}">
+          {{ row.attribution or 'unrecorded' }}
+        </td>
         <td class="dim mono">{{ (row.decided_at or '')[:19]|replace('T', ' ') }}</td>
       </tr>
       {% endfor %}

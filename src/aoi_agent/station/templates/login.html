@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in &middot; re-verification station</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+{# Standalone rather than an extension of base.html: the header there carries
+   the queue count and the navigation, none of which a visitor with no session
+   is allowed to see. A login page that leaks the number of waiting regions is
+   a login page that leaks. #}
+<body>
+  <main class="signin">
+    <h1>Re-verification station</h1>
+
+    <form class="signin-form" method="post" action="/login">
+      <input type="hidden" name="next" value="{{ next }}">
+      <label>
+        operator
+        <input type="text" name="name" autocomplete="username" autofocus required>
+      </label>
+      <label>
+        passphrase
+        <input type="password" name="secret" autocomplete="current-password" required>
+      </label>
+      <button type="submit" class="option">sign in</button>
+      {% if error %}<p class="signin-error">{{ error }}</p>{% endif %}
+    </form>
+
+    <p class="sub dim">
+      Your name goes on every region you answer, and those answers are the next
+      training round's labels. That is what this asks for &mdash; not a
+      permission, an attribution.
+    </p>
+
+    {% if no_operators %}
+    <p class="signin-note warn-line">
+      No operators are configured, so nobody can sign in and the queue cannot be
+      answered. Add one with
+      <code>uv run python scripts/add_operator.py &lt;name&gt;</code>; the file
+      is <code>{{ operators_path }}</code>.
+    </p>
+    {% endif %}
+    {% if ephemeral_sessions %}
+    <p class="signin-note dim">
+      <code>AOI_AGENT_SESSION_SECRET</code> is unset, so sessions are signed with
+      a key generated for this process and everyone is signed out when it
+      restarts. Fine on a laptop; set it for anything longer-lived.
+    </p>
+    {% endif %}
+  </main>
+</body>
+</html>

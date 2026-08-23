@@ -12,7 +12,13 @@ import numpy as np
 from sqlalchemy import func, select
 
 from aoi_agent.data.deeppcb import load_split
-from aoi_agent.provenance import UNAVAILABLE, DecisionProvenance, code_version
+from aoi_agent.provenance import (
+    AUTOMATED,
+    UNAVAILABLE,
+    DecisionProvenance,
+    ReviewerIdentity,
+    code_version,
+)
 from aoi_agent.store.models import Board, CandidateRecord, make_session_factory
 
 _session_factory = None
@@ -102,18 +108,20 @@ def sample_board_stems(limit: int = 10) -> list[str]:
 
 #: The sources whose decisions nothing but the record can be asked about.
 #:
-#: A human decision can be chased to a person -- badly, while ``reviewer`` is
-#: free text, but the thread exists. A ``model`` or ``agent`` decision has no
-#: thread at all except the one written beside it, so provenance is mandatory
-#: on these two and only these two.
+#: A ``model`` or ``agent`` decision has no thread back to anyone except the
+#: one written beside it, so provenance is mandatory on these two and only
+#: these two.
 AUTOMATED_SOURCES = ("model", "agent")
+
+#: The source that must instead name a person.
+HUMAN_SOURCE = "human"
 
 
 def record_decision(
     reference: str,
     verdict: str,
     source: str,
-    reviewer: str | None = None,
+    identity: ReviewerIdentity | None = None,
     rationale: str | None = None,
     explanation_status: str | None = None,
     provenance: DecisionProvenance | None = None,
@@ -137,8 +145,26 @@ def record_decision(
     judgement worth keeping, and refusing it to protect a field would throw
     away the more valuable of the two. The gap is named ``unavailable`` rather
     than left ``NULL``, so it cannot be read as "predates the column".
+
+    A human decision must name a person, and the same word applies: cannot,
+    not should. ``identity`` is required for a ``human`` row and an
+    unattributable one raises rather than writing. This is the mirror of the
+    rule above and it buys the same thing at the other end -- an automated
+    decision nobody can trace to a set of weights cannot be revisited when a
+    metric moves, and a human decision nobody can trace to a person cannot be
+    trained on. The asymmetry in the paragraph before it is deliberate and does
+    not extend here: what was lost for those runs was the model behind a screen
+    an operator had already been shown, whereas who is answering is knowable at
+    the moment of the answer, always, or nobody should be answering.
     """
     from aoi_agent.store.models import ReviewDecision
+
+    if source not in (*AUTOMATED_SOURCES, HUMAN_SOURCE):
+        raise ValueError(
+            f"{source!r} is not a decision source. A row is written by a "
+            f"model, by the agent or by a person, and which one decides "
+            f"whether it must name weights or a name"
+        )
 
     if source in AUTOMATED_SOURCES and not (
         provenance is not None and provenance.is_attributable
@@ -148,6 +174,25 @@ def record_decision(
             "provenance: an automated disposition must name the checkpoint "
             "digest, thresholds and code version that produced it"
         )
+
+    if source == HUMAN_SOURCE and not (
+        identity is not None and identity.is_attributable
+    ):
+        raise ValueError(
+            f"a human decision on {reference!r} was written without an "
+            "attributable reviewer: an operator's answer becomes a training "
+            "label, and a label nobody can be named for is one nobody can "
+            "weigh. Sign in at the station, or use the CLI on the host"
+        )
+
+    if source in AUTOMATED_SOURCES:
+        if identity is not None and identity.method != AUTOMATED:
+            raise ValueError(
+                f"a {source!r} decision on {reference!r} was handed a "
+                f"{identity.method!r} reviewer. Nobody reviewed it; the row "
+                "says so rather than borrowing a name from whoever ran it"
+            )
+        identity = ReviewerIdentity.automated()
 
     if provenance is None:
         # Two of the three are always knowable at write time. Only the weights
@@ -175,9 +220,9 @@ def record_decision(
                 candidate_id=record.id,
                 verdict=verdict,
                 source=source,
-                reviewer=reviewer,
                 rationale=rationale,
                 explanation_status=explanation_status,
+                **identity.columns(),
                 **provenance.columns(),
             )
         )
@@ -188,7 +233,11 @@ def record_decision(
 def corrections(limit: int = 100) -> list[dict]:
     """Candidates where a human overruled the model.
 
-    These are the training set for the next revision.
+    These are the training set for the next revision, which is why every row
+    carries ``attribution`` beside the name: a round trained on ``signed_in``
+    labels only is now a selection this function can express, where before it
+    was a wish. ``unrecorded`` rows predate the column and are the honest
+    reason a first retraining round cannot simply take everything here.
     """
     from aoi_agent.store.models import ReviewDecision
 
@@ -210,6 +259,7 @@ def corrections(limit: int = 100) -> list[dict]:
                 "human_said": decision.verdict,
                 "overruled": decision.verdict != candidate.predicted_class,
                 "reviewer": decision.reviewer,
+                "attribution": decision.reviewer_auth,
                 "decided_at": decision.decided_at.isoformat() if decision.decided_at else None,
             }
             for decision, candidate, board in rows

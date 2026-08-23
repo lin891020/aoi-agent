@@ -22,6 +22,7 @@ import sys
 
 from aoi_agent.graph.flow import DEFAULT_MODEL, build_graph, explanation_notice
 from aoi_agent.llm.ollama import OllamaClient
+from aoi_agent.provenance import ReviewerIdentity
 from aoi_agent.station import service
 from aoi_agent.store import dispositions, escalations
 from aoi_agent.store.boards import (
@@ -75,13 +76,19 @@ def _run_one(graph, reference: str, auto_answer: str | None, to_queue: bool) -> 
         print("    left on the review station's queue")
         return {"already_pending": escalations.get(service.thread_for(reference))}
 
-    if auto_answer:
-        verdict, reviewer = auto_answer, "auto"
-    else:
-        verdict = input(f"    your verdict {payload['options']}: ").strip()
-        reviewer = "operator"
-
-    return service.resume_review(graph, reference, verdict, reviewer)
+    verdict = (
+        auto_answer if auto_answer
+        else input(f"    your verdict {payload['options']}: ").strip()
+    )
+    # The host account, not "operator" and not "auto". Whether the verdict was
+    # typed at the prompt or passed on the command line does not change who is
+    # answerable for it, and a literal that used to go into this field named
+    # nobody at all -- which is the whole reason ``reviewer`` was worthless
+    # until the column beside it existed. It is a weaker claim than the
+    # station's signed-in operator and it is recorded as a different word.
+    return service.resume_review(
+        graph, reference, verdict, ReviewerIdentity.host_account()
+    )
 
 
 def _cmd_queue() -> int:
@@ -171,9 +178,14 @@ def _cmd_provenance(stem: str) -> int:
     print(f"\n  {len(rows)} flagged regions\n")
     for row in rows:
         verdict = row["verdict"] or "-"
+        # The name and what stands behind it, together. A reviewer printed
+        # alone reads as though somebody was identified, which for every row
+        # written before 2026-08-23 is exactly the thing that was not true.
         by = row["reviewer"] or row["source"] or "-"
+        if row["reviewer"] and row["reviewer_auth"]:
+            by = f"{row['reviewer']}/{row['reviewer_auth']}"
         queue = f"  [{row['queue_status']}]" if row["queue_status"] else ""
-        print(f"  {row['reference']:<16} {verdict:<12} by {by:<12} "
+        print(f"  {row['reference']:<16} {verdict:<12} by {by:<22} "
               f"{row['model_digest'] or '-':<24} {row['code_version'] or '-'}{queue}")
 
     absences = {
@@ -197,14 +209,38 @@ def _cmd_corrections() -> int:
     for row in rows[:25]:
         mark = "OVERRULED" if row["overruled"] else "agreed   "
         print(f"  {mark}  {row['reference']:<16} model {row['model_said']:<10} "
-              f"({row['model_confidence']:.2f})  human {row['human_said']}")
+              f"({row['model_confidence']:.2f})  human {row['human_said']:<12} "
+              f"{row['reviewer'] or '-'}/{row['attribution'] or 'unrecorded'}")
+
+    # Grouped, because "how many of these can the next training round stand
+    # behind" is the question the whole column exists for, and it is not
+    # answerable from a list of twenty-five.
+    by_method: dict[str, int] = {}
+    for row in rows:
+        by_method[row["attribution"] or "unrecorded"] = (
+            by_method.get(row["attribution"] or "unrecorded", 0) + 1
+        )
+    print("\n  attribution: "
+          + ", ".join(f"{k} {v}" for k, v in sorted(by_method.items())))
     return 0
 
 
 def _cmd_station(host: str, port: int) -> int:
     import uvicorn
 
+    from aoi_agent.station import auth
+
     print(f"review station on http://{host}:{port}")
+    # Said at startup, because the alternative is a supervisor discovering it
+    # at the login form with a queue behind it. The station comes up either
+    # way: an empty operator file locks it, and locked is the correct state
+    # for a station that cannot name whoever would be answering.
+    operators = auth.load_operators()
+    if operators:
+        print(f"  {len(operators)} operator(s) in {auth.operators_path()}")
+    else:
+        print(f"  no operators in {auth.operators_path()} -- nobody can sign in. "
+              "Add one: uv run python scripts/add_operator.py <name>")
     uvicorn.run("aoi_agent.station.app:app", host=host, port=port)
     return 0
 

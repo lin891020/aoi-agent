@@ -15,11 +15,16 @@ checkpointer and no escalation queue behind it. Its failures terminate in a
 message on the page. See `analysis/graph.py`, and the scoping note in
 CLAUDE.md's invariants.
 
-That page has no authentication in front of it, and neither does this process.
-An unauthenticated visitor to the queue sees the regions on one line; the same
-visitor at ``/ask`` can pull statistics for the whole plant. Operator
-authentication was a backlog item before this page existed and is a
-precondition now.
+Both pages are behind a sign-in, since 2026-08-23. The exposure was not one
+thing: an unauthenticated visitor to the queue saw the regions on one line,
+while the same visitor at ``/ask`` could pull production statistics for the
+whole plant, and the second is a change of kind rather than of degree. But the
+reason the sign-in is here is the queue's, not ``/ask``'s -- an operator's
+answer becomes the next training round's label, and a label whose author is a
+text box is a label nobody can weigh. See ``station.auth``, which states what
+the scheme does not protect against, and ``store.boards.record_decision``,
+which is what actually refuses an unattributable answer. The middleware below
+is the door; the store is the lock.
 
 Two things this deliberately does not do:
 
@@ -42,9 +47,16 @@ import json
 import os
 from collections import defaultdict
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response, StreamingResponse
+from fastapi.responses import (
+    HTMLResponse,
+    PlainTextResponse,
+    RedirectResponse,
+    Response,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -52,9 +64,9 @@ from aoi_agent.analysis import service as analysis_service
 from aoi_agent.analysis.graph import build_analysis_graph
 from aoi_agent.analysis.plan import store_domains
 from aoi_agent.graph.flow import DEFAULT_MODEL, build_graph, explanation_notice
-from aoi_agent.provenance import UNAVAILABLE, UNRECORDED
+from aoi_agent.provenance import UNAVAILABLE, UNRECORDED, ReviewerIdentity
 from aoi_agent.llm.ollama import OllamaClient
-from aoi_agent.station import images, service
+from aoi_agent.station import auth, images, service
 from aoi_agent.station.chart_svg import render_svg
 from aoi_agent.station.result_view import clip, error_text, readable_rows, shown_count
 from aoi_agent.store import analysis as analysis_store
@@ -118,6 +130,133 @@ def analysis_graph():
             analysis_domains(),
         )
     return _analysis_graph
+
+
+#: Reachable without a session, and nothing else is.
+#:
+#: ``/static`` because a login page with no stylesheet is a login page nobody
+#: trusts, and ``/login`` because otherwise there is nowhere to go. Everything
+#: else -- the queue, a region, its images, the board record, the corrections
+#: page, ``/ask`` and its stream -- is behind the check. Listed as an allowlist
+#: rather than a set of decorated routes so that a route added later is
+#: protected by default; the failure mode of the other arrangement is a new
+#: endpoint that nobody remembered to mark.
+PUBLIC_PREFIXES = ("/login", "/static", "/favicon.ico")
+
+
+def _is_public(path: str) -> bool:
+    return any(path == p or path.startswith(p + "/") for p in PUBLIC_PREFIXES)
+
+
+def _safe_next(target: str | None) -> str:
+    """Where to send an operator after signing in.
+
+    Only a path on this station. An open redirect off a login form is the
+    cheapest phishing primitive there is, and the parameter here exists purely
+    so a bookmarked region survives the sign-in.
+    """
+    if not target or not target.startswith("/") or target.startswith("//"):
+        return "/"
+    return target
+
+
+@app.middleware("http")
+async def require_operator(request: Request, call_next):
+    """Read the operator off the signed cookie, or refuse the request.
+
+    Safe methods redirect to the login page, so a bookmarked region behaves
+    the way a person expects. Everything else is a flat 401: a POST bounced
+    into a redirect would lose the form body, and an operator who thought they
+    had answered a region would have answered nothing.
+    """
+    operator = auth.operator_from_session(request.cookies.get(auth.COOKIE_NAME))
+    request.state.operator = operator
+
+    if operator is None and not _is_public(request.url.path):
+        if request.method in ("GET", "HEAD"):
+            target = request.url.path
+            if request.url.query:
+                target = f"{target}?{request.url.query}"
+            return RedirectResponse(
+                f"/login?next={quote(target, safe='')}", status_code=303
+            )
+        return PlainTextResponse(
+            "not signed in -- the station takes an answer only from a named "
+            "operator, because the answer becomes a training label",
+            status_code=401,
+        )
+    return await call_next(request)
+
+
+def operator_of(request: Request) -> ReviewerIdentity:
+    """The identity a decision written on this request carries.
+
+    From the session, never from the form. The station used to take the
+    reviewer's name off a text input with ``operator`` prefilled, which is how
+    9,140 decisions came to name nobody at all.
+    """
+    name = getattr(request.state, "operator", None)
+    if not name:
+        raise HTTPException(401, "not signed in")
+    return ReviewerIdentity.signed_in(name)
+
+
+@app.get("/login", response_class=HTMLResponse)
+def login_page(request: Request, next: str = "/", error: str = ""):
+    if getattr(request.state, "operator", None):
+        return RedirectResponse(_safe_next(next), status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        {
+            "next": _safe_next(next),
+            "error": error,
+            # Said on the page rather than in a log nobody reads: with no
+            # operator file there is nobody who can answer the queue, and the
+            # station will look broken rather than locked.
+            "no_operators": not auth.load_operators(),
+            "ephemeral_sessions": not os.getenv(auth.SECRET_ENV),
+            "operators_path": str(auth.operators_path()),
+        },
+    )
+
+
+@app.post("/login")
+def login(request: Request, name: str = Form(...), secret: str = Form(...),
+          next: str = Form("/")):
+    """Exchange a passphrase for a signed session.
+
+    A plain form post and a redirect, like every other write on this station:
+    with JavaScript off, this works.
+    """
+    identity = auth.authenticate(name, secret)
+    if identity is None:
+        # One message for both failures. Which of the name and the passphrase
+        # was wrong is not information this page owes an anonymous visitor.
+        return RedirectResponse(
+            f"/login?next={quote(_safe_next(next), safe='')}"
+            "&error=that+name+and+passphrase+do+not+match",
+            status_code=303,
+        )
+    response = RedirectResponse(_safe_next(next), status_code=303)
+    response.set_cookie(
+        auth.COOKIE_NAME,
+        auth.issue_session(identity.name),
+        max_age=auth.SESSION_MAX_AGE_S,
+        httponly=True,
+        samesite="lax",
+        secure=auth.secure_cookie_for(request.url.scheme),
+        path="/",
+    )
+    return response
+
+
+@app.post("/logout")
+def logout():
+    """End the session. A POST, so a prefetched link cannot sign anyone out."""
+    response = RedirectResponse("/login", status_code=303)
+    response.delete_cookie(auth.COOKIE_NAME, path="/")
+    return response
 
 
 def _reference(stem: str, index: int) -> str:
@@ -213,12 +352,17 @@ def station_page(request: Request, stem: str, index: int):
 
 @app.post("/c/{stem}/{index}/verdict")
 def submit_verdict(
+    request: Request,
     stem: str,
     index: int,
     verdict: str = Form(...),
-    reviewer: str = Form("operator"),
 ):
-    """Hand the operator's answer back to the suspended run."""
+    """Hand the operator's answer back to the suspended run.
+
+    There is no ``reviewer`` field on this form any more. The name comes off
+    the session, so a posted one is ignored rather than trusted -- which is the
+    difference between a record and a text box.
+    """
     reference = _reference(stem, index)
     _candidate_or_404(stem, index)
 
@@ -232,7 +376,7 @@ def submit_verdict(
         # one region and silently corrupt the training set.
         return RedirectResponse("/next", status_code=303)
 
-    service.resume_review(graph(), reference, verdict, reviewer.strip() or "operator")
+    service.resume_review(graph(), reference, verdict, operator_of(request))
     return RedirectResponse(f"/next/{stem}/{index}", status_code=303)
 
 
@@ -386,7 +530,7 @@ def ask_page(request: Request):
 
 
 @app.post("/ask")
-def ask(question: str = Form(...), asked_by: str = Form("operator")):
+def ask(request: Request, question: str = Form(...)):
     """Run the question, then redirect to the run it produced.
 
     Post-redirect-get, so a refresh re-reads a stored document rather than
@@ -396,7 +540,7 @@ def ask(question: str = Form(...), asked_by: str = Form("operator")):
     if not question.strip():
         raise HTTPException(400, "a question is required")
     run = analysis_service.answer_question(
-        analysis_graph(), question.strip(), asked_by.strip() or "operator"
+        analysis_graph(), question.strip(), operator_of(request).name
     )
     return RedirectResponse(f"/ask/{run['id']}", status_code=303)
 
@@ -454,7 +598,7 @@ def _tool_base_key(tool: str, args: dict | None) -> str:
 
 
 @app.get("/ask/stream")
-def ask_stream(question: str, asked_by: str = "operator"):
+def ask_stream(request: Request, question: str):
     """Run one question, emitting progress as it goes.
 
     One execution, not two: the same run that produces these events is the run
@@ -463,10 +607,10 @@ def ask_stream(question: str, asked_by: str = "operator"):
     """
     if not question.strip():
         raise HTTPException(400, "a question is required")
-    # Normalised the same way `POST /ask` normalises its form field, so
-    # `?asked_by=` (or a value that is only whitespace) does not persist an
-    # empty attribution.
-    asked_by = asked_by.strip() or "operator"
+    # Off the session, exactly as `POST /ask` takes it. It used to be a query
+    # parameter with a default, which meant the name beside a stored question
+    # was whatever the caller typed into a URL.
+    asked_by = operator_of(request).name
 
     def stream():
         graph = analysis_graph()

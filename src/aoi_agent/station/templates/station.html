@@ -133,10 +133,11 @@
   <form class="verdict" method="post" action="/c/{{ stem }}/{{ index }}/verdict">
     <div class="verdict-head">
       <h2>Your verdict</h2>
-      <label class="reviewer">
-        reviewer
-        <input type="text" name="reviewer" value="operator" autocomplete="off">
-      </label>
+      {# Not an input. The name comes off the session, and a form field here
+         would be a name the browser could choose -- which is how a store ends
+         up with 9,140 decisions that identify nobody. #}
+      <span class="reviewer">answering as
+        <b class="mono">{{ request.state.operator }}</b></span>
     </div>
     <div class="options">
       {% for option in options %}
@@ -148,9 +149,9 @@
       {% endfor %}
     </div>
     <p class="sub dim">
-      Your answer resumes the suspended run and is recorded as a human decision.
-      It becomes a label in the next training round, which is why the ground
-      truth is not shown on this page.
+      Your answer resumes the suspended run and is recorded as a human decision
+      under your name. It becomes a label in the next training round, which is
+      why the ground truth is not shown on this page.
     </p>
   </form>
   {% else %}
