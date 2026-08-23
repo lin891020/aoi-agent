@@ -208,13 +208,24 @@ def normalise(text: str) -> str:
     return text.replace(" ", " ")
 
 
-def numbers_in(text: str) -> list[tuple[Decimal, int, int, int]]:
+def numbers_in(
+    text: str, words: bool = True
+) -> list[tuple[Decimal, int, int, int]]:
     """Every figure in a piece of text: value, decimal places, start, end.
 
     Decimal places travel with the value because they are the tolerance. A
     prose `0.38` is a correct rendering of a stored `0.375` and a prose `0.375`
     is not a rendering of `0.38`; comparing them at a fixed epsilon would get
     one of those two wrong.
+
+    ``words=False`` drops the spelled-out forms, and the checks that score
+    prose pass it. Measured on real output, a spelled-out number in this
+    model's answers is a count of things -- "the two lines", "six defect
+    classes", "nine candidates" -- and never a measurement. Reading one as a
+    figure produced only false positives, including a swap finding against
+    "the worse of the **two** lines". Digits are what a supervisor acts on and
+    digits are what is scored. Grounding still reads word forms out of the
+    payload's own strings, where they cost nothing.
     """
     found: list[tuple[Decimal, int, int, int]] = []
     for match in _NUMBER_RE.finditer(text):
@@ -227,11 +238,12 @@ def numbers_in(text: str) -> list[tuple[Decimal, int, int, int]]:
             continue
         places = len(raw.split(".")[1]) if "." in raw else 0
         found.append((value, places, match.start(), match.end()))
-    for match in _WORD_RE.finditer(text):
-        found.append(
-            (Decimal(_WORD_NUMBERS[match.group(1).lower()]), 0,
-             match.start(), match.end())
-        )
+    if words:
+        for match in _WORD_RE.finditer(text):
+            found.append(
+                (Decimal(_WORD_NUMBERS[match.group(1).lower()]), 0,
+                 match.start(), match.end())
+            )
     return sorted(found, key=lambda item: item[2])
 
 
@@ -343,6 +355,7 @@ class Grounding:
                     self._numeric(sum_of(value), frozen)
                 else:
                     self._walk(value, frozen)
+            self._numeric(Decimal(len(node)), frozen)
         elif isinstance(node, list):
             self._numeric(Decimal(len(node)), tokens)
             for item in node:
@@ -482,16 +495,11 @@ def figure_findings(
     waved = 0
     for sentence in sentences(prose):
         mentions = _mentions(sentence)
-        for value, places, start, end in numbers_in(sentence):
+        for value, places, start, _end in numbers_in(sentence, words=False):
             if not grounding.holds(value, places):
                 if any(abs(value - stated) <= _tolerance(places)
                        for stated in restated):
                     waved += 1
-                    continue
-                if _is_word_number(sentence, start, end) and value <= 1:
-                    # "zero", "one of the machines" -- a word this small is
-                    # rhetoric far more often than a quoted figure, and
-                    # flagging it produced nothing but noise on the first run.
                     continue
                 findings.append(Finding(
                     "fabricated_figure", str(value),
@@ -500,7 +508,7 @@ def figure_findings(
                 continue
             if value in grounding.quoted:
                 continue
-            tokens = _attached_to(mentions, start, sentence)
+            tokens = _attached_to(mentions, start)
             if not tokens or grounding.holds_for(value, places, tokens):
                 continue
             other = grounding.elsewhere(value, places, tokens)
@@ -517,12 +525,8 @@ def _tolerance(places: int) -> Decimal:
     return Decimal(5) * Decimal(10) ** -(places + 1)
 
 
-def _is_word_number(sentence: str, start: int, end: int) -> bool:
-    return sentence[start:end].strip().lower() in _WORD_NUMBERS
-
-
 def _attached_to(
-    mentions: list[tuple[set[str], int, int]], position: int, sentence: str
+    mentions: list[tuple[set[str], int, int]], position: int
 ) -> set[str]:
     """Which entities a figure at this offset is being said about.
 
@@ -665,7 +669,9 @@ def check(
     return figures + claim_findings(prose, plan or {}, results), waved
 
 
-def perturbations(prose: str, grounding: Grounding) -> tuple[int, int]:
+def perturbations(
+    prose: str, grounding: Grounding
+) -> tuple[int, int, int, int]:
     """How much a wrong number would have to be wrong before this notices.
 
     Every figure that grounded is re-asked at 1.3x and 0.7x. A checker whose
@@ -683,7 +689,7 @@ def perturbations(prose: str, grounding: Grounding) -> tuple[int, int]:
     """
     accepted = tried = accepted_decimal = tried_decimal = 0
     for sentence in sentences(prose):
-        for value, places, _start, _end in numbers_in(sentence):
+        for value, places, _start, _end in numbers_in(sentence, words=False):
             if not grounding.holds(value, places) or value == 0:
                 continue
             for factor in (Decimal("1.3"), Decimal("0.7")):

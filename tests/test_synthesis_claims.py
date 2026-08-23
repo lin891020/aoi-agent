@@ -136,3 +136,25 @@ def test_perturbing_a_grounded_rate_stops_it_grounding(case):
     )
     assert tried_decimal >= 4
     assert accepted_decimal / tried_decimal < 0.25
+
+
+def test_a_spelled_out_count_is_not_read_as_a_figure(case):
+    """"The worse of the two lines" is a count of lines, and reading the `two`
+    as a measurement produced a swap finding against a sentence whose only
+    fault was a wrong characterisation the checker cannot see anyway."""
+    prose = "Line L1 is the worse of the two lines, at 7.05 defects per board."
+    findings, _waved = check(prose, case["plan"], case["results"])
+    assert not [f for f in findings if f.kind in CHECKED_KINDS]
+
+
+def test_a_wrong_characterisation_over_right_figures_is_outside_the_taxonomy(case):
+    """The boundary the published section states, asserted rather than claimed.
+
+    L2 is the worse line at 7.39 against L1's 7.05. Every figure in this
+    sentence is real and attached to the right line; the reading of them is
+    wrong, and no kind here covers a reading. If this ever starts failing the
+    report's stated limit has moved and the section has to say so.
+    """
+    prose = "Line L1 is the worse line, at 7.05 defects per board."
+    findings, _waved = check(prose, case["plan"], case["results"])
+    assert not [f for f in findings if f.kind in CHECKED_KINDS]
