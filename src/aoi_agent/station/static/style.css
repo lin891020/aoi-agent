@@ -236,6 +236,9 @@ table.kv td { padding: 0.15rem 0; vertical-align: top; }
                font-family: var(--mono); font-size: 0.85rem; line-height: 1.9; }
 .progress ul li { display: flex; gap: 0.5rem; align-items: baseline; }
 .progress .phase { display: flex; align-items: baseline; gap: 0.5rem; margin: 0; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0;
+            margin: -1px; overflow: hidden; clip: rect(0 0 0 0);
+            white-space: nowrap; border: 0; }
 .progress .elapsed { font-size: 0.8rem; font-variant-numeric: tabular-nums; }
 .progress #progress-question { margin: 0.35rem 0 0; }
 

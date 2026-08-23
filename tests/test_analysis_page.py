@@ -806,6 +806,26 @@ def test_the_phase_is_readable_by_something_that_cannot_see_a_spinner(client):
         assert 'aria-hidden="true"' in line, f"{decoration} must not be announced"
 
 
+def test_the_elapsed_count_reaches_a_listener_without_being_read_out_every_second(
+    client
+):
+    """The visible counter ticks twice a second and is `aria-hidden`; a live
+    region that re-announced it would bury the phase it belongs to. The spoken
+    copy is a visually hidden span inside the status region, rewritten when the
+    phase changes -- so a listener gets "writing the answer, 9 seconds in" once
+    rather than a reading of the clock."""
+    panel = _progress_panel(client.get("/ask").text)
+    css = client.get("/static/style.css").text
+
+    assert 'id="progress-since"' in panel and 'class="sr-only"' in panel
+    at = panel.index('id="progress-since"')
+    assert 'id="progress-head"' in panel[:at], "the spoken copy is inside the region"
+    assert ".sr-only" in css and "clip: rect(0 0 0 0)" in css
+    assert "display: none" not in css.split(".sr-only")[1].split("}")[0], (
+        "hidden from the screen, not from the accessibility tree"
+    )
+
+
 def test_the_flow_view_is_vendored_and_served_from_the_station(client):
     """No CDN, and nothing fetched from anywhere. The station runs on a
     locked-down shop-floor browser."""

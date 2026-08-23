@@ -231,8 +231,13 @@
       };
     });
     if (branchGeoms.length === 0) {
-      boxWithText(doc, svg, geoms[1], 'is-skipped', '沒有查詢');
-      connect(doc, svg, geoms[0].x + geoms[0].w, middle, geoms[1].x, middle, 'is-skipped');
+      // Two different nothings, and the difference is the whole point of
+      // drawing this before the plan arrives: branches not known yet, against
+      // branches that will never exist because the model declined.
+      var empty = fanState === 'skipped' ? '沒有查詢' : '尚未規劃';
+      boxWithText(doc, svg, geoms[1], 'is-' + fanState, empty);
+      connect(doc, svg, geoms[0].x + geoms[0].w, middle, geoms[1].x, middle,
+        'is-' + fanState);
     } else {
       branchGeoms.forEach(function (geom) {
         var cls = geom.branch.state === 'ok' ? 'is-done'

@@ -24,7 +24,9 @@
   <div class="progress" id="progress" hidden>
     <p class="phase">
       <span class="spin" id="progress-mark" aria-hidden="true">⟳</span>
-      <span class="label" id="progress-head" role="status" aria-live="polite">規劃中…</span>
+      <span class="label" id="progress-head" role="status" aria-live="polite"
+            ><span id="progress-phase">規劃中…</span
+            ><span class="sr-only" id="progress-since"></span></span>
       <span class="elapsed mono dim" id="progress-elapsed" aria-hidden="true"></span>
     </p>
     <p class="sub dim" id="progress-question"></p>
@@ -184,7 +186,8 @@
 
     var panel = document.getElementById('progress');
     var list = document.getElementById('progress-list');
-    var head = document.getElementById('progress-head');
+    var phase = document.getElementById('progress-phase');
+    var since = document.getElementById('progress-since');
     var mark = document.getElementById('progress-mark');
     var elapsed = document.getElementById('progress-elapsed');
     var asked = document.getElementById('progress-question');
@@ -195,7 +198,8 @@
 
     panel.hidden = false;
     while (list.firstChild) list.removeChild(list.firstChild);
-    head.textContent = '規劃中…';
+    phase.textContent = '規劃中…';
+    since.textContent = '';
     asked.textContent = '';
     mark.className = 'spin';
     mark.textContent = '⟳';
@@ -234,12 +238,23 @@
       var state = AoiFlow.model(received);
       // The phase and the elapsed count together, so a listener gets the
       // bound without hearing the seconds go by.
-      head.textContent = AoiFlow.label(state) + '　已 ' + seconds() + ' 秒';
+      phase.textContent = AoiFlow.label(state);
+      // Inside the live region but not on screen: the seconds are beside the
+      // phase for anything listening, while the visible counter next to it is
+      // the one that ticks. Announcing a tick every second would bury the
+      // phase it is attached to.
+      since.textContent = '，已 ' + seconds() + ' 秒';
       mark.className = AoiFlow.running(state) ? 'spin' : '';
       mark.textContent = AoiFlow.running(state) ? '⟳' : (state.stopped ? '✗' : '✓');
       AoiFlow.render(svg, state);
       if (!AoiFlow.running(state)) stopTimer();
     }
+
+    // Drawn before the first event arrives. Two reasons: an SVG element with
+    // no viewBox reserves a default box of empty space, and planning is a stage
+    // with a state -- the eight seconds before the plan lands is a dead zone
+    // of its own, and the diagram is what it has to show.
+    paint();
 
     var source = new EventSource('/ask/stream?question=' + encodeURIComponent(question));
     source.addEventListener('plan', function (e) {
@@ -303,7 +318,8 @@
         stopTimer();
         mark.className = '';
         mark.textContent = '✗';
-        head.textContent = '連線中斷　已 ' + seconds() + ' 秒';
+        phase.textContent = '連線中斷';
+        since.textContent = '，已 ' + seconds() + ' 秒';
         return;
       }
       var li = document.createElement('li');

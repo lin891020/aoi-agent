@@ -231,6 +231,18 @@ def test_the_diagram_grows_with_the_branch_count_rather_than_being_a_fixed_pictu
     )
 
 
+def test_the_branch_column_before_a_plan_is_not_the_same_as_no_branches():
+    """Drawn from the first moment, before any event: an empty diagram would
+    reserve a box of nothing, and the planning phase is the page's other dead
+    zone. What the column says then is that the branches are not known yet --
+    which is a different statement from the model having declined to plan
+    any."""
+    waiting = drive([])
+
+    assert "尚未規劃" in texts(waiting["svg"])
+    assert "沒有查詢" not in texts(waiting["svg"])
+
+
 def test_the_diagram_marks_the_refusal_rather_than_drawing_branches_that_never_ran():
     result = drive([
         {"event": "plan", "data": {"interpretation": "無法規劃", "calls": []}},
