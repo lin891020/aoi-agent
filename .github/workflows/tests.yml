@@ -32,7 +32,12 @@ jobs:
         run: uv sync --locked
 
       - name: Tests
-        run: uv run pytest -m "not dataset"
+        # `-rs` so a skipped test is named in the log rather than folded
+        # into the dot line. The flow-view tests drive station/static/flow.js
+        # through node, and a runner without node would otherwise shrink the
+        # suite silently -- which is the failure this file already exists to
+        # prevent for the dataset-marked tests.
+        run: uv run pytest -m "not dataset" -rs
 
       - name: What this job did not run
         if: always()

@@ -745,3 +745,93 @@ def test_the_page_prints_the_uncounted_note_and_the_honest_count(client, monkeyp
 
     assert f"回傳的資料（{MAX_ROWS} 項）" in page
     assert "另外 6 項未顯示" in page
+
+
+def _progress_panel(page: str) -> str:
+    """The markup between the panel's open tag and its closing `</div>`.
+
+    Crude on purpose: the point of the assertions below is that everything the
+    waiting experience adds sits inside a container carrying `hidden`, and a
+    parser that understood the nesting would let a new element outside it pass
+    unnoticed as long as it was well-formed.
+    """
+    start = page.index('<div class="progress"')
+    return page[start:page.index("<p class=\"sub\">試試看", start)]
+
+
+def test_the_waiting_panel_is_hidden_and_nothing_it_adds_escapes_it(client):
+    """The stream is an enhancement, and enhancement means a reader with
+    scripting off sees exactly what they saw before it existed. Every element
+    the spinner, the timer and the flow view need lives inside one container
+    that ships `hidden`; nothing was added to the page proper."""
+    page = client.get("/ask").text
+    panel = _progress_panel(page)
+
+    assert panel.startswith('<div class="progress" id="progress" hidden>')
+    for element in ("progress-mark", "progress-elapsed", "progress-flow",
+                    "progress-question", "progress-list", "progress-head"):
+        assert page.count(f'id="{element}"') == 1
+        assert element in panel, "every added element is inside the hidden panel"
+
+
+def test_the_page_without_scripting_still_answers(client):
+    """The two entrances that involve no JavaScript at all: the form posts and
+    the stored run renders."""
+    response = client.post("/ask", data={"question": "M22 正常嗎"},
+                           follow_redirects=False)
+    assert response.status_code == 303
+
+    page = client.get(response.headers["location"]).text
+    for block in ("M22 against the fleet", "query_machine_stats",
+                  "sits above the fleet"):
+        assert block in page
+    assert _progress_panel(page).startswith(
+        '<div class="progress" id="progress" hidden>'
+    )
+
+
+def test_the_phase_is_readable_by_something_that_cannot_see_a_spinner(client):
+    """A spinning glyph is not a phase. The status region carries the words and
+    is announced; the spinner and the diagram are hidden from the accessibility
+    tree so the state is read once, not twice and not as a decoration."""
+    panel = _progress_panel(client.get("/ask").text)
+
+    at = panel.index('id="progress-head"')
+    head = panel[max(0, at - 200):at + 120]
+    assert 'role="status"' in head and 'aria-live="polite"' in head
+    for decoration in ('id="progress-mark"', 'id="progress-elapsed"',
+                       'id="progress-flow"'):
+        at = panel.index(decoration)
+        line = panel[max(0, at - 120):at + 120]
+        assert 'aria-hidden="true"' in line, f"{decoration} must not be announced"
+
+
+def test_the_flow_view_is_vendored_and_served_from_the_station(client):
+    """No CDN, and nothing fetched from anywhere. The station runs on a
+    locked-down shop-floor browser."""
+    page = client.get("/ask").text
+    assert '<script src="/static/flow.js"></script>' in page
+
+    served = client.get("/static/flow.js")
+    assert served.status_code == 200
+    assert "createElementNS" in served.text
+
+    for external in ("http://", "https://", "//cdn", "unpkg", "jsdelivr"):
+        assert external not in served.text.replace(
+            "http://www.w3.org/2000/svg", ""
+        ), "the SVG namespace is the only URL allowed in here"
+
+
+def test_reduced_motion_keeps_the_state_and_drops_only_the_movement(client):
+    """"Respect `prefers-reduced-motion`" cannot mean showing nothing: the
+    spinner is the mark that says which row is still running. Under the query
+    it stops turning and the active stage keeps a heavier outline instead of
+    breathing -- the movement goes, the state stays."""
+    css = client.get("/static/style.css").text
+    assert css.count("@media (prefers-reduced-motion: reduce)") == 1
+
+    reduced = css.split("@media (prefers-reduced-motion: reduce)")[1]
+    reduced = reduced[:reduced.index("\n}")]
+    assert ".spin { animation: none; }" in reduced
+    assert "display: none" not in reduced, "the state must survive the query"
+    assert "stroke-width" in reduced, "the active stage stays distinguishable"

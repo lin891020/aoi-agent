@@ -13,9 +13,22 @@
 
   {# The form posts and redirects, with no JavaScript involved. The progress
      panel below is populated only by the script at the end of this file --
-     with scripting off it stays hidden and the page still answers. #}
+     with scripting off it stays hidden and the page still answers.
+
+     `#progress-head` is the accessible copy of the state: `role="status"`
+     announces each phase change once. The spinner and the diagram are both
+     `aria-hidden` -- a spinning glyph is not a phase, and a screen reader
+     following the seconds tick by would hear nothing else. The elapsed count
+     is announced only when a phase changes, folded into the head's text, so
+     the bound reaches a listener without a per-second reading. #}
   <div class="progress" id="progress" hidden>
-    <p class="label" id="progress-head">規劃中…</p>
+    <p class="phase">
+      <span class="spin" id="progress-mark" aria-hidden="true">⟳</span>
+      <span class="label" id="progress-head" role="status" aria-live="polite">規劃中…</span>
+      <span class="elapsed mono dim" id="progress-elapsed" aria-hidden="true"></span>
+    </p>
+    <p class="sub dim" id="progress-question"></p>
+    <div class="flow" id="progress-flow" aria-hidden="true"></div>
     <ul id="progress-list"></ul>
   </div>
 
@@ -150,16 +163,19 @@
 {% endblock %}
 
 {% block script %}
+<script src="/static/flow.js"></script>
 <script>
   // Enhancement only: with JavaScript off the form posts and the server
   // renders the finished page. With it on, the same run streams its progress
-  // so a 20-second wait reads as work rather than as a hang.
+  // so a twenty-five second wait reads as work rather than as a hang.
   //
   // Everything written into the DOM below goes through `.textContent`, never
   // `.innerHTML` -- the event payloads are JSON (model-authored `interpretation`
   // and `why` text, tool-reported `error` strings) parsed with `JSON.parse`,
   // and `.textContent` renders it as inert text regardless of what characters
-  // it contains. No string here is ever concatenated into markup.
+  // it contains. No string here is ever concatenated into markup, and that
+  // holds for the SVG in flow.js too: it is built with `createElementNS` and
+  // every label is set as text, for the same reason.
   var form = document.querySelector('.ask');
   form.addEventListener('submit', function (event) {
     var question = form.querySelector('input[name=question]').value.trim();
@@ -169,14 +185,67 @@
     var panel = document.getElementById('progress');
     var list = document.getElementById('progress-list');
     var head = document.getElementById('progress-head');
+    var mark = document.getElementById('progress-mark');
+    var elapsed = document.getElementById('progress-elapsed');
+    var asked = document.getElementById('progress-question');
+    // Created, not templated: with scripting off the page carries no SVG
+    // element at all, which is what keeps "the page has an SVG element on it"
+    // meaning "a chart was rendered" for the two tests that read it that way.
+    var svg = AoiFlow.mount(document.getElementById('progress-flow'));
+
     panel.hidden = false;
-    list.innerHTML = '';
+    while (list.firstChild) list.removeChild(list.firstChild);
     head.textContent = '規劃中…';
+    asked.textContent = '';
+    mark.className = 'spin';
+    mark.textContent = '⟳';
+
+    // Every event received, in arrival order. The flow view is a pure
+    // function of this list -- see flow.js -- so there is no second copy of
+    // the run's state to disagree with the panel.
+    var received = [];
+    var startedAt = Date.now();
+    var ticking = null;
+
+    function seconds() {
+      return Math.round((Date.now() - startedAt) / 1000);
+    }
+
+    function tick() {
+      elapsed.textContent = seconds() + ' 秒';
+    }
+
+    // The timer is a claim about the run, so it stops when the run does --
+    // on `done`, on a streamed error, and on the browser's own connection
+    // error. A counter still climbing over a dead stream is worse than no
+    // counter: it says the machine is still working when nothing is.
+    function stopTimer() {
+      if (ticking !== null) {
+        clearInterval(ticking);
+        ticking = null;
+      }
+      tick();
+    }
+
+    tick();
+    ticking = setInterval(tick, 500);
+
+    function paint() {
+      var state = AoiFlow.model(received);
+      // The phase and the elapsed count together, so a listener gets the
+      // bound without hearing the seconds go by.
+      head.textContent = AoiFlow.label(state) + '　已 ' + seconds() + ' 秒';
+      mark.className = AoiFlow.running(state) ? 'spin' : '';
+      mark.textContent = AoiFlow.running(state) ? '⟳' : (state.stopped ? '✗' : '✓');
+      AoiFlow.render(svg, state);
+      if (!AoiFlow.running(state)) stopTimer();
+    }
 
     var source = new EventSource('/ask/stream?question=' + encodeURIComponent(question));
     source.addEventListener('plan', function (e) {
       var plan = JSON.parse(e.data);
-      head.textContent = plan.interpretation || '規劃完成';
+      received.push({ event: 'plan', data: plan });
+      asked.textContent = plan.interpretation || '';
       // Keyed by `call.key`, not `call.tool`: two calls to the same tool with
       // different arguments would otherwise get the same element id, and
       // `getElementById` only ever finds the first -- the second call's row
@@ -186,17 +255,40 @@
       plan.calls.forEach(function (call) {
         var li = document.createElement('li');
         li.id = 'tool-' + call.key;
-        li.textContent = '⟳ ' + call.tool;
+        var glyph = document.createElement('span');
+        glyph.className = 'spin';
+        glyph.setAttribute('aria-hidden', 'true');
+        glyph.textContent = '⟳';
+        var text = document.createElement('span');
+        text.className = 'row-text';
+        text.textContent = call.tool;
+        li.appendChild(glyph);
+        li.appendChild(text);
         list.appendChild(li);
       });
+      paint();
     });
     source.addEventListener('tool', function (e) {
       var result = JSON.parse(e.data);
+      received.push({ event: 'tool', data: result });
       var li = document.getElementById('tool-' + result.key);
-      if (!li) return;
-      li.textContent = (result.ok ? '✓ ' : '✗ ') + result.tool +
-                       '  ' + Math.round(result.elapsed_ms) + 'ms' +
-                       (result.ok ? '' : '  ' + result.error);
+      if (li) {
+        var glyph = li.firstChild;
+        glyph.className = '';
+        glyph.textContent = result.ok ? '✓' : '✗';
+        li.lastChild.textContent = result.tool +
+                                   '  ' + Math.round(result.elapsed_ms) + 'ms' +
+                                   (result.ok ? '' : '  ' + result.error);
+      }
+      paint();
+    });
+    // The join. Emitted by the server when the branches converge and the
+    // second model call begins -- the phase that used to have no event at
+    // all, and during which the panel sat looking finished for as long as the
+    // planning had taken.
+    source.addEventListener('synthesising', function (e) {
+      received.push({ event: 'synthesising', data: JSON.parse(e.data) });
+      paint();
     });
     source.addEventListener('error', function (e) {
       if (!e.data) {
@@ -207,15 +299,28 @@
         // and re-run the whole question, and every question after it, for as
         // long as the tab stayed open.
         source.close();
+        // Nothing is running any more, so nothing may look like it is.
+        stopTimer();
+        mark.className = '';
+        mark.textContent = '✗';
+        head.textContent = '連線中斷　已 ' + seconds() + ' 秒';
         return;
       }
       var li = document.createElement('li');
-      try { li.textContent = '✗ ' + JSON.parse(e.data).message; }
-      catch (_) { li.textContent = '✗ 連線中斷'; }
+      var text = document.createElement('span');
+      text.className = 'row-text';
+      try { text.textContent = '✗ ' + JSON.parse(e.data).message; }
+      catch (_) { text.textContent = '✗ 連線中斷'; }
+      li.appendChild(text);
       list.appendChild(li);
+      try { received.push({ event: 'error', data: JSON.parse(e.data) }); }
+      catch (_) { received.push({ event: 'error', data: {} }); }
+      paint();
     });
     source.addEventListener('done', function (e) {
       source.close();
+      received.push({ event: 'done', data: {} });
+      paint();
       window.location = '/ask/' + JSON.parse(e.data).run_id;
     });
   });

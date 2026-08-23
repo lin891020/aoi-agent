@@ -234,6 +234,54 @@ table.kv td { padding: 0.15rem 0; vertical-align: top; }
             border: 1px solid var(--line); border-radius: 10px; }
 .progress ul { list-style: none; padding: 0; margin: 0.5rem 0 0;
                font-family: var(--mono); font-size: 0.85rem; line-height: 1.9; }
+.progress ul li { display: flex; gap: 0.5rem; align-items: baseline; }
+.progress .phase { display: flex; align-items: baseline; gap: 0.5rem; margin: 0; }
+.progress .elapsed { font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.progress #progress-question { margin: 0.35rem 0 0; }
+
+/* The one moving thing on the panel. A twenty-five second wait with nothing
+   in motion reads as a hang, so the glyph on whatever is in progress turns;
+   under `prefers-reduced-motion` it stops turning and stays put rather than
+   disappearing, because it is the mark that says which row is still running.
+   Nothing here is the only carrier of state: `#progress-head` says the phase
+   in words, and it is the element a screen reader is given. */
+.spin { display: inline-block; color: var(--accent); }
+@keyframes aoi-spin { to { transform: rotate(360deg); } }
+.spin { animation: aoi-spin 1.6s linear infinite; }
+
+/* The run, drawn: planning, the branches the plan fanned out into, the join,
+   and the answer being written. Parallel because the lookups are independent
+   -- the picture says nothing about what that costs or saves. */
+.flow { margin: 0.7rem 0 0.2rem; }
+.flow svg { width: 100%; max-width: 620px; height: auto; }
+.flow-box { fill: var(--panel); stroke: var(--line); stroke-width: 1; }
+.flow-text { fill: var(--dim); font-size: 11px;
+             font-family: var(--mono); }
+.flow-link { fill: none; stroke: var(--line); stroke-width: 1; }
+.flow-box.is-done { stroke: var(--ok); }
+.flow-text.is-done { fill: var(--ink); }
+.flow-link.is-done { stroke: #17503c; }
+.flow-box.is-active { stroke: var(--accent); stroke-width: 1.6; }
+.flow-text.is-active { fill: var(--ink); }
+.flow-link.is-active { stroke: var(--accent); }
+.flow-box.is-failed { stroke: var(--danger); }
+.flow-text.is-failed { fill: var(--danger); }
+.flow-link.is-failed { stroke: var(--danger); }
+.flow-box.is-skipped, .flow-link.is-skipped { stroke-dasharray: 3 3; opacity: 0.55; }
+.flow-text.is-skipped { opacity: 0.55; }
+.flow-box.is-pending, .flow-link.is-pending { opacity: 0.5; }
+.flow-text.is-pending { opacity: 0.5; }
+.flow-box.is-active { animation: aoi-breathe 1.8s ease-in-out infinite; }
+@keyframes aoi-breathe { 50% { stroke-opacity: 0.35; } }
+
+@media (prefers-reduced-motion: reduce) {
+  /* Same states, no motion. The spinner stays as a static mark and the
+     active stage keeps a heavier accent outline instead of breathing, so a
+     reader who turns animation off loses the movement and nothing else --
+     the seconds still count and the words still change. */
+  .spin { animation: none; }
+  .flow-box.is-active { animation: none; stroke-width: 2.4; }
+}
 
 /* The signed-in operator, and the way in. */
 .who { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; }
