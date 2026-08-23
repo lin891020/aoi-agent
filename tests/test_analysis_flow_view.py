@@ -14,14 +14,23 @@ That is the rule this page is held to, and building an SVG on the client is
 exactly where somebody reaches past it.
 
 These skip when node is missing rather than failing on a machine that has no
-reason to have it. `ubuntu-latest` ships node, and the workflow runs pytest
-with `-rs` so a skip here is printed rather than swallowed -- the same reason
-the dataset-marked tests are listed at the end of every CI job.
+reason to have it. `-rs` in the workflow prints the skip rather than swallowing
+it, but printing is not stopping: a job whose whole flow-view suite vanished
+would still be green, and green is what anybody looks at.
+
+So on CI the skip is not available. `AOI_REQUIRE_NODE=1` is set in the workflow
+and nowhere else, and it turns a missing node from a skip into a failure. This
+project has already shipped one fix that passed CI by not running -- the
+onnxruntime telemetry guard, which was calibrated on macOS and whose Linux
+assertion never executed -- and the lesson from it is that a check which can
+quietly not happen is worse than no check, because it also removes the
+suspicion.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -34,8 +43,26 @@ FLOW_JS = (
     / "src" / "aoi_agent" / "station" / "static" / "flow.js"
 )
 
+def _node_or_reason() -> str | None:
+    """Why these cannot run here, or `None` if they can.
+
+    Raises rather than skipping where `AOI_REQUIRE_NODE` is set: a runner that
+    is supposed to have node and does not is a broken runner, and the failure
+    belongs on the job rather than in a line of `-rs` output nobody reads.
+    """
+    if shutil.which("node"):
+        return None
+    if os.environ.get("AOI_REQUIRE_NODE") == "1":
+        raise RuntimeError(
+            "AOI_REQUIRE_NODE=1 and node is not on PATH. These tests drive "
+            "station/static/flow.js, and skipping them here would leave the "
+            "job green with the whole flow view unexercised."
+        )
+    return "node is needed to drive flow.js"
+
+
 pytestmark = pytest.mark.skipif(
-    shutil.which("node") is None, reason="node is needed to drive flow.js"
+    _node_or_reason() is not None, reason="node is needed to drive flow.js"
 )
 
 
@@ -285,3 +312,41 @@ def test_the_diagram_claims_nothing_about_time(forbidden):
     assert forbidden not in FLOW_JS.read_text().split("*/", 1)[1], (
         "not in the code the diagram is built from either"
     )
+
+
+# ---------------------------------------------------------------------------
+# The guard on the guard
+# ---------------------------------------------------------------------------
+
+def test_a_missing_node_is_a_skip_on_a_laptop_and_a_failure_on_ci(monkeypatch):
+    """Three states, and the middle one is the whole point of the variable.
+
+    A laptop without node skips: there is no reason for one to have node, and a
+    hard dependency would be a worse trade than an unexercised flow view on a
+    machine that is not publishing anything.
+
+    CI is not that machine. `AOI_REQUIRE_NODE=1` is set in the workflow and
+    nowhere else, and there a missing node is a broken runner -- so it raises,
+    and the job goes red rather than green-with-a-line-of-`-rs`-output. This
+    project has already shipped one fix that passed CI by not running.
+    """
+    monkeypatch.setattr(shutil, "which", lambda name: "/usr/bin/node")
+    monkeypatch.delenv("AOI_REQUIRE_NODE", raising=False)
+    assert _node_or_reason() is None
+
+    monkeypatch.setattr(shutil, "which", lambda name: None)
+    assert _node_or_reason(), "a laptop without node skips rather than fails"
+
+    monkeypatch.setenv("AOI_REQUIRE_NODE", "1")
+    with pytest.raises(RuntimeError, match="AOI_REQUIRE_NODE"):
+        _node_or_reason()
+
+
+def test_the_workflow_sets_the_variable_that_makes_the_skip_impossible():
+    """The gate is only a gate where it is switched on."""
+    workflow = (
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "tests.yml"
+    ).read_text()
+
+    assert "AOI_REQUIRE_NODE" in workflow
+    assert "-rs" in workflow, "and a skip anywhere else is still named in the log"

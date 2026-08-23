@@ -268,6 +268,55 @@ queue's: an operator's answer is the next training round's label, and
 `store.boards.record_decision` refuses one that cannot name who made it. See
 `station/auth.py` for what the scheme does not protect against.
 
+### Language
+
+The station reads in Traditional Chinese or English. What moves when the switch
+moves is chrome: headings, column names, axis labels, the words the progress
+panel says. Two string tables in `i18n.py`, chosen by a cookie rather than the
+session -- how a person reads a screen is not a claim about who they are, and on
+a shared terminal it should outlive the next sign-out.
+
+What does *not* move is the record. The question a supervisor typed stays as
+they typed it: translating it would put a question nobody asked beside the name
+of the person who asked, and `asked_by` is most of what makes that row worth
+keeping. Everything the planning call wrote -- `interpretation`, the
+assumptions, each call's `why` -- stays too, because the planning call is never
+made again and so what it wrote is a record of how the question was read on the
+day. Those sections carry a badge saying so, shown only when the run was asked
+in another language.
+
+The synthesised answer is the exception, and the *way* it is the exception is
+the design:
+
+```
+   stored run            switch to `en`
+   ─────────                  │
+   question      (frozen)     │
+   plan_json     (frozen)     │
+   results_json  ─────────────┴──► synthesise(..., lang="en") ──► answers_json
+                    the same payload,        one model call,        one more key
+                    never re-planned         ~18s                   never overwritten
+```
+
+It is **written again, not translated**. A translation is a third artefact,
+produced from prose rather than from results, and nothing in this project
+measures one -- `synthesis_eval.py` checks a figure in a sentence against the
+payload it came from, and a translation has no payload of its own. Re-writing
+from `results_json` goes down the identical path the first answer did, one
+sentence of the prompt apart.
+
+Re-planning is not an option either, for the reason the `analysis_runs` table
+exists: a model asked the same question twice does not produce the same plan,
+and a page that redraws differently every time it is opened is not a record.
+
+That is why adding a language makes the measurement *stronger* rather than
+diluting it. Two write-ups of one payload are a cross-check a single-language
+system cannot perform, so `scripts/synthesis_eval.py --lang both` scores both
+surfaces and refuses to publish one alone. The cross-language comparison itself
+is a signal for adjudication rather than a gate -- two languages legitimately
+quote different subsets of a payload -- and the hard gate stays per language:
+every figure in every answer rendering from the results it was written from.
+
 ## Thresholds and where they come from
 
 Every row cites something a reader can open: a script they can run, or a line in

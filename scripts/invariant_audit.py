@@ -363,6 +363,39 @@ REGISTRY: tuple[Entry, ...] = (
         ),
     ),
     Entry(
+        match="Language is a rendering, not a record",
+        status=ENFORCED,
+        tests=(
+            "tests/test_i18n.py::test_the_question_is_never_rewritten_by_the_switch",
+            "tests/test_i18n.py::test_the_plan_sections_keep_the_language_they_were_written_in",
+            "tests/test_i18n.py::test_a_section_the_switch_does_not_touch_says_so",
+            "tests/test_analysis_run_languages.py::test_a_language_already_present_is_never_overwritten",
+            "tests/test_analysis_run_languages.py::test_the_old_answer_is_not_filed_under_a_guessed_language",
+        ),
+        note=(
+            "Both halves are held. What the planning call wrote -- the "
+            "question, the interpretation, the assumptions -- is asserted "
+            "unchanged when the page is read in the other language, and the "
+            "badge that says so is asserted present only when the languages "
+            "differ. On the store side, a language already answered is never "
+            "rewritten and the migration does not file an old answer under a "
+            "guessed key."
+        ),
+        gap=(
+            "Nothing asserts that a re-synthesis quotes the same figures as "
+            "the first pass: that comparison needs a real model and lives in "
+            "`scripts/synthesis_eval.py --lang both`, which the suite does not "
+            "run. What the suite holds is that the second language is written "
+            "from the stored results rather than translated -- not that the "
+            "two accounts agree."
+        ),
+        proved_by=(
+            "Let the switch re-render the plan's prose: 2 tests failed. Let "
+            "`add_answer` overwrite an existing language: 1 failed. Backfilled "
+            "`answers_json` under a guessed key: 2 failed."
+        ),
+    ),
+    Entry(
         match="A human disposition names who made it",
         status=ENFORCED,
         tests=(

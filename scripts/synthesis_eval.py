@@ -65,7 +65,11 @@ from aoi_agent.analysis.claims import (  # noqa: E402
     perturbations,
     sentences,
 )
-from aoi_agent.analysis.graph import build_analysis_graph  # noqa: E402
+from aoi_agent.analysis.graph import (  # noqa: E402
+    build_analysis_graph,
+    synthesise,
+)
+from aoi_agent.i18n import LOCALES  # noqa: E402
 from aoi_agent.analysis.plan import store_domains  # noqa: E402
 from aoi_agent.graph.flow import DEFAULT_MODEL  # noqa: E402
 from aoi_agent.llm.ollama import EXPLANATION_DEADLINE_S, OllamaClient  # noqa: E402
@@ -188,6 +192,55 @@ def contention(model: str) -> list[str]:
     )
 
 
+#: What scoring two languages buys, and what it does not. Stated before the
+#: figure so it cannot be read wider than it is.
+BOTH_LANGUAGES = (
+    "**Both answer surfaces are scored, from one payload.** The station "
+    "answers in {languages}, and a run is planned and executed once and then "
+    "written up once per language -- so the two accounts quote figures off the "
+    "same results and the comparison means something. Clean by language: "
+    "{per_lang}. Publishing a single-language report is refused by the script: "
+    "it would read as a claim about the system and be a claim about half of "
+    "it.\n\n"
+    "**The cross-language comparison is a signal for adjudication, not a "
+    "gate.** {diverged} of the scored questions quote a figure in one language "
+    "and not the other, and most of that is prose: a sentence structure that "
+    "fits one language may name a total the other reaches by naming its parts. "
+    "An equality test here would manufacture findings the way this checker's "
+    "first pass did. The hard gate is unchanged and is per language -- every "
+    "figure in every answer rendering from the payload it was written from."
+)
+
+
+def divergence(per_lang: dict) -> dict:
+    """Figures one language quoted and the other did not.
+
+    **A signal for adjudication, not a verdict.** Two write-ups of one payload
+    legitimately mention different subsets of it -- a sentence structure that
+    fits one language may name a total the other reaches by naming its parts --
+    so an equality test here would manufacture findings the way this checker's
+    first pass did, where 41 of 43 were the instrument's fault.
+
+    What it *is* good for is the case no single-language run can see: a figure
+    that appears in one language and in neither the other language nor the
+    payload has already been caught by `check`, but a figure that appears in
+    one language, is absent from the other, and is *attached to a different
+    entity* in each is a swap that reads clean twice. The pairs are printed for
+    a person, and the hard gate stays where it was -- every figure in every
+    language rendering from the payload.
+    """
+    languages = sorted(per_lang)
+    if len(languages) < 2:
+        return {}
+    first, second = (set(per_lang[lang]["figures"]) for lang in languages)
+    return {
+        "languages": languages,
+        f"only_in_{languages[0]}": sorted(first - second),
+        f"only_in_{languages[1]}": sorted(second - first),
+        "shared": len(first & second),
+    }
+
+
 def rate(part: int, whole: int) -> str:
     return f"{part}/{whole} = {part / whole:.0%}" if whole else "—"
 
@@ -202,6 +255,13 @@ def main() -> int:
     parser.add_argument("--raw", type=Path, default=None,
                         help="write every answer and finding to JSON, so a "
                              "reader can re-adjudicate the judged kinds")
+    parser.add_argument(
+        "--lang", default="both", choices=["both", *LOCALES],
+        help="which language(s) to write the answers in. `both` is the "
+             "default and the only value that may be published: a station "
+             "that answers in two languages has two surfaces, and a report "
+             "written from one of them describes half the system while "
+             "looking like it describes all of it")
     parser.add_argument("--dry-run", action="store_true",
                         help="print, do not append -- and do not refuse on a "
                              "contended machine, since nothing is published")
@@ -210,6 +270,21 @@ def main() -> int:
     questions = json.loads(args.questions.read_text())
     if args.limit:
         questions = questions[: args.limit]
+
+    languages = list(LOCALES) if args.lang == "both" else [args.lang]
+    if args.lang != "both" and not args.dry_run:
+        # The same rule the CI job applies to a skipped test, one layer up. A
+        # single-language report appended to `docs/benchmarks.md` reads exactly
+        # like a two-language one, and the half it does not cover is the half
+        # nobody would think to check.
+        print(
+            f"--lang {args.lang} scores one of this station's two answer "
+            f"surfaces. Publishing it would put a figure in docs/benchmarks.md "
+            f"that reads as a claim about the system and is a claim about half "
+            f"of it. Use --lang both to publish, or --dry-run to look.",
+            file=sys.stderr,
+        )
+        return 1
 
     ps_before = ollama_ps()
     busy_before = contention(args.model)
@@ -235,11 +310,21 @@ def main() -> int:
     started = time.perf_counter()
     scored, unscored = [], []
     for position, item in enumerate(questions, 1):
-        state = graph.invoke(
-            {"question": item["question"], "results": [], "timings_ms": {}}
-        )
+        # Planned and run once, written up once per language. Invoking the
+        # graph twice would give the two languages two different plans and two
+        # different payloads, and the whole point of scoring both is that they
+        # are two accounts of the *same* figures.
+        state = graph.invoke({
+            "question": item["question"], "results": [], "timings_ms": {},
+            "lang": languages[0],
+        })
         results = state.get("results") or []
-        answer = state.get("answer", "")
+        by_lang = {languages[0]: state.get("answer", "")}
+        for other in languages[1:]:
+            by_lang[other] = synthesise(
+                client, item["question"], state.get("plan") or {}, results, other
+            ) if results else state.get("answer", "")
+        answer = by_lang[languages[0]]
         if not results:
             # `report_node`'s fixed string: a refusal, a rejected plan or a
             # planner failure. There is no payload for the prose to be true or
@@ -250,21 +335,43 @@ def main() -> int:
             print(f"  [{position:>3}/{len(questions)}] --   {item['question'][:44]}")
             continue
 
-        findings, waved, derived = check(answer, state.get("plan"), results)
         grounding = Grounding(results)
+        per_lang = {}
+        for lang, text in by_lang.items():
+            lang_findings, lang_waved, lang_derived = check(
+                text, state.get("plan"), results)
+            per_lang[lang] = {
+                "answer": text,
+                "findings": [f.__dict__ for f in lang_findings],
+                "restated_from_plan": lang_waved,
+                "derived": lang_derived,
+                # As strings, and canonical: `numbers_in` returns `Decimal`,
+                # which JSON cannot hold, and two languages writing `1,049`
+                # and `1049` have to compare equal or every thousands
+                # separator becomes a divergence.
+                "figures": sorted(
+                    str(value) for sentence in sentences(text)
+                    for value, *_ in numbers_in(sentence)
+                ),
+            }
+
+        findings, waved, derived = (
+            per_lang[languages[0]]["findings"],
+            per_lang[languages[0]]["restated_from_plan"],
+            per_lang[languages[0]]["derived"],
+        )
         accepted, tried, accepted_dp, tried_dp = perturbations(answer, grounding)
-        figures = [
-            value for sentence in sentences(answer)
-            for value, *_ in numbers_in(sentence)
-        ]
+        figures = per_lang[languages[0]]["figures"]  # strings, canonicalised
         scored.append({
+            "by_lang": per_lang,
+            "divergence": divergence(per_lang),
             "id": item.get("id"),
             "question": item["question"],
             "severity": item.get("severity"),
             "plan": state.get("plan"),
             "results": results,
             "answer": answer,
-            "findings": [f.__dict__ for f in findings],
+            "findings": findings,
             "restated_from_plan": waved,
             "derived": derived,
             "figures": len(figures),
@@ -272,7 +379,7 @@ def main() -> int:
             "gaps": gaps(results),
             "perturbation": [accepted, tried, accepted_dp, tried_dp],
         })
-        counts = Counter(f.kind for f in findings)
+        counts = Counter(f["kind"] for f in findings)
         print(f"  [{position:>3}/{len(questions)}] "
               f"{'ok  ' if not findings else 'FLAG'} "
               f"{len(figures):>3} figures  {item['question'][:38]}"
@@ -322,6 +429,15 @@ def render(scored, unscored, args, minutes, ps_before, ps_after,
     tried_dp = sum(row["perturbation"][3] for row in scored)
     control = json.loads(CONTROL.read_text())
 
+    languages = sorted({lang for row in scored for lang in row.get("by_lang", {})})
+    per_lang_clean = {
+        lang: sum(1 for row in scored if not row["by_lang"][lang]["findings"])
+        for lang in languages
+    }
+    diverged = [row for row in scored
+                if any(v for k, v in (row.get("divergence") or {}).items()
+                       if k.startswith("only_in_"))]
+
     lines = [
         "",
         "### The prose over the results — is the sentence true of the payload?",
@@ -335,6 +451,15 @@ def render(scored, unscored, args, minutes, ps_before, ps_after,
         f"question, so this is a single point and not a distribution.",
         "",
         FIDELITY_NOT_TRUTH,
+        "",
+        BOTH_LANGUAGES.format(
+            languages=" and ".join(f"`{lang}`" for lang in languages),
+            per_lang=", ".join(
+                f"{lang} {rate(per_lang_clean[lang], len(scored))}"
+                for lang in languages
+            ),
+            diverged=rate(len(diverged), len(scored)),
+        ) if len(languages) > 1 else "",
         "",
         WHAT_ADJUDICATION_FOUND,
         "",

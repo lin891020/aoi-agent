@@ -26,12 +26,17 @@ src/aoi_agent/
                             durable SQLite checkpointer
     analysis/               the /ask flow -- typed plan, validator, Send
                             fan-out, chart derived from the result shape
+    i18n.py                 the two string tables, and the rule that the
+                            switch renders chrome and never rewrites a record
     station/                the review station -- FastAPI + Jinja, the
                             escalation queue, /ask and its SSE progress
                             stream, and service.py -- the review layer the
                             CLI shares with it. /ask has its own writer in
                             analysis/service.py.
-                            result_view.py is the ground_truth boundary;
+                            result_view.py is the ground_truth boundary and
+                            prose.py is the model's-Markdown one -- it returns
+                            structure, never markup, so no template needs
+                            `|safe`;
                             chart_svg.py renders a chart spec server-side;
                             auth.py is the sign-in, and states what the
                             scheme does not protect against
@@ -69,7 +74,9 @@ uv run python scripts/analysis_eval.py           # does the planner plan the rig
 uv run python scripts/analysis_eval.py --plan-only  # the same score, without the tools and the prose nobody scores
 uv run python scripts/analysis_eval.py --questions tests/fixtures/analysis_questions_independent.json
                                                  # the same scorer on seventy questions whose authors never saw the prompt
-uv run python scripts/synthesis_eval.py          # is the prose true of the results it was written from? (~45 min)
+uv run python scripts/synthesis_eval.py          # is the prose true of the results it was written from,
+                                                 # in both languages? (~50 min; --lang both is the default
+                                                 # and the only value it will publish)
 uv run python scripts/check_mcp_servers.py       # servers start and advertise tools
 uv run python scripts/invariant_audit.py         # which invariants below would fail a test if broken
 uv run python scripts/invariant_audit.py --collect  # the same, checking pytest really collects each one
@@ -91,8 +98,8 @@ docker run --rm -p 8000:8000 \
 
 ## Invariants — do not quietly change these
 
-Fourteen of them, and `scripts/invariant_audit.py` says which ones would
-actually fail a test if broken: **11 enforced, 2 partly enforced, 1
+Fifteen of them, and `scripts/invariant_audit.py` says which ones would
+actually fail a test if broken: **12 enforced, 2 partly enforced, 1
 unenforceable**. Each
 entry there names the tests that hold it and states what those tests do not
 cover; adding an invariant here without an entry fails
@@ -214,6 +221,21 @@ board is back under the unscoped reading.
   the column -- and neither of them is `NULL`. What this buys is a mechanism
   behind a name, not proof of who was at the keyboard; a shared passphrase
   still names one operator for two people, and `station/auth.py` says so.
+- **Language is a rendering, not a record.** The station reads in Traditional
+  Chinese or English and a switch moves between them, but only *chrome* moves:
+  the question a supervisor typed, and everything the planning call wrote about
+  it -- `interpretation`, the assumptions, each call's `why` -- keep the
+  language they were made in and are labelled as records rather than rewritten.
+  The planning call is never made again, so what it wrote is what happened.
+  The one re-derivable thing is the synthesised answer, and it is *written
+  again* from the stored `results_json` down the same measured path -- never
+  translated. A translation is a third artefact, produced from prose rather
+  than from results, and nothing here measures it. Two languages over one
+  payload is a cross-check the single-language system never had, so
+  `synthesis_eval.py` scores both and **refuses to publish a single-language
+  report**: a figure written from one surface reads as a claim about the system
+  and is a claim about half of it. Held by `tests/test_i18n.py` and
+  `tests/test_analysis_run_languages.py`.
 - **Say what is simulated.** Production metadata is generated with one planted
   signal; acceptance criteria are original documents, not IPC-A-610 (copyrighted,
   must stay out).
@@ -310,9 +332,10 @@ On the station itself:
   each -- but there is no index of boards to reach it from except a link on a
   queued region.
 - **Timestamps are stored UTC and displayed UTC**, and now labelled `UTC` on
-  the board record and the CLI. On the queue and the corrections page they are
-  still unlabelled, which on a quality record read at UTC+8 is an eight-hour
-  lie. Store UTC, render local, say which. It was the last of the two halves of
+  the board record, the CLI and the corrections page -- the last of those closed
+  on 2026-08-23 while that page was being translated. The queue is still
+  unlabelled, which on a quality record read at UTC+8 is an eight-hour lie.
+  Store UTC, render local, say which. It was the last of the two halves of
   a quality record that named nothing an auditor could use; the other half --
   who made the decision -- closed on 2026-08-23.
 - **Authentication is done, and what it deliberately leaves out is not.**

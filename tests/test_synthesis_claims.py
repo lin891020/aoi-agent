@@ -261,3 +261,144 @@ def test_a_real_rule_about_an_unretrieved_class_still_fires(case):
         case["plan"], case["results"],
     )
     assert [f for f in findings if f.kind == "misquoted_criterion"]
+
+
+# ---------------------------------------------------------------------------
+# A list of names against a list of figures
+# ---------------------------------------------------------------------------
+
+MACHINE_STATS = {
+    "tool": "query_machine_stats", "args": {}, "ok": True, "error": None,
+    "elapsed_ms": 1.0,
+    "data": {
+        "defect_type": "mousebite", "days": 2,
+        "fleet_share_of_defects": 0.189, "fleet_average_per_board": 1.326,
+        "machines": [
+            {"machine": "L1-M12", "defects": 29, "per_board": 1.45,
+             "share_of_defects": 0.199},
+            {"machine": "L2-M21", "defects": 21, "per_board": 1.5,
+             "share_of_defects": 0.198},
+            {"machine": "L2-M22", "defects": 37, "per_board": 1.276,
+             "share_of_defects": 0.178},
+        ],
+    },
+}
+
+DISTRIBUTED = (
+    "在各機台中，L1-M12、L2-M21、L2-M22 分別產生 29、21、37 個，"
+    "平均每板 1.45、1.5、1.276 個，佔缺陷的 19.9%、19.8%、17.8%。"
+)
+
+
+def misattributions(prose: str) -> list:
+    findings, _waved, _derived = check(prose, {"assumptions": []}, [MACHINE_STATS])
+    return [f for f in findings if f.kind == "misattributed_figure"]
+
+
+def test_a_list_of_names_against_a_list_of_figures_pairs_by_position():
+    """`A、B、C 分別產生 X、Y、Z` is one sentence in which every figure's
+    nearest preceding name is the last one.
+
+    The checker gave all nine figures here to `L2-M22` and flagged every entry
+    after the first -- eleven findings on one real sentence, none of them the
+    model's fault, with the payload matching the prose six machines deep.
+    """
+    assert misattributions(DISTRIBUTED) == []
+
+
+def test_a_transposed_list_is_still_caught_in_exactly_that_shape():
+    """The other side of the change, and the reason it is not just a mute.
+
+    Before it, a faithful list and a swapped one both produced roughly eleven
+    findings -- so the flags carried no information about which was which. The
+    pairing is what makes a real swap legible.
+    """
+    swapped = DISTRIBUTED.replace("分別產生 29、21、37", "分別產生 21、29、37")
+    found = misattributions(swapped)
+
+    assert len(found) == 2
+    claims = sorted(f.claim for f in found)
+    assert claims == ["21 attributed to L1/M12", "29 attributed to L2/M21"]
+
+
+def test_the_english_shape_of_the_same_facts_was_never_affected():
+    """Why one language saw this and the other did not: English pairs each name
+    with its own figure, so the nearest-preceding rule was always right there.
+    This is the construction that stayed clean, kept as the control."""
+    english = (
+        "L1-M12 produced 29 mousebites at 1.45 per board, "
+        "L2-M21 produced 21 at 1.5 per board, "
+        "and L2-M22 produced 37 at 1.276 per board."
+    )
+
+    assert misattributions(english) == []
+
+
+def test_two_names_with_no_separator_between_them_are_not_a_list():
+    """The join has to be punctuation. `L1-M12 produced 29 and L2-M21 21` is a
+    sentence, not a parallel list, and reading it as one would pair figures
+    across a verb."""
+    from aoi_agent.analysis.claims import _LIST_JOIN
+
+    assert _LIST_JOIN.match("、")
+    assert _LIST_JOIN.match("%、")
+    assert _LIST_JOIN.match("個、")
+    assert not _LIST_JOIN.match(" ")
+    assert not _LIST_JOIN.match(" 產生 ")
+    assert not _LIST_JOIN.match(" 個，平均每板 ")
+
+
+BY_CLASS = {
+    "tool": "query_defect_history", "args": {}, "ok": True, "error": None,
+    "elapsed_ms": 1.0,
+    "data": {
+        "filters": {"line_id": None, "days": 7},
+        "boards_inspected": 421,
+        "by_class": {"mousebite": 537, "spur": 438},
+    },
+}
+
+
+def by_class_misattributions(prose: str) -> list:
+    findings, _w, _d = check(prose, {"assumptions": []}, [BY_CLASS])
+    return [f for f in findings if f.kind == "misattributed_figure"]
+
+
+def test_a_measure_word_between_a_count_and_its_noun_does_not_break_the_pairing():
+    """Chinese counts through a measure word -- `438 個 spur` -- where English
+    writes `438 spur` and needs nothing.
+
+    Requiring bare whitespace between a figure and the noun that follows it
+    therefore rejected every Chinese count-plus-noun and handed each one to
+    whatever was named before it. The English half of this very sentence was
+    always right, which is why one payload written up twice is what found it.
+    """
+    assert by_class_misattributions(
+        "發現 537 個 mousebite 缺陷，以及 438 個 spur 缺陷。"
+    ) == []
+    assert by_class_misattributions(
+        "There were 537 mousebite defects and 438 spur defects."
+    ) == []
+
+
+def test_the_counts_swapped_across_the_measure_word_are_still_caught():
+    found = by_class_misattributions(
+        "發現 438 個 mousebite 缺陷，以及 537 個 spur 缺陷。"
+    )
+
+    assert {f.claim for f in found} == {
+        "438 attributed to mousebite", "537 attributed to spur",
+    }
+
+
+def test_punctuation_between_a_figure_and_a_name_still_ends_the_pairing():
+    """The guard this widened is against `M21(1.933/板, 25%)` -- a share after
+    one name, a bracket in between, read as the next machine's and shifting a
+    whole ranked list. A measure word is not punctuation; a bracket is."""
+    from aoi_agent.analysis.claims import _MEASURE_WORD
+
+    assert _MEASURE_WORD.match(" ")
+    assert _MEASURE_WORD.match(" 個 ")
+    assert not _MEASURE_WORD.match("), ")
+    assert not _MEASURE_WORD.match(" 的 ")
+    assert not _MEASURE_WORD.match(" 缺陷，以及 ")

@@ -189,6 +189,11 @@ _MENTION_RE = re.compile(
 #: `19 copper` rather than as trailing the name before it.
 _FOLLOWS = 15
 
+#: What may stand between a count and the noun it counts: whitespace, and at
+#: most one measure word. Not punctuation -- a bracket or a comma in there
+#: means the two are in different clauses, which is what this guard is for.
+_MEASURE_WORD = re.compile(r"^[\s\u00a0]*[個件片枚條處臺台塊块]?[\s\u00a0]*$")
+
 #: Above this many distinct stored figures the ratio search is skipped. It is
 #: quadratic, and a payload that large is a `list_candidates` dump whose
 #: figures are coordinates rather than quantities anybody divides.
@@ -576,6 +581,12 @@ def figure_findings(
     waved = 0
     for sentence in sentences(prose):
         mentions = _mentions(sentence)
+        # Positions of every figure in this sentence, so a run of them can be
+        # paired against a run of names -- see `_distributed_to`.
+        figure_spans = [
+            (start, end)
+            for _v, _p, start, end in numbers_in(sentence, words=False, bare=True)
+        ]
         for value, places, start, end in numbers_in(sentence, words=False, bare=True):
             if not grounding.holds(value, places):
                 if any(abs(value - stated) <= _tolerance(places)
@@ -593,7 +604,10 @@ def figure_findings(
                 continue
             if value in grounding.quoted:
                 continue
-            tokens = _attached_to(mentions, start, end, sentence)
+            tokens = (
+                _distributed_to(mentions, figure_spans, start, sentence)
+                or _attached_to(mentions, start, end, sentence)
+            )
             if not tokens or grounding.holds_for(value, places, tokens):
                 continue
             if grounding.is_fleet_level(value, places, tokens):
@@ -610,6 +624,89 @@ def figure_findings(
 
 def _tolerance(places: int) -> Decimal:
     return Decimal(5) * Decimal(10) ** -(places + 1)
+
+
+#: What may sit between two members of a parallel list: at most a unit, then a
+#: separator, and nothing else. The separator is mandatory -- two names or two
+#: figures with only a space between them are not a list, they are a sentence
+#: this rule has no business reading.
+_LIST_JOIN = re.compile(
+    r"^\s*[%‰]?[個件片枚板臺台條處]?\s*"
+    r"(?:[、,，/&]|and\b|與|和|及|以及)"
+    r"\s*[%‰]?\s*$",
+    re.IGNORECASE,
+)
+
+#: The words that mark a list of names as distributing over a list of figures.
+#: `分別` and `respectively` are the honest signal; a run of names followed
+#: immediately by a run of figures is read as one even without them, because
+#: the pairing is what a reader does either way.
+_DISTRIBUTIVE = re.compile(r"分別|各自|respectively", re.IGNORECASE)
+
+
+def _runs(items: list, text: str, span) -> list[list]:
+    """`items` grouped into maximal stretches joined only by list punctuation.
+
+    Anything else between two members -- a verb, a clause, a second figure --
+    ends the stretch. A list is a list only where nothing has intervened.
+    """
+    groups: list[list] = []
+    for item in items:
+        if groups and _LIST_JOIN.match(text[span(groups[-1][-1])[1]:span(item)[0]]):
+            groups[-1].append(item)
+        else:
+            groups.append([item])
+    return [group for group in groups if len(group) >= 2]
+
+
+def _distributed_to(
+    mentions: list[tuple[set[str], int, int]],
+    figures: list[tuple[int, int]],
+    position: int,
+    sentence: str,
+) -> set[str] | None:
+    """Pair a run of names with the run of figures that follows it, by position.
+
+    `L1-M12、L2-M21、L2-M22 分別產生 29、21、37 個` is one sentence in which
+    every figure's nearest *preceding* name is the last one -- so
+    `_attached_to` gave all three to `L2-M22`, and every entry after the first
+    read as a swap. Eleven findings on one sentence in the first bilingual run,
+    none of them the model's fault: the payload matched the prose position for
+    position, six machines deep, across counts, per-board rates and shares.
+
+    The construction is idiomatic Chinese and rare in English, where the same
+    facts come out as `M12 produced 29, M21 produced 21` with each name beside
+    its own figure. So it was invisible until one payload was written up in
+    both languages -- a blind spot no single-language run can see, and most of
+    what scoring two of them buys.
+
+    This does **not** make a transposed list unreadable; it makes one readable.
+    Before, every figure in such a sentence was flagged whatever its value, so
+    the flags carried no information at all. Now they are paired by position,
+    and a genuinely swapped list mismatches the payload and is flagged -- which
+    is the test on the other side of this change.
+    """
+    name_runs = _runs(mentions, sentence, lambda m: (m[1], m[2]))
+    if not name_runs:
+        return None
+
+    for names in name_runs:
+        after = names[-1][2]
+        if position < after:
+            continue
+        following = _runs([f for f in figures if f[0] >= after],
+                          sentence, lambda f: f)
+        for run in following:
+            if run[0][0] < after:
+                continue
+            # One figure per name, or a whole number of them: the answer above
+            # lists counts, then per-board rates, then shares -- three runs of
+            # six against one run of six names.
+            if len(run) % len(names) or position not in [f[0] for f in run]:
+                continue
+            index = [f[0] for f in run].index(position)
+            return set(names[index % len(names)][0])
+    return None
 
 
 def _attached_to(
@@ -641,15 +738,21 @@ def _attached_to(
     # count to the class named before it, so a whole list came out shifted by
     # one and every entry read as a swap -- four findings on one sentence in
     # the first run, none of them the model's fault.
-    # Only a bare space joins a count to the noun it counts. `M21(1.933/板,
-    # 25%)` puts a share after a name and closes a bracket in between, and
-    # reading that as `25% of the next machine` shifted a whole ranked list --
-    # the same defect as reading only backwards, in the other direction.
+    # Only a space, or a space and a measure word, joins a count to the noun it
+    # counts. `M21(1.933/板, 25%)` puts a share after a name and closes a
+    # bracket in between, and reading that as `25% of the next machine` shifted
+    # a whole ranked list -- the same defect as reading only backwards, in the
+    # other direction. That is what the rule is against, and a measure word is
+    # not that: Chinese counts through one -- `438 個 spur` -- where English
+    # writes `438 spur` and needs nothing. Requiring bare whitespace therefore
+    # rejected every Chinese count-plus-noun and handed each one to whatever
+    # was named before it. Found by writing the same payload up in two
+    # languages; the English half of the very same sentence was always right.
     nearest = before
     if (
         after
         and after[1] <= _FOLLOWS
-        and after[2].strip(" \u00a0") == ""
+        and _MEASURE_WORD.match(after[2])
         and (before is None or after[1] < before[1])
     ):
         nearest = (after[0], after[1])

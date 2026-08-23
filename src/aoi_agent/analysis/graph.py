@@ -183,26 +183,45 @@ def collect_node(state: AnalysisState) -> dict[str, Any]:
     }
 
 
+def synthesise(
+    client, question: str, plan: dict, results: list[dict], lang: str | None = None
+) -> str:
+    """Write up one set of results, in one language.
+
+    Lifted out of the node so a stored run can be written up again without
+    being re-planned. That is the whole of what the station's language switch
+    does: same question, same `results_json`, same prompt but for its one
+    sentence about language -- so the second pass quotes figures off the same
+    payload the first pass did, and `scripts/synthesis_eval.py` can score both
+    against it.
+
+    It is also why the switch does not translate. A translation is a third
+    artefact, produced from prose rather than from results, and nothing in this
+    project measures it.
+    """
+    try:
+        result = client.chat(
+            build_synthesis_messages(question, plan, results, lang),
+            think="low",
+        )
+        return result.text.strip()
+    except (httpx.HTTPError, OSError) as error:
+        # The results are already correct and already on screen. Losing the
+        # prose costs a reader some effort; losing the results would cost them
+        # the answer.
+        return (
+            f"The tools returned their results, but the summary could not be "
+            f"written ({type(error).__name__}). The figures below are complete."
+        )
+
+
 def make_synthesise_node(client):
     def synthesise_node(state: AnalysisState) -> dict[str, Any]:
         started = time.perf_counter()
-        try:
-            result = client.chat(
-                build_synthesis_messages(
-                    state["question"], state.get("plan") or {},
-                    state.get("results") or [], state.get("lang"),
-                ),
-                think="low",
-            )
-            answer = result.text.strip()
-        except (httpx.HTTPError, OSError) as error:
-            # The results are already correct and already on screen. Losing the
-            # prose costs a reader some effort; losing the results would cost
-            # them the answer.
-            answer = (
-                f"The tools returned their results, but the summary could not be "
-                f"written ({type(error).__name__}). The figures below are complete."
-            )
+        answer = synthesise(
+            client, state["question"], state.get("plan") or {},
+            state.get("results") or [], state.get("lang"),
+        )
         return {
             "answer": answer,
             "timings_ms": {"synthesise": (time.perf_counter() - started) * 1000},

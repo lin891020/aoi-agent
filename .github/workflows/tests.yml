@@ -32,11 +32,17 @@ jobs:
         run: uv sync --locked
 
       - name: Tests
-        # `-rs` so a skipped test is named in the log rather than folded
-        # into the dot line. The flow-view tests drive station/static/flow.js
-        # through node, and a runner without node would otherwise shrink the
-        # suite silently -- which is the failure this file already exists to
-        # prevent for the dataset-marked tests.
+        # `-rs` names a skipped test in the log rather than folding it into the
+        # dot line -- but printing a skip is not preventing one, and a job whose
+        # flow-view suite vanished would still be green.
+        #
+        # `AOI_REQUIRE_NODE` is set here and nowhere else: on this runner a
+        # missing node is a broken runner, and those tests fail rather than
+        # skip. On a laptop without node they still skip, which is the point of
+        # the variable rather than a hard dependency. This project has already
+        # shipped one fix that passed CI by not running.
+        env:
+          AOI_REQUIRE_NODE: "1"
         run: uv run pytest -m "not dataset" -rs
 
       - name: What this job did not run

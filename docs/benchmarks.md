@@ -934,10 +934,10 @@ the two that remain are described under the count.
 
 #### The count
 
-**11 enforced, 2 partly enforced, 1 unenforceable**, of fourteen. It was
+**12 enforced, 2 partly enforced, 1 unenforceable**, of fifteen. It was
 7 / 4 / 1 when the audit was written: two moved when their gaps were closed,
-and the thirteenth and fourteenth both arrived enforced, because in each case
-the rule and the test that holds it were written together.
+and the thirteenth, fourteenth and fifteenth all arrived enforced, because in
+each case the rule and the test that holds it were written together.
 
 - **enforced** — breaking it fails a named test that runs in CI: the LLM off the
   decision path, the escalation direction, checkpoint durability, the
