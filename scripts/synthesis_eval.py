@@ -148,6 +148,56 @@ NOT_INDEPENDENT = (
 #: report because a clean result whose instrument was corrected on the way to
 #: it is a different claim from a clean result taken first time.
 WHAT_ADJUDICATION_FOUND = (
+    "**Writing one payload up in two languages found three more of the "
+    "checker's own defects, and two of them had been reading as a worse "
+    "model.** The first bilingual run flagged the Chinese answers three times "
+    "as often as the English ones -- 19 findings across 8 answers against 6 "
+    "across 3 -- and every one adjudicated to the instrument. Chinese states a "
+    "ranked comparison as a run of names against a run of figures (`M12、M21、"
+    "M22 分別產生 29、21、37`), where every figure's nearest *preceding* name "
+    "is the last one, so eleven correct figures on one sentence went to the "
+    "final machine; and Chinese counts through a measure word (`438 個 spur`) "
+    "where English writes `438 spur`, which the look-forward rule read as "
+    "punctuation and fell back past. The third is English-shaped: `116,` was "
+    "read as a four-character figure, because the rule that lets `1,049` be "
+    "one number also swallowed a trailing comma -- which put the *next* class "
+    "one character closer than the one the count belonged to and handed every "
+    "entry in `copper - 116, mousebite - 161` to its neighbour. The value was "
+    "always right; only the extent was, and attribution is measured off the "
+    "extent.\n\n"
+    "After the three, `misattributed_figure` went 12 -> 0 in Chinese and 4 -> 0 "
+    "in English on the same answers, and the two languages' clean rates closed "
+    "from 16 points apart to level. **The English half improving is the tell "
+    "that these were the instrument and not the language.** Each fix carries "
+    "the swap it must still catch: a transposed list now produces exactly two "
+    "findings naming the right owner, where before a faithful list and a "
+    "transposed one both produced about eleven and the flags carried no "
+    "information at all.\n\n"
+    "**A fourth correction was attempted and backed out, and a fifth was "
+    "refused.** Excusing a quotient from the attribution check broke the "
+    "control fixture and four swap tests, because in a payload of any size "
+    "almost every figure is some ratio of two others. Admitting differences as "
+    "a legitimate rendering was refused for the reason `_renderings` already "
+    "states: every extra form is a number the checker will accept without it "
+    "being in the results. Both leave a false positive standing below rather "
+    "than silenced -- `56/282 = 19.9%` called L1's because 0.199 is also "
+    "L1-M12's share, and `2,992 - 491 = 2,501` named in the prose as the other "
+    "five classes combined. They are the price of the next paragraph.\n\n"
+    "**And with that strictness kept, this run caught a real one.** An answer "
+    "reported `4,292 total defects on 421 boards` where the payload holds "
+    "2,992 -- and then listed the six classes correctly, which sum to 2,992. "
+    "A supervisor reading the total would have been reading a number that "
+    "exists nowhere and that the same paragraph contradicts. It reproduced "
+    "on three consecutive runs, so it is the model and not the sampling. "
+    "Every previous run of this script reported zero fabrications; that was "
+    "a result, not a law, and one pass per question is what it is worth.\n\n"
+    "**One more defect was in the report rather than the checker.** The "
+    "headline counts were built from the language the run was planned in, so "
+    "\"nothing fabricated and nothing misattributed\" read as a statement "
+    "about the system while being a statement about one of its two surfaces -- "
+    "the exact failure `--lang both` exists to prevent, reproduced inside the "
+    "report that enforces it. Found by reading the raw file against the "
+    "headline it had just written. Every count below is over both languages.\n\n"
     "**The first pass of this checker raised 43 findings, and 41 of them were "
     "the checker's fault.** Adjudicating them against the payloads — which is "
     "what a judged flag is for — turned up five defects, every one of which "
@@ -239,6 +289,27 @@ def divergence(per_lang: dict) -> dict:
         f"only_in_{languages[1]}": sorted(second - first),
         "shared": len(first & second),
     }
+
+
+def _checked_clause(counts: Counter) -> str:
+    """What the checked kinds actually found, in words, from the counts.
+
+    Written from the data rather than beside it. A sentence that says "nothing
+    fabricated" while the table under it lists two fabrications is the exact
+    defect this section is for, and it published one before this existed.
+    """
+    named = {
+        "fabricated_figure": ("fabrication", "fabrications"),
+        "misattributed_figure": ("misattribution", "misattributions"),
+    }
+    parts = []
+    for kind, (one, many) in named.items():
+        count = counts.get(kind, 0)
+        parts.append(
+            f"no {many}" if count == 0
+            else f"{count} {one if count == 1 else many}"
+        )
+    return " and ".join(parts)
 
 
 def rate(part: int, whole: int) -> str:
@@ -375,7 +446,10 @@ def main() -> int:
             "restated_from_plan": waved,
             "derived": derived,
             "figures": len(figures),
-            "sentences": len(sentences(answer)),
+            # Across every language, like the figure count and the findings:
+            # a rate whose numerator counts two write-ups and whose denominator
+            # counts one is not a rate.
+            "sentences": sum(len(sentences(t)) for t in by_lang.values()),
             "gaps": gaps(results),
             "perturbation": [accepted, tried, accepted_dp, tried_dp],
         })
@@ -411,16 +485,34 @@ def main() -> int:
 
 def render(scored, unscored, args, minutes, ps_before, ps_after,
            busy_before, busy_after) -> str:
-    every = [f for row in scored for f in row["findings"]]
+    def _all_findings(row):
+        blobs = row.get("by_lang") or {"_": {"findings": row["findings"]}}
+        return [f for blob in blobs.values() for f in blob["findings"]]
+
+    # Every finding in every language. `row["findings"]` is the language the
+    # run was planned in, and building the headline out of that made the
+    # sentence "nothing fabricated and nothing misattributed" a statement about
+    # one surface while it read as a statement about the system -- which is the
+    # exact failure `--lang both` exists to prevent, reproduced inside the
+    # report that enforces it. Found by reading the raw file against the
+    # headline it had just written.
+    every = [f for row in scored for f in _all_findings(row)]
     counts = Counter(f["kind"] for f in every)
     checked = sum(counts[kind] for kind in CHECKED_KINDS)
     judged = len(every) - checked
-    clean = [row for row in scored if not row["findings"]]
+    #: An answer is clean when *every* language of it is clean. A question
+    #: counted clean because one of its two write-ups was would be the same
+    #: half-claim one level down.
+    clean = [row for row in scored if not _all_findings(row)]
     clean_checked = [
         row for row in scored
-        if not [f for f in row["findings"] if f["kind"] in CHECKED_KINDS]
+        if not [f for f in _all_findings(row) if f["kind"] in CHECKED_KINDS]
     ]
-    figures = sum(row["figures"] for row in scored)
+    figures = sum(
+        len(blob["figures"])
+        for row in scored
+        for blob in (row.get("by_lang") or {}).values()
+    ) or sum(row["figures"] for row in scored)
     restated = sum(row["restated_from_plan"] for row in scored)
     derived = sum(len(row["derived"]) for row in scored)
     accepted = sum(row["perturbation"][0] for row in scored)
@@ -463,10 +555,16 @@ def render(scored, unscored, args, minutes, ps_before, ps_after,
         "",
         WHAT_ADJUDICATION_FOUND,
         "",
+        # The clause after the dash is generated, not written. It used to read
+        # "nothing fabricated and nothing misattributed" whatever the table
+        # below it said, so a run that caught a real fabrication published a
+        # sentence denying it -- prose asserting what its own figures contradict
+        # two lines later, which is the failure this whole section exists to
+        # find in somebody else's writing.
         f"**{rate(len(clean), len(scored))} of the scored answers carry no "
         f"finding of any kind**, and {rate(len(clean_checked), len(scored))} "
-        f"carry no *checked* finding — nothing fabricated and nothing "
-        f"misattributed across {figures} figures quoted in "
+        f"carry no *checked* finding — {_checked_clause(counts)} across "
+        f"{figures} figures quoted in "
         f"{sum(row['sentences'] for row in scored)} sentences.",
         "",
         "| kind | findings | answers affected | decided by |",
@@ -474,7 +572,7 @@ def render(scored, unscored, args, minutes, ps_before, ps_after,
     ]
     for kind in KINDS:
         affected = sum(
-            1 for row in scored if any(f["kind"] == kind for f in row["findings"])
+            1 for row in scored if any(f["kind"] == kind for f in _all_findings(row))
         )
         how = "comparison" if kind in CHECKED_KINDS else "a person, on a flag"
         lines.append(f"| `{kind}` | {counts[kind]} | {affected} | {how} |")
@@ -552,7 +650,7 @@ def render(scored, unscored, args, minutes, ps_before, ps_after,
     if not every:
         lines.append("- none")
     for row in scored:
-        for finding in row["findings"]:
+        for finding in _all_findings(row):
             head = f"- {row['id']} `{finding['kind']}` — {finding['claim']}"
             lines.append(
                 head

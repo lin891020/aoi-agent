@@ -262,15 +262,25 @@ def numbers_in(
     for match in _NUMBER_RE.finditer(text):
         if bare and _GLUED.search(text[max(0, match.start() - 2):match.start()]):
             continue
-        raw = match.group().replace(",", "")
-        if raw.endswith("."):
-            raw = raw[:-1]
+        # A separator with no digits after it belongs to the sentence, not to
+        # the figure -- and it belongs to the *span* as well as to the value.
+        # `copper - 116, mousebite - 161` was read with the comma inside the
+        # figure, which put `mousebite` one character closer to it than
+        # `copper` and handed every count in an English breakdown list to the
+        # class named after it. The value was always right; only the extent was
+        # wrong, and attribution is measured off the extent.
+        text_of = match.group()
+        end = match.end()
+        while text_of and text_of[-1] in ".,":
+            text_of = text_of[:-1]
+            end -= 1
+        raw = text_of.replace(",", "")
         try:
             value = Decimal(raw)
         except InvalidOperation:  # pragma: no cover - the regex forbids it
             continue
         places = len(raw.split(".")[1]) if "." in raw else 0
-        found.append((value, places, match.start(), match.end()))
+        found.append((value, places, match.start(), end))
     if words:
         for match in _WORD_RE.finditer(text):
             found.append(

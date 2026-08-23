@@ -402,3 +402,87 @@ def test_punctuation_between_a_figure_and_a_name_still_ends_the_pairing():
     assert not _MEASURE_WORD.match("), ")
     assert not _MEASURE_WORD.match(" 的 ")
     assert not _MEASURE_WORD.match(" 缺陷，以及 ")
+
+
+def test_a_quotient_that_collides_with_another_entitys_figure_is_still_flagged():
+    """A known false positive, kept as a test rather than fixed.
+
+    `56/282 = 19.9%` is arithmetic the model showed its working for, and the
+    checker calls it L1's because 0.199 also happens to sit in the payload as
+    L1-M12's share. `derives` excuses a quotient in the *fabrication* branch,
+    and extending that excuse to attribution was tried here: it broke the
+    control fixture and four swap tests, because in a payload of any size
+    almost every figure is expressible as a ratio of two others. Muting a real
+    swap to silence this costs far more than the false positive does.
+
+    So it stays, it is adjudicated in `docs/benchmarks.md` rather than
+    suppressed, and this test is what stops somebody "fixing" it without
+    meeting the four tests above.
+    """
+    found = by_class_misattributions(
+        "mousebite 537 個中有 438 個落在同一台機台。"
+    )
+
+    assert [f.claim for f in found] == ["438 attributed to mousebite"]
+
+
+def test_a_separator_with_no_digits_after_it_is_not_part_of_the_figure():
+    """`116,` was read as a four-character figure because the thousands rule
+    allows a comma inside one.
+
+    The value was always right; the *extent* was not, and attribution is
+    measured off the extent -- so in `copper - 116, mousebite - 161` the comma
+    put `mousebite` one character nearer to 116 than `copper` was, and every
+    count in an English breakdown list went to the class named after it. Four
+    findings on one sentence, none of them the model's.
+    """
+    spans = [(str(v), text[a:b]) for text in [
+        "copper - 116, mousebite - 161."
+    ] for v, _p, a, b in numbers_in(text, words=False, bare=True)]
+
+    assert spans == [("116", "116"), ("161", "161")]
+    assert [str(v) for v, *_ in numbers_in("1,049 boards", words=False)] == ["1049"]
+
+
+def test_an_english_breakdown_list_attributes_each_count_to_its_own_class():
+    assert by_class_misattributions(
+        "The breakdown is mousebite - 537, spur - 438."
+    ) == []
+
+
+def test_the_same_english_list_transposed_is_caught():
+    found = by_class_misattributions(
+        "The breakdown is mousebite - 438, spur - 537."
+    )
+
+    assert {f.claim for f in found} == {
+        "438 attributed to mousebite", "537 attributed to spur",
+    }
+
+
+# ---------------------------------------------------------------------------
+# The report's own prose, over the report's own figures
+# ---------------------------------------------------------------------------
+
+def test_the_headline_clause_says_what_the_table_under_it_says():
+    """It used to read "nothing fabricated and nothing misattributed" whatever
+    the counts were, so the run that caught a real fabrication published a
+    sentence denying it -- prose contradicted by its own table two lines down,
+    which is the defect this whole section exists to find in somebody else's
+    writing.
+    """
+    import sys
+    from collections import Counter
+    from pathlib import Path as _Path
+
+    sys.path.insert(0, str(_Path(__file__).resolve().parents[1] / "scripts"))
+    from synthesis_eval import _checked_clause
+
+    assert _checked_clause(Counter()) == "no fabrications and no misattributions"
+    assert _checked_clause(
+        Counter({"fabricated_figure": 2, "misattributed_figure": 1})
+    ) == "2 fabrications and 1 misattribution"
+    # A judged kind is not in this clause: it names the checked ones only.
+    assert _checked_clause(Counter({"unsupported_claim": 9})) == (
+        "no fabrications and no misattributions"
+    )
