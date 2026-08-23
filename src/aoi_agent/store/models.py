@@ -211,5 +211,46 @@ def make_session_factory(url: str | None = None):
     return sessionmaker(bind=make_engine(url), expire_on_commit=False, future=True)
 
 
+#: Nullable columns added to tables that already had rows.
+#:
+#: ``CREATE TABLE IF NOT EXISTS`` does nothing to a table that already exists,
+#: so a store holding a queue and a season of operator corrections would have
+#: had to be deleted to gain a column -- and the corrections are the next
+#: training round's labels. This is not a migration framework and must not
+#: become one: additive, nullable, and never a change to a column that exists.
+#: Anything beyond that wants a real tool.
+ADDED_COLUMNS: dict[str, dict[str, str]] = {
+    "review_decisions": {"explanation_status": "VARCHAR(16)"},
+    "escalations": {"explanation_status": "VARCHAR(16)"},
+}
+
+
 def create_all(url: str | None = None) -> None:
-    Base.metadata.create_all(make_engine(url))
+    engine = make_engine(url)
+    Base.metadata.create_all(engine)
+    _add_missing_columns(engine)
+
+
+def _add_missing_columns(engine) -> list[str]:
+    """Bring an existing store up to the columns declared above.
+
+    Returns what it added, so a caller -- or a test -- can see that it ran.
+    """
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    existing_tables = set(inspector.get_table_names())
+    added = []
+    with engine.begin() as connection:
+        for table, columns in ADDED_COLUMNS.items():
+            if table not in existing_tables:
+                continue
+            present = {c["name"] for c in inspector.get_columns(table)}
+            for name, sql_type in columns.items():
+                if name in present:
+                    continue
+                connection.execute(
+                    text(f"ALTER TABLE {table} ADD COLUMN {name} {sql_type}")
+                )
+                added.append(f"{table}.{name}")
+    return added

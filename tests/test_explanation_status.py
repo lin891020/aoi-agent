@@ -280,3 +280,54 @@ def test_the_queue_count_is_scoped_to_what_is_still_waiting(store, stub_tools): 
 
     escalations.resolve_escalation(REFERENCE)
     assert escalations.explanation_counts() == {}
+
+
+# ---- the column reaching a store that already has rows -------------------
+
+
+def test_the_column_is_added_to_a_store_that_predates_it(tmp_path):
+    """A schema change with no path forward is a schema change that eats the
+    corrections.
+
+    The queue and `review_decisions` are quality records -- the corrections in
+    them are the next training round's labels -- so gaining a nullable column
+    must not mean rebuilding the store. `create_all` adds it in place, and this
+    builds the old schema explicitly rather than trusting that it would.
+    """
+    from sqlalchemy import create_engine, inspect, text
+    from aoi_agent.store.models import create_all
+
+    url = f"sqlite:///{tmp_path / 'old.db'}"
+    engine = create_engine(url)
+    with engine.begin() as connection:
+        connection.execute(text(
+            "CREATE TABLE review_decisions ("
+            " id INTEGER PRIMARY KEY, candidate_id INTEGER, verdict VARCHAR(16),"
+            " source VARCHAR(16), reviewer VARCHAR(64), rationale VARCHAR(2048),"
+            " decided_at DATETIME)"
+        ))
+        connection.execute(text(
+            "INSERT INTO review_decisions (verdict, source) VALUES ('open', 'agent')"
+        ))
+
+    create_all(url)
+
+    columns = {c["name"] for c in inspect(engine).get_columns("review_decisions")}
+    assert "explanation_status" in columns
+    with engine.begin() as connection:
+        rows = connection.execute(text("SELECT count(*) FROM review_decisions")).scalar()
+    assert rows == 1, "the migration must not touch a row"
+
+
+def test_migrating_twice_changes_nothing(tmp_path):
+    """`seed_store.py --migrate-only` is something a person runs when unsure."""
+    from sqlalchemy import create_engine, inspect
+    from aoi_agent.store.models import _add_missing_columns, create_all
+
+    url = f"sqlite:///{tmp_path / 'fresh.db'}"
+    create_all(url)
+    engine = create_engine(url)
+    assert _add_missing_columns(engine) == []
+    assert "explanation_status" in {
+        c["name"] for c in inspect(engine).get_columns("escalations")
+    }

@@ -67,7 +67,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from aoi_agent.analysis.graph import build_analysis_graph, make_plan_node  # noqa: E402
 from aoi_agent.analysis.plan import store_domains  # noqa: E402
 from aoi_agent.graph.flow import DEFAULT_MODEL  # noqa: E402
-from aoi_agent.llm.ollama import OllamaClient  # noqa: E402
+from aoi_agent.llm.ollama import EXPLANATION_DEADLINE_S, OllamaClient  # noqa: E402
 
 #: Printed directly under the table when nothing failed, not after the misses
 #: list. This project's headline invariant is to report an operating point
@@ -161,8 +161,16 @@ CAUSE_WORDS = ("cause", "causal", "causation", "association", "correlat", "å› æ
 #: and `validate_plan` already bounds `days` against what the store holds.
 SCORED_ARGS = ("defect_type", "line_id", "machine_id", "board")
 
-#: Accuracy, not latency. A 10s client timeout would measure the timeout.
-EVAL_TIMEOUT_S = 180.0
+#: The deadline the station runs under, not a longer one for the benchmark.
+#:
+#: 180s until 2026-08-23, to keep a 10s client timeout from turning an accuracy
+#: run into a measurement of the timeout. That made every planner number here
+#: describe a configuration the station never ran, and nothing in the published
+#: sections said so. The 10s was WI-300's response budget doing a client
+#: timeout's job; the client now waits `EXPLANATION_DEADLINE_S` and so does
+#: this. A planner call that misses it produces no plan, which this script
+#: already scores as a miss rather than as a refusal.
+EVAL_TIMEOUT_S = EXPLANATION_DEADLINE_S
 
 
 def load_questions(path: Path = QUESTIONS) -> list[dict]:

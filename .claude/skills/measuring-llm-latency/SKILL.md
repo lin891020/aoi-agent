@@ -90,10 +90,12 @@ Measured on `gpt-oss:20b`, the same request twice:
 | `think=False` | 3254ms | 1921ms | 8ms |
 
 The gap is thinking, and it closes to nothing when thinking is off. The flow's
-reason node runs at `think="low"`, so `eval_ms` understates what the station
-waits for by about half — enough to turn "inside WI-300's 10s budget" into
-"over it". That is not hypothetical: it is what the first run of
-`scripts/latency_report.py` concluded before the method was corrected.
+reason node runs at `think="low"`, so `eval_ms` can understate what the station
+waits for by around half — enough to move a call from one side of any deadline
+to the other. That is not hypothetical: it is what the first run of
+`scripts/latency_report.py` concluded before the method was corrected. (The
+thinking share is not stable: the 2026-08-23 run put it at 13% of service time,
+against 47% on 2026-08-22. Measure it, do not assume a factor.)
 
 Any model emitting reasoning tokens has this. Check `len(result.thinking)`
 before trusting `eval_ms` as a whole-request figure.

@@ -34,7 +34,7 @@ src/aoi_agent/
     cli.py
 scripts/                    gate_check, build_patches, train, report, seed_store,
                             analysis_eval, ...
-tests/                      767 tests; dataset-dependent ones behind `-m dataset`
+tests/                      802 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -49,7 +49,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 767 tests, no GPU needed, no model called
+uv run pytest                                    # 802 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
@@ -70,6 +70,8 @@ uv run python scripts/invariant_audit.py --collect  # the same, checking pytest 
 uv run python -m aoi_agent board 20085294 --queue  # run a board, queue what it cannot settle
 uv run python -m aoi_agent station               # review station on :8000 -- the queue, and /ask
 uv run python -m aoi_agent queue                 # what is waiting on a person
+uv run python -m aoi_agent explanations          # how many dispositions carry no rationale, and why
+uv run python scripts/seed_store.py --migrate-only  # add missing columns to an existing store
 
 docker build -t aoi-agent .                      # CPU torch; nothing heavy baked in
 docker run --rm -p 8000:8000 \
@@ -233,11 +235,26 @@ sustained CPU inference throttles about 20% past the first 60 seconds on this
 fanless chassis, and CPU per-candidate cost gets *worse* past batch 8 -- by
 several-fold, independent of core count. Batch at 8 on CPU.
 
-`gpt-oss:20b` misses WI-300's 10s response budget -- p90 service time 15.6s on a
-quiet machine, 20 of 24 calls over. It no longer gates anything, because the LLM
-is off the decision path and an operator waits for a verdict, not for an
-explanation. Worth revisiting only if the LLM is ever put back on that path, or
-if the station starts blocking on the explanation to render.
+**The response budget and the client timeout are two numbers now, and were one
+until 2026-08-23.** `RESPONSE_BUDGET_S` was WI-300's 10s promise about a verdict
+*and* the httpx timeout, against a model whose measured service time had a
+median of 12.5s. More than half of the station's explanations therefore failed
+by construction, and after the LLM came off the decision path writing them was
+its only remaining job. The queue held an escalation whose entire content was
+`the model did not answer (ReadTimeout)`, and nothing counted how many others
+there had been.
+
+`RESPONSE_BUDGET_S` stays 10s, stays WI-300's, and moved to `graph/flow.py`: it
+bounds the *verdict*, which is `classify_node` at 2.5ms. `EXPLANATION_DEADLINE_S`
+is 60s in `llm/ollama.py` and bounds a wait nobody blocks on -- the disposition
+is decided from `model_class` and `model_confidence`, both of which exist before
+the reason node is entered. Re-measured at that deadline: median 8.6s, p90
+11.1s, max 13.0s, **0 of 24 calls without an explanation**. A missing
+explanation is now `explanation_status`, shown to the operator as a notice
+rather than an exception name, and counted by `uv run python -m aoi_agent
+explanations`. Do not re-merge the two constants;
+`tests/test_response_budget.py` fails if the client timeout becomes the budget
+again.
 
 On the station itself:
 

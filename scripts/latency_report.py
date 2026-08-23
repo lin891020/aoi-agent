@@ -46,6 +46,7 @@ escalations and no decisions behind.
 from __future__ import annotations
 
 import argparse
+import os
 import statistics
 import subprocess
 import sys
@@ -53,6 +54,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from langgraph.checkpoint.memory import InMemorySaver  # noqa: E402
 from sqlalchemy import select  # noqa: E402
@@ -71,6 +73,17 @@ from aoi_agent.llm.ollama import (  # noqa: E402
 from aoi_agent.store.boards import session_factory  # noqa: E402
 from aoi_agent.store.models import Board, CandidateRecord  # noqa: E402
 from aoi_agent.vision.inference import DEFAULT_DISMISS_THRESHOLD  # noqa: E402
+
+# The contention sweep lives with the re-verifier benchmark and is imported
+# rather than copied. `ollama ps` alone is not a machine check: it reports
+# Ollama's own resident models and is blind to a torch job on the same silicon
+# or four ffmpeg transcodes on the same cores, both of which have already cost
+# this project a published number.
+from reverifier_latency import (  # noqa: E402
+    competing_processes,
+    process_table,
+    resident_models,
+)
 
 
 THERMAL_SPLIT_S = 60.0
@@ -109,6 +122,21 @@ def ollama_ps() -> str:
         ).stdout.strip()
     except (OSError, subprocess.SubprocessError) as error:
         return f"(ollama ps unavailable: {error})"
+
+
+def contention(model: str) -> list[str]:
+    """Everything sharing this machine that is not the model being measured.
+
+    A resident model other than the one under test means Ollama is about to
+    evict something; a busy torch or ffmpeg process means the silicon is shared
+    whatever `ollama ps` says.
+    """
+    others = [
+        name for name in resident_models(ollama_ps())
+        if not name.startswith(model.split(":")[0])
+    ]
+    busy = competing_processes(process_table(), os.getpid())
+    return [f"resident model: {name}" for name in others] + busy
 
 
 def investigated_candidates(limit: int) -> list[str]:
@@ -163,6 +191,16 @@ def main() -> int:
     ps_before = ollama_ps()
     print(f"ollama ps before:\n{ps_before}\n")
 
+    busy_before = contention(args.model)
+    print("busy processes before:\n  " + ("\n  ".join(busy_before) or "(none)") + "\n")
+    if busy_before and not args.dry_run:
+        print(
+            "something else is holding this machine; a contended run is to be "
+            "discarded, not published. Re-run when it is quiet, or use --dry-run.",
+            file=sys.stderr,
+        )
+        return 1
+
     inner = OllamaClient(args.model, timeout=EXPLANATION_DEADLINE_S)
     print("warming up (discarded) ...")
     warm = inner.warm_up()
@@ -181,7 +219,16 @@ def main() -> int:
         print(f"  [{position:>3}/{len(references)}] {reference:<16} {elapsed:>8.0f}ms wall")
 
     ps_after = ollama_ps()
+    busy_after = contention(args.model)
     print(f"\nollama ps after:\n{ps_after}")
+    print("busy processes after:\n  " + ("\n  ".join(busy_after) or "(none)"))
+    if busy_after and not args.dry_run:
+        print(
+            "something joined this machine mid-run; the numbers are not this "
+            "machine idle and are not published.",
+            file=sys.stderr,
+        )
+        return 1
 
     kept = [(offset, r) for offset, r in client.calls if not r.timing.was_reloaded]
     evicted = len(client.calls) - len(kept)
@@ -253,8 +300,14 @@ def main() -> int:
         "ollama ps before the run",
         ps_before,
         "",
+        "busy processes before the run",
+        "\n".join(busy_before) or "(none)",
+        "",
         "ollama ps after the run",
         ps_after,
+        "",
+        "busy processes after the run",
+        "\n".join(busy_after) or "(none)",
         "```",
         "",
         "| | calls | median | mean | p90 | max |",

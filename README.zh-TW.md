@@ -455,9 +455,18 @@ wheel。什麼都不 mount 直接跑，會得到一個對著空 queue 起來的 
 - **標準回答的還是作業員沒在問的問題。** Scope 修好的是「段落來自哪份文件」，不是
   「那段話在說什麼」：`open` 拿到的規則還是「任何確認的 open 都是 critical」，那是怎麼
   **處置**，不是怎麼**確認** —— 而站在影像前面的人正在做的是確認。這已經是文件的問題。
-- **`gpt-oss:20b` 達不到 WI-300 的 10 秒回應時間** —— 在確認過沒有干擾的機器上 p90
-  service time 15.6 秒，24 次呼叫有 20 次超時。它現在不擋任何東西，因為 LLM 已經不在
-  decision path 上，作業員等的是判定不是解釋。但只要那兩件事有一件變了，它就又會擋。
+- **一個數字同時做兩件事，代價是站台大部分的解釋都寫不出來。**
+  `RESPONSE_BUDGET_S` 既是 WI-300 對「判定」的 10 秒承諾，也是 httpx 的 client
+  timeout；而這個 model 量到的 service time 中位數是 12.5 秒，所以 24 次呼叫有 20 次
+  被砍掉 —— 而 LLM 從 decision path 上拿掉之後，寫給作業員看的那段解釋是它僅存的工作。
+  Queue 上曾經有一筆升級案，全部內容就是 `the model did not answer (ReadTimeout)`，
+  而且沒有任何東西在算這種情況發生過幾次。承諾不能跟著 model 走，資源上限必須跟著量測
+  走，所以現在是兩個常數：budget 維持 10 秒，管的是判定，而判定是 classifier 的
+  2.5 毫秒；`EXPLANATION_DEADLINE_S` 是 60 秒，管的是一段沒有人在等的等待。
+  用實際出貨的設定重量一次：中位數 8.6 秒、p90 11.1 秒、**24 次呼叫有 0 次沒寫出解釋**。
+  「沒有解釋」現在是一個一級狀態，會以說明的形式顯示，並且由
+  `uv run python -m aoi_agent explanations` 計數 ——
+  [這次的 run](docs/benchmarks.md#agent-layer-latency--does-the-reason-node-fit-the-explanation-deadline)。
 - **生產履歷是模擬的。** 公開的缺陷資料集不會附批號或機台 id。板子是照 open defect
   佔比排序分配到機台的，這會在某一台上種下一個具體、有記錄的訊號，好讓 context tool
   真的有東西可以找。見 `src/aoi_agent/store/seed.py`。
@@ -491,8 +500,8 @@ wheel。什麼都不 mount 直接跑，會得到一個對著空 queue 起來的 
   要接的話，需要在 `ReVerifier` 裡開一條 ONNX 路徑，並且針對真正要服務的那個 engine
   重掃一次 threshold。
 - **跨 model 比較**：`gpt-oss:20b`、`qwen3:14b`、`qwen2.5:14b`。reason node 的延遲現在
-  只在一個 model 上量過；更小的 model 進不進得了 WI-300 的預算、還寫不寫得出堪用的理
-  由，沒有量。
+  只在一個 model 上量過；更小的 model 進不進得了 explanation deadline、還寫不寫得出
+  堪用的理由，沒有量。
 - **板子瀏覽器**，讓 agent 自己收掉的那 82% 也看得到，而不是只看得到 queue。現在站上
   只顯示系統決定不了的東西，那是它最不完整也最不好看的一面。
 - **時間戳是存 UTC、顯示 UTC，而且沒有標示。** 一份在 UTC+8 讀的品質紀錄上，那是八小

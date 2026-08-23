@@ -44,14 +44,22 @@ from langgraph.checkpoint.memory import InMemorySaver  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
 from aoi_agent.graph.flow import CONFIDENT, DEFAULT_MODEL, build_graph  # noqa: E402
-from aoi_agent.llm.ollama import OllamaClient  # noqa: E402
+from aoi_agent.llm.ollama import EXPLANATION_DEADLINE_S, OllamaClient  # noqa: E402
 from aoi_agent.store.boards import session_factory  # noqa: E402
 from aoi_agent.store.models import Board, CandidateRecord  # noqa: E402
 from aoi_agent.vision.inference import DEFAULT_DISMISS_THRESHOLD  # noqa: E402
 
-#: Accuracy, not latency. WI-300's 10s budget would time out most calls and turn
-#: the run into a measurement of the timeout. Latency lives in latency_report.py.
-EVAL_TIMEOUT_S = 180.0
+#: The deadline the station runs under, not a longer one for the benchmark.
+#:
+#: This was 180s until 2026-08-23, on the reasoning that a 10s client timeout
+#: would cut most calls and turn an accuracy run into a measurement of the
+#: timeout. That reasoning was correct and the conclusion was wrong: it made
+#: every number this script published describe a configuration nothing runs, and
+#: nothing said so. The right fix was the one applied to the station -- the 10s
+#: was WI-300's response budget wearing a client timeout's clothes, and the
+#: client now waits `EXPLANATION_DEADLINE_S`. So the benchmark and the station
+#: use the same number, and a call that misses it is scored as what it is.
+EVAL_TIMEOUT_S = EXPLANATION_DEADLINE_S
 
 #: Candidates whose box only fragments a real defect. Training holds them out
 #: rather than labelling them spurious, and scoring has to do the same: neither
@@ -141,6 +149,7 @@ def main() -> int:
             "agent_verdict": state.get("agent_verdict"),
             "escalated": "__interrupt__" in state,
             "rationale": state.get("agent_rationale", ""),
+            "explanation_status": state.get("explanation_status", "unknown"),
         }
         results.append(record)
         flag = "ESC" if record["escalated"] else "   "
@@ -154,6 +163,36 @@ def main() -> int:
 
     elapsed = time.perf_counter() - started
     return report(args, results, elapsed)
+
+
+def explanation_line(results: list[dict]) -> str:
+    """How many of these candidates got a written explanation, and how many not.
+
+    The LLM's only remaining job. A run that scores well on the classifier's
+    dispositions while writing no explanations is a run in which the layer under
+    test did nothing, and until 2026-08-23 nothing here would have noticed:
+    every failure landed in the rationale string as an exception class name and
+    the tables above were unaffected.
+    """
+    counts: dict[str, int] = {}
+    for row in results:
+        status = row.get("explanation_status", "unknown")
+        counts[status] = counts.get(status, 0) + 1
+    written = counts.get("ok", 0)
+    missing = sorted(
+        (status, n) for status, n in counts.items() if status != "ok"
+    )
+    if not missing:
+        return (
+            f"**Explanations written.** {written} of {len(results)}. The layer "
+            f"produced the thing it exists to produce on every candidate."
+        )
+    detail = ", ".join(f"{n} {status}" for status, n in missing)
+    return (
+        f"**Explanations written.** {written} of {len(results)}; {detail}. "
+        f"No disposition moved -- the classifier had already decided -- but that "
+        f"many operators would open a region with nothing written on it."
+    )
 
 
 def report(args, results: list[dict], elapsed: float) -> int:
@@ -180,6 +219,13 @@ def report(args, results: list[dict], elapsed: float) -> int:
         f"`{args.model}`, {len(results)} candidates the router sends to investigation, "
         f"sampled by stride across the store. `fragment` ground truth is held out, as "
         f"in training. Ran in {elapsed / 60:.0f} min.",
+        "",
+        f"Run at the deadline the station runs at, `EVAL_TIMEOUT_S = "
+        f"EXPLANATION_DEADLINE_S = {EVAL_TIMEOUT_S:.0f}s`. Earlier runs of this "
+        f"script overrode it to 180s, which measured a configuration nothing "
+        f"ships.",
+        "",
+        explanation_line(results),
         "",
         "**What the system dispositions on, against what the LLM would have "
         "dispositioned on.** `decide_node` takes the classifier's class; the "

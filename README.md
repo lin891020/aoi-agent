@@ -544,11 +544,21 @@ explanation step needs the container to be able to reach it.
   which is how to *disposition* one, not how to *confirm* one — and confirming
   is what the person in front of the images is doing. That is a documents
   problem now.
-- **`gpt-oss:20b` misses WI-300's 10 s response budget** — p90 service time
-  15.6 s on a verified-quiet machine, 20 of 24 calls over. It gates nothing,
-  because the LLM is off the decision path and an operator waits for a verdict
-  rather than for an explanation. It would gate something again the moment
-  either of those changed.
+- **One number was doing two jobs, and it cost the station most of its
+  explanations.** `RESPONSE_BUDGET_S` was WI-300's 10 s promise about a verdict
+  *and* the httpx client timeout, against a model whose measured service time
+  had a median of 12.5 s — so 20 of 24 calls timed out, and since the LLM came
+  off the decision path, writing the operator's explanation is the only job it
+  has. The queue held an escalation whose entire content was `the model did not
+  answer (ReadTimeout)`, and nothing counted how many more there had been. A
+  promise must not follow the model; a resource bound must follow the
+  measurement, so they are two constants now: the budget stays 10 s and bounds
+  the verdict, which is the classifier's at 2.5 ms, and
+  `EXPLANATION_DEADLINE_S` is 60 s and bounds a wait nothing blocks on.
+  Re-measured under the shipped configuration: median 8.6 s, p90 11.1 s, **0 of
+  24 calls without an explanation**. A missing one is a first-class state now,
+  shown as a notice and counted by `uv run python -m aoi_agent explanations` —
+  [the run](docs/benchmarks.md#agent-layer-latency--does-the-reason-node-fit-the-explanation-deadline).
 - **Production context is simulated.** Public defect datasets ship no lot
   numbers or machine ids. Boards are assigned to machines by rank on open-defect
   share, which plants a specific, documented signal on one station so the
@@ -594,7 +604,7 @@ explanation step needs the container to be able to reach it.
   threshold re-swept against the engine that will serve it.
 - **A model comparison** across `gpt-oss:20b`, `qwen3:14b` and `qwen2.5:14b`.
   The reason node's latency is now measured on one model; whether a smaller one
-  fits WI-300's budget and still writes a usable rationale is not.
+  fits the explanation deadline and still writes a usable rationale is not.
 - **A board browser**, so the 82% the agent settled is visible and not only the
   queue. Today the station shows what the system could not decide, which is the
   least flattering and least complete view of it.

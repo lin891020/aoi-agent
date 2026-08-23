@@ -95,6 +95,8 @@ gpt-oss:20b    17052f91a42e    12 GB    100% GPU     32768      29 minutes from 
 
 **Over budget.** p90 is 15.6s against a 10s budget, and 20 of 24 calls exceeded it. WI-300 says the model is the wrong size for the line, not that the budget moves.
 
+**Superseded 2026-08-23, and this verdict compares against the wrong number.** The response budget covers the *verdict*, which the LLM does not produce — `classify_node` does, at 2.5ms. What the reason node runs under is the explanation deadline, and the reason 20 of 24 calls failed here was that the two were one constant at 10s. Re-measured against the deadline the station now uses: median 8.6s, p90 11.1s, 0 of 24 without an explanation. This run also predates the class-scoped criteria retrieval, so its prompts are not the prompts the station builds today.
+
 Of that service time, `eval_duration` accounts for 6.4s and prompt ingestion for 0.1s on average. The remaining 5.7s is thinking tokens, which Ollama generates and bills to nobody. Reporting `eval_ms` as the latency would have understated this run by 47%.
 
 Queueing check: 0.0% of mean wall time is not load, prompt or generation — the request went straight to the GPU, so the run is not contended.
@@ -104,6 +106,9 @@ No request was served after an eviction.
 ### Agent layer — does it beat the classifier, and is the escalation calibrated?
 
 `gpt-oss:20b`, 60 candidates the router sends to investigation, sampled by stride across the store. `fragment` ground truth is held out, as in training. Ran in 0 min.
+
+**Measured with the client timeout overridden to 180s — a configuration the station never ran.** At the time this was taken the station's own timeout was 10s, so on this machine roughly five calls in six would have failed here and produced no explanation at all. The dispositions in the tables are unaffected either way, because `decide_node` reads the classifier's class and `route_after_reason` reads its confidence — but any reading of what the *LLM* contributed is a reading of a system that was not deployed. Since 2026-08-23 both scripts run at `EXPLANATION_DEADLINE_S`; see the section dated that day.
+
 
 **Accuracy against the classifier it second-guesses**
 
@@ -139,6 +144,9 @@ Distribution of what the agent said, against the truth:
 
 `gpt-oss:20b`, 30 candidates the router sends to investigation, sampled by stride across the store. `fragment` ground truth is held out, as in training. Ran in 0 min.
 
+**Measured with the client timeout overridden to 180s — a configuration the station never ran.** At the time this was taken the station's own timeout was 10s, so on this machine roughly five calls in six would have failed here and produced no explanation at all. The dispositions in the tables are unaffected either way, because `decide_node` reads the classifier's class and `route_after_reason` reads its confidence — but any reading of what the *LLM* contributed is a reading of a system that was not deployed. Since 2026-08-23 both scripts run at `EXPLANATION_DEADLINE_S`; see the section dated that day.
+
+
 **What the system dispositions on, against what the LLM would have dispositioned on.** `decide_node` takes the classifier's class; the agent column is the counterfactual it replaced.
 
 | | candidates | system (classifier) | LLM counterfactual |
@@ -168,6 +176,9 @@ Distribution of what the agent said, against the truth:
 ### Analysis planner — does it plan the right lookups, and refuse the rest?
 
 `gpt-oss:20b`, 20 hand-written questions, each asked 3 times. Plans are scored, not answers: the tools are deterministic, so a correct plan yields correct data by construction and the errors live in the plan. The store held 9 days at the time of the run.
+
+**Measured with the client timeout overridden to 180s — a configuration the station never ran.** At the time this was taken the station's own timeout was 10s, so on this machine roughly five calls in six would have failed here and produced no explanation at all. The dispositions in the tables are unaffected either way, because `decide_node` reads the classifier's class and `route_after_reason` reads its confidence — but any reading of what the *LLM* contributed is a reading of a system that was not deployed. Since 2026-08-23 both scripts run at `EXPLANATION_DEADLINE_S`; see the section dated that day.
+
 
 Re-run after Q10's expectation was corrected a second time. The previous section scored `哪一台機器的缺陷率最高？` a miss for not calling `query_defect_history`, and claimed `query_machine_stats` could not rank machines by their overall rate. That is true of one call and false of a fan-out: the six defect classes are exactly the non-`false_call` set, so summing each machine's `per_board` across all six is the same overall rate — same numerator as `query_defect_history`'s `defects_per_board`, and the same denominator except for boards carrying no candidate rows at all. Both plans are now accepted and the fixture records why. Also new: the scorer no longer raises on a call with `args: null`, and every plan is logged with its scored arguments, since tool names alone cannot tell one `query_machine_stats` call from a six-call fan-out. Earlier figures are not carried forward — the previous 12/13 rested entirely on that one unfair miss.
 
@@ -243,6 +254,9 @@ What this does not establish: the expected plans and the few-shot examples have 
 ### Analysis planner, asked by someone else — does it plan the right lookups, and refuse the rest?
 
 `gpt-oss:20b`, 70 hand-written questions, each asked 3 times. Plans are scored, not answers: the tools are deterministic, so a correct plan yields correct data by construction and the errors live in the plan. The store held 9 days at the time of the run.
+
+**Measured with the client timeout overridden to 180s — a configuration the station never ran.** At the time this was taken the station's own timeout was 10s, so on this machine roughly five calls in six would have failed here and produced no explanation at all. The dispositions in the tables are unaffected either way, because `decide_node` reads the classifier's class and `route_after_reason` reads its confidence — but any reading of what the *LLM* contributed is a reading of a system that was not deployed. Since 2026-08-23 both scripts run at `EXPLANATION_DEADLINE_S`; see the section dated that day.
+
 
 Run with `--plan-only`: only the plan is scored and nothing downstream of `plan_node` reads back into it. Machine quiet -- the neighbouring `video_transfer` job was idle either side, the model stayed warm and resident, and three probes before and after showed `eval_ms` around 1.2s with `was_reloaded` false and wall time within 1% of Ollama's own accounted total. An earlier attempt was discarded: that job restarted mid-run and doubled `eval_ms` to 4.3s.
 
@@ -1153,3 +1167,88 @@ The memory column is measured in a **fresh process per engine**, each one loadin
 
 **What this changes.** INT8 static is the conversion that survives the curve. It takes the model off the disk from 42.7MB to 10.8MB, and -- the figure that matters more -- it takes a station's resident memory from 389MB to 81MB, 4.8x smaller, because most of the float32 process is the torch runtime rather than the weights. That is the honest case for quantising this model: not the milliseconds, which nothing was waiting on, but a box that can be sized in tens of megabytes instead of hundreds. It is not deployed here, because this station is a laptop with no memory problem; it is measured so that a box which does have one can be given a number rather than a hope. The deployed threshold stays with the float32 model it was swept for -- an engine change is a model change, and `DEFAULT_DISMISS_THRESHOLD` follows the model that produced it.
 
+## 2026-08-23 · commit 6a01e1c
+
+### The response budget was also the client timeout, and half the explanations died of it
+
+`RESPONSE_BUDGET_S` served two roles: WI-300's response budget, and the httpx client's timeout. Against `gpt-oss:20b`, whose service time this document had already measured at a median of 12.5s and a p90 of 15.6s, that meant **20 of 24 calls timed out** — and since the LLM came off the decision path, writing the operator's explanation is the only job it has. The queue held an escalation whose entire content was `the model did not answer (ReadTimeout)`. Nothing counted how many others there had been, which is why nobody fixed it.
+
+Two things follow, and both are measured below.
+
+**The budget is not the timeout.** A budget is a promise and must not follow the model; a client timeout is a resource bound and must follow the measurement. `RESPONSE_BUDGET_S` stays 10s, stays read from WI-300, and moved to `graph/flow.py`, because what it bounds is the *verdict* — `classify_node`, 2.5ms per candidate on CPU. `EXPLANATION_DEADLINE_S` is 60s and bounds a wait nothing blocks on: the disposition is decided from `model_class` and `model_confidence`, both of which exist before the reason node is entered. WI-300 was corrected to say which of the two it governs, and the correction is not "the station was slower than the document" — its §1 and §2 had already moved decision authority to the classifier when the agent layer was measured, and the Response budget section was never revisited, so the two sections described different stations.
+
+**Every earlier agent and planner section was measured at 180s.** `agent_eval.py` and `analysis_eval.py` both overrode the client timeout, for the correct reason that a 10s cut would have measured the timeout rather than the planner — but the effect was that every published number described a configuration nothing ran, and no section said so. Both scripts now take `EXPLANATION_DEADLINE_S`, so the benchmark and the station use one number. The two runs below are the first taken under the shipped configuration; the earlier sections carry a note saying what they were measured at and what it costs to read them.
+
+### Agent-layer latency — does the reason node fit the explanation deadline?
+
+`gpt-oss:20b` at `think="low"`, 24 real reason-node calls over candidates the router sends to the LLM. The deadline is `EXPLANATION_DEADLINE_S`, 60s, and the run used it rather than overriding it — a call that misses it here is a call that produces no explanation in production.
+
+**This is not WI-300's 10s response budget, and comparing it against that budget is the error this script used to make.** The budget covers the verdict, which is `classify_node`'s at 2.5ms per candidate. The LLM writes the operator's explanation and dispositions nothing, so what bounds it is a resource limit, not a promise.
+
+Latency here is **service time**: Ollama's `total_duration` less `load_duration`. It is not `eval_ms`. Measured on this model, `eval_duration` does not account for thinking tokens at all, and reports under half the time the station waits.
+
+```
+ollama ps before the run
+NAME    ID    SIZE    PROCESSOR    CONTEXT    UNTIL
+
+busy processes before the run
+(none)
+
+ollama ps after the run
+NAME           ID              SIZE     PROCESSOR    CONTEXT    UNTIL               
+gpt-oss:20b    17052f91a42e    12 GB    100% GPU     32768      29 minutes from now
+
+busy processes after the run
+(none)
+```
+
+| | calls | median | mean | p90 | max |
+|---|---|---|---|---|---|
+| first 60s | 7 | 8.7s | 9.0s | 10.0s | 11.1s |
+| steady state | 17 | 8.5s | 8.9s | 10.3s | 13.0s |
+| all | 24 | 8.6s | 8.9s | 11.1s | 13.0s |
+
+**Inside the deadline.** p90 is 11.1s against 60s, and 0 of 24 calls produced no explanation.
+
+Against WI-300's 10s response budget, for reference and not as the verdict: 5 of 24 explanations took longer than the budget allows a *verdict* to take. No verdict waited on any of them — `classify_node` had already produced the disposition before the reason node was entered.
+
+Of that service time, `eval_duration` accounts for 7.7s and prompt ingestion for 0.0s on average. The remaining 1.2s is thinking tokens, which Ollama generates and bills to nobody. Reporting `eval_ms` as the latency would have understated this run by 13%.
+
+Queueing check: 0.0% of mean wall time is not load, prompt or generation — the request went straight to the GPU, so the run is not contended.
+
+No request was served after an eviction.
+
+### Agent layer — does it beat the classifier, and is the escalation calibrated?
+
+`gpt-oss:20b`, 60 candidates the router sends to investigation, sampled by stride across the store. `fragment` ground truth is held out, as in training. Ran in 12 min.
+
+Run at the deadline the station runs at, `EVAL_TIMEOUT_S = EXPLANATION_DEADLINE_S = 60s`. Earlier runs of this script overrode it to 180s, which measured a configuration nothing ships.
+
+**Explanations written.** 60 of 60. The layer produced the thing it exists to produce on every candidate.
+
+**What the system dispositions on, against what the LLM would have dispositioned on.** `decide_node` takes the classifier's class; the agent column is the counterfactual it replaced.
+
+| | candidates | system (classifier) | LLM counterfactual |
+|---|---|---|---|
+| all investigated | 60 | 51/60 = 85.0% | 49/60 = 81.7% |
+| agent kept | 29 | 29/29 = 100.0% | 28/29 = 96.6% |
+| agent escalated | 31 | 22/31 = 71.0% | 21/31 = 67.7% |
+
+**Calibration of the hand-off.** The LLM's verdicts were right 96.6% of the time on what it kept and 67.7% of the time on what it handed over, a gap of +28.8%. The escalations land on the harder cases, which is what the confidence flag is for.
+
+**Where the LLM would have overridden the classifier.** It proposed a different class on 2 of 60 candidates. The agent was right 0 of those times; the classifier had already been right 2 times, and 0 were wrong either way. Acting on those proposals would cost accuracy rather than add it, which is why the flow does not. On the kept set the classifier scores 29/29 = 100.0% against the LLM's 96.6%.
+
+**Escalation rate.** 31/60 = 51.7% of investigated candidates, which is 9.2% of the whole queue.
+
+**Escapes.** 0 of 29 kept candidates were called `false_call` while carrying a real defect.
+
+Distribution of what the agent said, against the truth:
+
+| truth | n | agent agreed | agent escalated |
+|---|---|---|---|
+| open | 27 | 26 | 2 |
+| false_call | 27 | 18 | 27 |
+| short | 3 | 3 | 1 |
+| mousebite | 1 | 1 | 1 |
+| spur | 1 | 1 | 0 |
+| copper | 1 | 0 | 0 |
