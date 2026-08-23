@@ -36,24 +36,25 @@ from functools import lru_cache
 from pathlib import Path
 
 # Chroma's default embedding function is ONNX MiniLM, so importing chromadb is
-# how onnxruntime enters this process -- this module is the only door to either.
+# how onnxruntime enters this process -- this module is the only door to either
+# on the disposition path. `vision/quantise.py` is the second door and sets the
+# same switch above its own import, for the same reason.
 # onnxruntime has Microsoft's 1DS "OneCollector" telemetry client statically
-# linked into its wheel -- the macOS one this is developed on and the manylinux
-# one CI installs and the container runs, all three -- and constructs it at
-# import: an HTTP uploader posting to mobile.events.data.microsoft.com, two
-# threads on macOS and one on manylinux. Nothing joins that uploader at exit. If
-# a response lands while the C++ static destructors are running, its
-# `DebugEventSource` locks a recursive_mutex that has already been destroyed,
-# throws `system_error` on a thread with no handler, and the process aborts --
-# after every test has passed. It cost this suite a 60% abort rate (6 of 10 full
-# runs) and exit 134 on a green CI job.
+# linked into its wheel -- the macOS one this is developed on, the manylinux
+# x86_64 one CI installs, the manylinux aarch64 one the container runs, all
+# three, confirmed by byte-grep rather than assumed -- and builds it with its
+# `Env`: an HTTP uploader posting to mobile.events.data.microsoft.com. Nothing
+# joins that uploader at exit. If a response lands while the C++ static
+# destructors are running, its `DebugEventSource` locks a recursive_mutex that
+# has already been destroyed, throws `system_error` on a thread with no handler,
+# and the process aborts -- after every test has passed. It cost this suite a
+# 60% abort rate (6 of 10 full runs) and exit 134 on a green CI job.
 #
-# The switch was measured on all three: with it set, `import onnxruntime` starts
-# zero threads on macOS, on manylinux x86_64 and on manylinux aarch64. CI's
-# first run said otherwise and CI was right to be believed and wrong -- the
-# thread it counted was numpy's OpenBLAS pool, which starts `nproc - 1` workers
-# on Linux and none on macOS. See tests/test_onnx_telemetry.py, which now
-# measures this import on its own and calibrates against telemetry left on.
+# `Env` is not built at the same moment everywhere: at `import onnxruntime` on
+# this laptop and in the container, at the first inference session on the CI
+# runner. The switch removes the uploader in all three, measured -- three
+# threads on macOS, one on Linux. Say "does not phone home" about the platform
+# the container runs, not only the one this was written on.
 #
 # This is the only lever that removes the thread rather than quieting it. The
 # Python API, `onnxruntime.disable_telemetry_events()`, runs after import and so

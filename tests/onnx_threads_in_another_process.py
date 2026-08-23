@@ -1,29 +1,35 @@
-"""Count the native threads that ``import onnxruntime`` -- and nothing else --
-starts, in a process that has done everything else first.
+"""Count the native threads onnxruntime leaves running after one real embedding.
 
-A child process because the question is what one import does, and the parent has
-already done it. It also has ``ORT_DISABLE_TELEMETRY`` in its own environment by
-then -- ``standards`` puts it there -- and a child inheriting that would pass the
-check whether or not the line still exists. The caller strips it; this script
-asserts nothing and only reports, so that the assertion and its message live
-with the test.
+A child process because the question is what the imports do, and the parent has
+already done them. It also has ``ORT_DISABLE_TELEMETRY`` in its own environment
+by then -- ``standards`` puts it there -- and a child inheriting that would
+report a clean measurement with the source line deleted. The caller strips it;
+this script asserts nothing and only reports, so that the assertion and its
+message live with the test.
 
 Two arms, identical but for whether the repository's fix has run:
 
 ``baseline``  imports ``chromadb`` directly, so nothing sets the switch and
-              onnxruntime builds its Env with telemetry on. This is the control:
-              it says how many threads the uploader is worth on this platform,
-              and the test refuses to draw a conclusion if the answer is zero.
-``fixed``     imports ``aoi_agent.store.standards``, whose first statement is the
-              switch. Same modules, one bit different.
+              onnxruntime keeps its telemetry. This is the control: it says what
+              the uploader is worth on this machine, which is the only honest
+              way to know the measurement can still see it.
+``fixed``     imports ``aoi_agent.store.standards``, whose first statement is
+              the switch. Same modules, one bit different.
 
-Both arms take the ``before`` count *after* their imports and a settle, so that
-the delta belongs to onnxruntime alone. The first version of this bracketed the
-whole compound import and attributed every thread in it to onnxruntime, which is
-what broke on CI: numpy's OpenBLAS starts ``nproc - 1`` workers when it is
-imported, so on a two-core runner the count went 1 -> 2 with the fix working
-perfectly. The matmul below is there to make sure that pool is up before the
-measurement starts rather than during it.
+Both arms then do what this project actually does -- build Chroma's default
+embedding function and embed one string -- and count threads afterwards. The
+measurement is taken *there*, and not at ``import onnxruntime``, because where
+the uploader starts is not the same on every platform:
+
+    threads started        macOS    manylinux in Docker    GitHub runner
+    by the import            2              1                    0
+    by the first embed      +1             +0                   +1
+
+On the runner onnxruntime starts nothing at all at import and the uploader
+appears with the first inference session, so an import-time measurement is blind
+on exactly the machine CI runs. After one embedding every platform shows it, and
+a thread that exists then is a thread that is still there at static destruction,
+which is the whole problem.
 
 Prints one line of JSON.
 """
@@ -36,10 +42,11 @@ import subprocess
 import sys
 import time
 
-#: Long enough for a thread started by the import to appear, short enough that
-#: two arms cost four seconds. The uploader shows up immediately; this is only
-#: insurance against measuring a thread that is still being created.
-SETTLE = 1.0
+#: Long enough for a thread the session started to appear and for 1DS to get
+#: past its own start-up, short enough that two arms stay cheap.
+SETTLE = 3.0
+
+PHRASE = "a printed circuit board with an open trace"
 
 
 def native_threads() -> int:
@@ -71,20 +78,32 @@ elif arm == "baseline":
 else:
     raise SystemExit(f"usage: {sys.argv[0]} baseline|fixed (got {arm!r})")
 
+# numpy's OpenBLAS starts `nproc - 1` workers when it is imported, and nothing
+# to do with onnxruntime. Get them up, and get them counted in the baseline,
+# before anything is attributed to anyone -- the first version of this file
+# charged them to onnxruntime and failed CI on a two-core runner.
 import numpy  # noqa: E402
 
-numpy.zeros((64, 64)) @ numpy.zeros((64, 64))  # OpenBLAS's pool, up before we look
-time.sleep(SETTLE)
+numpy.zeros((64, 64)) @ numpy.zeros((64, 64))
+time.sleep(1.0)
+base = native_threads()
 
-before = native_threads()
-import onnxruntime  # noqa: E402,F401  (this line is the whole measurement)
+import onnxruntime  # noqa: E402
 
+time.sleep(1.0)
+after_import = native_threads()
+
+from chromadb.utils import embedding_functions  # noqa: E402
+
+embed = embedding_functions.DefaultEmbeddingFunction()
+embed([PHRASE])
 time.sleep(SETTLE)
 
 print(json.dumps({
     "arm": arm,
-    "before": before,
-    "after": native_threads(),
+    "base": base,
+    "after_import": after_import,
+    "after_embed": native_threads(),
     "switch": os.environ.get("ORT_DISABLE_TELEMETRY"),
     "version": onnxruntime.__version__,
 }))
