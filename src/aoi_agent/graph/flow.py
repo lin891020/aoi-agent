@@ -35,6 +35,7 @@ from langgraph.types import interrupt
 from aoi_agent.graph.checkpoint import make_checkpointer
 from aoi_agent.graph.state import ReviewState
 from aoi_agent.llm.ollama import EXPLANATION_DEADLINE_S, OllamaClient
+from aoi_agent.provenance import DecisionProvenance, code_version
 from aoi_agent.mcp_servers.classify import classify_defect
 from aoi_agent.mcp_servers.production import query_board_context, query_machine_stats
 from aoi_agent.mcp_servers.standards import search_standards
@@ -192,6 +193,32 @@ set "confident" false when the evidence genuinely does not settle the class,
 not to push the region towards a person."""
 
 
+def decision_provenance(model_digest: str | None) -> DecisionProvenance | None:
+    """What an auditor needs to reproduce a disposition made on this path.
+
+    Assembled here because this is the only place all three parts are in scope
+    at once: the checkpoint digest arrives with the reading, the thresholds are
+    the constants this module routes on, and the code version is read from the
+    tree. Assembling it at write time instead would record whichever checkpoint
+    happened to be loaded then, which is not necessarily the one that produced
+    the number on the record.
+
+    Returns ``None`` when the reading carries no digest, so the caller fails at
+    the point of writing rather than recording a decision attributed to nothing.
+    """
+    if not model_digest:
+        return None
+    return DecisionProvenance(
+        model_digest=model_digest,
+        thresholds={
+            "dismiss": DEFAULT_DISMISS_THRESHOLD,
+            "escalate_below": ESCALATE_BELOW,
+            "confident": CONFIDENT,
+        },
+        code_version=code_version(),
+    )
+
+
 def _timed(state: ReviewState, name: str, elapsed_ms: float) -> None:
     state.setdefault("timings_ms", {})[name] = round(elapsed_ms, 1)
     state.setdefault("trace", []).append(name)
@@ -210,6 +237,13 @@ def classify_node(state: ReviewState) -> dict[str, Any]:
         "false_call_probability": result["false_call_probability"],
         "model_recommendation": result["recommendation"],
     }
+    # Into the state, so it is checkpointed with the run and comes back with
+    # it. An operator answering this region in two days' time records their
+    # verdict against the model that read it, not against whatever is in
+    # ``models/reverifier.pt`` on the day they get to the queue.
+    stamp = decision_provenance(result.get("model_digest"))
+    if stamp is not None:
+        update["provenance"] = stamp.as_dict()
     _timed(state, "classify", (time.perf_counter() - started) * 1000)
     update["timings_ms"] = state["timings_ms"]
     update["trace"] = state["trace"]

@@ -12,6 +12,7 @@ import numpy as np
 from sqlalchemy import func, select
 
 from aoi_agent.data.deeppcb import load_split
+from aoi_agent.provenance import UNAVAILABLE, DecisionProvenance, code_version
 from aoi_agent.store.models import Board, CandidateRecord, make_session_factory
 
 _session_factory = None
@@ -99,6 +100,15 @@ def sample_board_stems(limit: int = 10) -> list[str]:
         )
 
 
+#: The sources whose decisions nothing but the record can be asked about.
+#:
+#: A human decision can be chased to a person -- badly, while ``reviewer`` is
+#: free text, but the thread exists. A ``model`` or ``agent`` decision has no
+#: thread at all except the one written beside it, so provenance is mandatory
+#: on these two and only these two.
+AUTOMATED_SOURCES = ("model", "agent")
+
+
 def record_decision(
     reference: str,
     verdict: str,
@@ -106,6 +116,7 @@ def record_decision(
     reviewer: str | None = None,
     rationale: str | None = None,
     explanation_status: str | None = None,
+    provenance: DecisionProvenance | None = None,
 ) -> bool:
     """Append a verdict to a candidate's decision history.
 
@@ -113,8 +124,37 @@ def record_decision(
     operator's correction is two rows, and the pair is exactly what the next
     training round needs -- an overwritten decision is a correction that never
     happened.
+
+    An automated decision must name what produced it. ``provenance`` is
+    required for ``model`` and ``agent`` rows and a missing or unattributable
+    one raises rather than writing a row -- the columns are storage, this is
+    the mechanism. A decision that cannot be attributed to a set of weights and
+    an operating point cannot be revisited when a metric moves, and a store
+    full of such rows is what this project had until 2026-08-23.
+
+    A ``human`` row may be written without one: an operator resuming a run that
+    was checkpointed before provenance was carried in the graph state has a
+    judgement worth keeping, and refusing it to protect a field would throw
+    away the more valuable of the two. The gap is named ``unavailable`` rather
+    than left ``NULL``, so it cannot be read as "predates the column".
     """
     from aoi_agent.store.models import ReviewDecision
+
+    if source in AUTOMATED_SOURCES and not (
+        provenance is not None and provenance.is_attributable
+    ):
+        raise ValueError(
+            f"a {source!r} decision on {reference!r} was written without "
+            "provenance: an automated disposition must name the checkpoint "
+            "digest, thresholds and code version that produced it"
+        )
+
+    if provenance is None:
+        # Two of the three are always knowable at write time. Only the weights
+        # can genuinely be lost, so only the weights are recorded as missing.
+        provenance = DecisionProvenance(
+            model_digest=UNAVAILABLE, thresholds={}, code_version=code_version()
+        )
 
     if "#" not in reference:
         return False
@@ -138,6 +178,7 @@ def record_decision(
                 reviewer=reviewer,
                 rationale=rationale,
                 explanation_status=explanation_status,
+                **provenance.columns(),
             )
         )
         session.commit()

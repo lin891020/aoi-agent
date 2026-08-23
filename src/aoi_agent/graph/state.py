@@ -18,6 +18,19 @@ class ReviewState(TypedDict, total=False):
     false_call_probability: float
     model_recommendation: str
 
+    provenance: dict[str, Any]
+    """What produced the reading above: checkpoint digest, thresholds, code.
+
+    A plain dict rather than the dataclass, because it is checkpointed and the
+    checkpointer serialises what it is given. It is written once, by
+    ``classify_node``, and read at the two points a row is committed -- the
+    automated write in ``station.service.start_review`` and the operator's own,
+    days later, in ``resume_review``. Carrying it in the state is what makes
+    the second of those attribute the answer to the model that was actually
+    read, rather than to whatever checkpoint is on disk when the operator gets
+    to the queue.
+    """
+
     # Filled by the gather_context node
     board_context: dict[str, Any]
     machine_stats: dict[str, Any]

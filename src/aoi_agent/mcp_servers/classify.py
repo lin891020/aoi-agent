@@ -37,11 +37,17 @@ def classify_defect(candidate_ref: str) -> dict:
         x1=record["x1"], y1=record["y1"], x2=record["x2"], y2=record["y2"],
         area=record["area"],
     )
-    verdict = get_reverifier().classify(template, test, candidate)
+    reverifier = get_reverifier()
+    verdict = reverifier.classify(template, test, candidate)
 
     return {
         "candidate_ref": candidate_ref,
         "board": record["board_stem"],
+        # Which weights said so. It travels with the reading rather than being
+        # looked up when the decision is written, so the digest on the record is
+        # the one that produced the number beside it even if the checkpoint is
+        # replaced between the two.
+        "model_digest": reverifier.checkpoint_digest,
         "box": [record["x1"], record["y1"], record["x2"], record["y2"]],
         "predicted_class": verdict.predicted_class,
         "confidence": round(verdict.confidence, 4),

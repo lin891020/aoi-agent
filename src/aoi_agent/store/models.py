@@ -29,6 +29,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
+from aoi_agent.provenance import UNRECORDED
+
 DATABASE_URL = os.getenv("AOI_AGENT_DATABASE_URL", "sqlite:///data/aoi_agent.db")
 
 
@@ -127,6 +129,35 @@ class ReviewDecision(Base):
     (ReadTimeout)`` and no way to ask how many more there had been. ``None`` on
     a human decision, which was never going to have one."""
 
+    model_digest: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    """Which weights produced this, by the SHA-256 of the checkpoint file.
+
+    The auditor's question -- "under which model was this decided" -- had no
+    answer here for 9,140 rows. A ``model_version`` string would have been
+    worse than nothing: somebody has to bump it, one day nobody does, and from
+    then on it is wrong and looks right. This is derived from the artefact, so
+    there is nothing to remember. ``unrecorded`` on rows that predate the
+    column, ``unavailable`` where it genuinely could not be determined; see
+    ``aoi_agent.provenance``.
+
+    Nullable in the schema because a column added to a table that already has
+    rows has to be, and because SQLite cannot add a NOT NULL column without a
+    default. What holds it is ``store.boards.record_decision``, which refuses
+    an automated decision that does not carry one, and the migration, which
+    leaves no NULL behind."""
+
+    thresholds_json: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    """The operating point in force when this was decided, as JSON.
+
+    The same weights disposition differently at a different threshold, and the
+    threshold is the half that moves most often -- ``ESCALATE_BELOW`` moved on
+    2026-08-23. A decision recorded without it can be reproduced only by
+    guessing which sweep was current."""
+
+    code_version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    """The commit the deciding process was running, ``+dirty`` where the tree
+    had uncommitted changes, ``unknown`` where it could not be read."""
+
     decided_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     candidate: Mapped[CandidateRecord] = relationship(back_populates="decisions")
@@ -166,12 +197,88 @@ class Escalation(Base):
     ``escalations.explanation_counts`` reports it."""
 
     status: Mapped[str] = mapped_column(String(16), index=True, default="pending")
-    """``pending`` or ``resolved``."""
+    """``pending``, ``resolved``, or ``resolved_unattributed``.
+
+    The third is not a state the station can write. It is a mark applied by
+    ``scripts/mark_unattributed_resolutions.py`` to rows this store already
+    held: five escalations closed as answered, whose candidates carry no human
+    decision at all, left behind when five operator labels were deleted by hand
+    in August 2026. Closing without an attributable answer is not something the
+    code does, so it is recorded as a distinct state rather than repaired into
+    one of the two the code produces."""
 
     raised_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     candidate: Mapped[CandidateRecord] = relationship()
+
+
+class BoardDisposition(Base):
+    """What happened to one board, and on what basis.
+
+    Every other table in this store records a judgement about a *region*. A
+    line ships *boards*, and an auditor asking "who released this board, when,
+    and under what" was asking a question nothing here could answer: the
+    candidate-level rows had to be re-aggregated by whoever was asked, by a
+    rule that lived in no code.
+
+    So the rule lives in ``store.dispositions`` and its output lives here. One
+    row per time a board reached a settled state, appended rather than
+    overwritten -- a board held on Monday and released on Tuesday after an
+    operator answered its queue is two rows, and the pair is the record. The
+    newest row is the current disposition.
+
+    Deliberately small. It holds the four things the question asks for --
+    released or held, when, on whose authority, under which model -- plus the
+    counts that make the verdict checkable against the regions beneath it. It
+    does not duplicate the regions: they are one join away, and two answers to
+    one question is what the escalations table was carefully built to avoid.
+    """
+
+    __tablename__ = "board_dispositions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    board_id: Mapped[int] = mapped_column(ForeignKey("boards.id"), index=True)
+
+    disposition: Mapped[str] = mapped_column(String(16), index=True)
+    """``released`` or ``held``.
+
+    ``held`` covers both reasons a board is not going anywhere -- a confirmed
+    defect on it, or a region still waiting on a person. They are one state
+    because the line does the same thing with them, and the counts below say
+    which it was."""
+
+    decided_by: Mapped[str] = mapped_column(String(64), index=True)
+    """``automated``, or the reviewer whose answer settled the last region.
+
+    Free text in the second case, and no more trustworthy than
+    ``ReviewDecision.reviewer`` is -- the station still has no authentication.
+    That gap is now visible on the record it damages rather than only in a
+    backlog list."""
+
+    basis: Mapped[str] = mapped_column(String(512))
+    """One sentence naming the regions this verdict was computed from."""
+
+    candidate_count: Mapped[int] = mapped_column(Integer)
+    confirmed_count: Mapped[int] = mapped_column(Integer)
+    """Regions whose latest verdict is a defect class rather than ``false_call``."""
+
+    pending_count: Mapped[int] = mapped_column(Integer)
+    """Regions with no decision yet, or still on the queue."""
+
+    model_digest: Mapped[str] = mapped_column(String(80), index=True)
+    """The weights behind the decisions beneath this row.
+
+    ``mixed`` where they do not agree -- a board part-decided before a retrain
+    and part after has no single model behind it, and saying so is the honest
+    answer to "under which model was this released"."""
+
+    thresholds_json: Mapped[str] = mapped_column(String(256))
+    code_version: Mapped[str] = mapped_column(String(64))
+
+    decided_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    board: Mapped[Board] = relationship()
 
 
 class AnalysisRun(Base):
@@ -220,8 +327,37 @@ def make_session_factory(url: str | None = None):
 #: become one: additive, nullable, and never a change to a column that exists.
 #: Anything beyond that wants a real tool.
 ADDED_COLUMNS: dict[str, dict[str, str]] = {
-    "review_decisions": {"explanation_status": "VARCHAR(16)"},
+    "review_decisions": {
+        "explanation_status": "VARCHAR(16)",
+        "model_digest": "VARCHAR(80)",
+        "thresholds_json": "VARCHAR(256)",
+        "code_version": "VARCHAR(64)",
+    },
     "escalations": {"explanation_status": "VARCHAR(16)"},
+}
+
+#: Columns whose ``NULL`` would mean two different things, and the value that
+#: takes one of those meanings away.
+#:
+#: A column added to a populated table starts life ``NULL`` on every existing
+#: row. For ``explanation_status`` that was tolerable: the reader folds ``NULL``
+#: into ``unknown`` and the count is honest. For provenance it is not, because
+#: ``NULL`` would have to mean both "this decision predates the columns" and
+#: "this decision was written without provenance", and the second is the thing
+#: the guard exists to make impossible. So the migration stamps the first
+#: meaning explicitly and the guard forbids the second, which leaves ``NULL``
+#: meaning nothing at all -- and a ``NULL`` appearing later is therefore a bug
+#: with a test on it.
+#:
+#: Backfilled only on the pass that adds the column. A row inserted afterwards
+#: is a row the running code wrote, and stamping it ``unrecorded`` would hide
+#: exactly the failure this is for.
+BACKFILL_ON_ADD: dict[str, dict[str, str]] = {
+    "review_decisions": {
+        "model_digest": UNRECORDED,
+        "thresholds_json": UNRECORDED,
+        "code_version": UNRECORDED,
+    },
 }
 
 
@@ -252,5 +388,15 @@ def _add_missing_columns(engine) -> list[str]:
                 connection.execute(
                     text(f"ALTER TABLE {table} ADD COLUMN {name} {sql_type}")
                 )
+                backfill = BACKFILL_ON_ADD.get(table, {}).get(name)
+                if backfill is not None:
+                    # Every row in the table at this instant predates the
+                    # column, so this is the one moment at which "written
+                    # before provenance existed" is knowable without guessing.
+                    connection.execute(
+                        text(f"UPDATE {table} SET {name} = :value "
+                             f"WHERE {name} IS NULL"),
+                        {"value": backfill},
+                    )
                 added.append(f"{table}.{name}")
     return added

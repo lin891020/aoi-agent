@@ -10,6 +10,7 @@ import numpy as np
 import torch
 
 from aoi_agent.aoi.simulator import Candidate
+from aoi_agent.provenance import checkpoint_digest
 from aoi_agent.vision.model import build_model, select_device
 from aoi_agent.vision.patches import PATCH_SIZE, build_patch
 
@@ -59,6 +60,16 @@ class ReVerifier:
                 "  uv run python scripts/train.py"
             )
         payload = torch.load(checkpoint, map_location="cpu")
+        self.checkpoint = checkpoint
+        self.checkpoint_digest = checkpoint_digest(checkpoint)
+        """Which weights these are, by the SHA-256 of the file.
+
+        Computed once, here, because ``models/reverifier.pt`` is a slot rather
+        than an identity: every training run overwrites it, and a decision
+        recorded against the path is a decision recorded against whatever is
+        there when someone next looks. Every verdict this object produces
+        carries this string onto the quality record."""
+
         self.label_names: list[str] = payload["label_names"]
         self.device = select_device(device)
         self.model = build_model(len(self.label_names), pretrained=False)

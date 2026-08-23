@@ -20,8 +20,9 @@ from datetime import datetime, timedelta
 from aoi_agent.aoi.matching import match
 from aoi_agent.aoi.simulator import DetectorConfig, detect
 from aoi_agent.data.deeppcb import load_split
+from aoi_agent.provenance import DecisionProvenance, code_version
 from aoi_agent.store.models import Board, CandidateRecord, ReviewDecision
-from aoi_agent.vision.inference import ReVerifier
+from aoi_agent.vision.inference import DEFAULT_DISMISS_THRESHOLD, ReVerifier
 
 LINES = {"L1": ["M11", "M12"], "L2": ["M21", "M22"], "L3": ["M31", "M32"]}
 SHIFTS = ["A", "B", "C"]
@@ -91,6 +92,16 @@ def seed(
     config = DetectorConfig()
     reverifier = reverifier or ReVerifier()
 
+    # Every row this writes is an automated decision and carries what produced
+    # it. Only the dismissal threshold is in force here: seeding records the
+    # model's reading of each region, it does not route one, so listing the
+    # graph's thresholds would claim a decision path this code never took.
+    provenance = DecisionProvenance(
+        model_digest=reverifier.checkpoint_digest,
+        thresholds={"dismiss": DEFAULT_DISMISS_THRESHOLD},
+        code_version=code_version(),
+    )
+
     pairs = load_split(split)
     if limit:
         pairs = pairs[:limit]
@@ -144,6 +155,7 @@ def seed(
                     verdict=verdict.predicted_class,
                     source="model",
                     rationale=f"confidence {verdict.confidence:.3f}",
+                    **provenance.columns(),
                 )
             )
             counts["candidates"] += 1

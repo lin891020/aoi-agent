@@ -38,7 +38,15 @@ from aoi_agent.store.models import (
     create_all,
     make_session_factory,
 )
-from test_graph import StubClient, stub_tools  # noqa: F401  (fixture)
+from aoi_agent.provenance import DecisionProvenance
+from test_graph import STUB_DIGEST, StubClient, stub_tools  # noqa: F401  (fixture)
+
+#: An automated decision written straight into the store still has to say
+#: what produced it -- these tests are about the explanation column, not a
+#: licence to write an unattributable row.
+PROVENANCE = DecisionProvenance(
+    model_digest=STUB_DIGEST, thresholds={"dismiss": 0.915}, code_version="test"
+)
 
 STEM = "20085293"
 REFERENCE = f"{STEM}#0"
@@ -258,7 +266,7 @@ def test_an_unrecorded_explanation_state_is_not_counted_as_explained(store):
     state as a station that never failed, which is the shape of the defect this
     file exists for.
     """
-    boards.record_decision(REFERENCE, "open", "agent")
+    boards.record_decision(REFERENCE, "open", "agent", provenance=PROVENANCE)
     assert boards.explanation_status_counts() == {"unknown": 1}
 
 
@@ -268,7 +276,9 @@ def test_a_human_decision_is_left_out_of_the_count(store):
     Counting it as a miss dilutes the rate that measures the model, which is
     the only thing this count is for.
     """
-    boards.record_decision(REFERENCE, "open", "agent", explanation_status="ok")
+    boards.record_decision(
+        REFERENCE, "open", "agent", explanation_status="ok", provenance=PROVENANCE
+    )
     boards.record_decision(REFERENCE, "short", "human", reviewer="mike")
     assert boards.explanation_status_counts() == {"ok": 1}
 

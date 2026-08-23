@@ -12,7 +12,8 @@ from typing import Any
 
 from langgraph.types import Command
 
-from aoi_agent.store import escalations
+from aoi_agent.provenance import DecisionProvenance
+from aoi_agent.store import dispositions, escalations
 from aoi_agent.store.boards import record_decision
 
 VERDICT_OPTIONS = [
@@ -83,6 +84,9 @@ def start_review(graph, reference: str) -> dict[str, Any]:
             state["decided_by"],
             rationale=state.get("agent_rationale") or None,
             explanation_status=state.get("explanation_status"),
+            # From the run's own state, not looked up now: the digest that read
+            # this region is the one that goes on the record beside its number.
+            provenance=DecisionProvenance.from_dict(state.get("provenance")),
         )
     return state
 
@@ -108,9 +112,39 @@ def resume_review(graph, reference: str, verdict: str, reviewer: str) -> dict[st
         "human",
         reviewer,
         queued["reason"] if queued else None,
+        # The state came back through the checkpointer, so this is the model
+        # the operator was actually shown -- which may not be the checkpoint on
+        # disk today. A run raised before provenance existed carries none, and
+        # the row says ``unavailable`` rather than refusing the answer.
+        provenance=DecisionProvenance.from_dict(state.get("provenance")),
     )
     escalations.resolve_escalation(thread_for(reference))
+    # Whoever answered the last outstanding region on this board is the
+    # authority the board-level record names. That identity is a free-text
+    # field until the station has authentication, and the record says so by
+    # carrying it verbatim rather than by rounding it up to "a person".
+    settle_board(reference, reviewer)
     return state
+
+
+def settle_board(reference: str, decided_by: str | None = None) -> dict | None:
+    """Write the board-level record, once the board has nothing outstanding.
+
+    A line ships boards, and until 2026-08-23 nothing in this store said what
+    happened to one. It is written when the board reaches a settled state --
+    the end of a board run, or the moment an operator answers its last queued
+    region -- and not per region, which would fill the table with rows saying
+    the board is still held.
+
+    A board with regions still waiting gets no row from here. Its state is
+    "someone is still looking", which the queue already answers, and a
+    disposition row per unanswered region would bury the one that matters.
+    """
+    stem = reference.partition("#")[0]
+    assessment = dispositions.assess(stem)
+    if assessment is None or assessment["pending_count"]:
+        return None
+    return dispositions.record(stem, decided_by or "automated")
 
 
 def flow_state(graph, reference: str) -> dict[str, Any]:

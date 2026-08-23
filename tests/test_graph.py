@@ -44,6 +44,14 @@ class StubClient:
         )
 
 
+#: What the real ``classify_defect`` returns for the weights that read a
+#: region. The stub carries it because the stub stands in for that tool, and a
+#: fixture that dropped it would make every flow test exercise a path the
+#: station cannot take: ``record_decision`` refuses an automated decision that
+#: names no model.
+STUB_DIGEST = "sha256:0123456789abcdef"
+
+
 @pytest.fixture
 def stub_tools(monkeypatch):
     """Replace the three MCP tools with fixed answers."""
@@ -55,6 +63,7 @@ def stub_tools(monkeypatch):
         "confidence": 0.55,
         "false_call_probability": 0.10,
         "recommendation": "escalate",
+        "model_digest": STUB_DIGEST,
     }}
 
     def classify_defect(candidate_ref):
