@@ -197,6 +197,11 @@ STRINGS: dict[str, dict[str, str]] = {
         "analysis.coverage":
             '資料涵蓋最近 {days} 天。超出這個範圍的問題會被拒答，而不是用最接近的窗口代答。產線 metadata 是模擬的；驗收標準是本專案自撰文件，不是 IPC-A-610。',
         "analysis.s1": '1 · 它怎麼理解你的問題',
+        "analysis.as_asked":
+            "以提問時的語言記錄",
+        "analysis.as_asked_title":
+            "這一段是規劃那次呼叫寫下的。規劃不會重跑，所以它是當時發生的事的"
+            "紀錄，不會跟著語言切換重寫。",
         "analysis.s2": '2 · 它呼叫了什麼',
         "analysis.s3": '3 · 它假設了什麼',
         "analysis.s5": '5 · 回答',
@@ -412,6 +417,12 @@ STRINGS: dict[str, dict[str, str]] = {
         "analysis.coverage":
             'The data covers the last {days} days. A question outside that span is refused rather than answered from the nearest window. Production metadata is simulated; the acceptance criteria are documents written for this project, not IPC-A-610.',
         "analysis.s1": '1 · How it read your question',
+        "analysis.as_asked":
+            "recorded in the language it was asked in",
+        "analysis.as_asked_title":
+            "This section is what the planning call wrote. The planning call "
+            "is not made again, so it is a record of what happened and is not "
+            "rewritten when the language changes.",
         "analysis.s2": '2 · What it called',
         "analysis.s3": '3 · What it assumed',
         "analysis.s5": '5 · Answer',

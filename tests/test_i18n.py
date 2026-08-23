@@ -224,3 +224,65 @@ def test_the_registry_name_stays_on_the_page_beside_the_readable_one(
 
     assert "缺陷歷史" in page
     assert "query_defect_history" in page
+
+
+# ---------------------------------------------------------------------------
+# What the switch must not rewrite
+# ---------------------------------------------------------------------------
+
+def _asked_in(lang: str, question: str = "比較三條線") -> int:
+    from aoi_agent.store import analysis as analysis_store
+
+    return analysis_store.save_run(
+        question=question,
+        plan={"interpretation": "PLAN-PROSE", "assumptions": ["ASSUMED-PROSE"],
+              "calls": []},
+        results=[], chart=None, answer="ANSWER-PROSE", timings={},
+        refused=False, asked_by="mike", asked_lang=lang,
+    )
+
+
+def test_the_question_is_never_rewritten_by_the_switch(client):
+    """The record says what was asked. Translating it puts a question nobody
+    asked next to the name of the person who asked -- and `asked_by` is what
+    makes that row worth keeping."""
+    run_id = _asked_in("zh-TW", question="L2-M22 的 open 是不是不尋常？")
+
+    for locale in ("zh-TW", "en"):
+        page = read_in(client, locale).get(f"/ask/{run_id}").text
+        assert "L2-M22 的 open 是不是不尋常？" in page
+
+
+def test_the_plan_sections_keep_the_language_they_were_written_in(client):
+    """`interpretation` and the assumptions came out of the planning call, and
+    the planning call is not made again."""
+    run_id = _asked_in("zh-TW")
+    page = read_in(client, "en").get(f"/ask/{run_id}").text
+
+    assert "PLAN-PROSE" in page
+    assert "ASSUMED-PROSE" in page
+
+
+def test_a_section_the_switch_does_not_touch_says_so(client):
+    run_id = _asked_in("zh-TW")
+
+    english = read_in(client, "en").get(f"/ask/{run_id}").text
+    assert "recorded in the language it was asked in" in english
+
+    chinese = read_in(client, "zh-TW").get(f"/ask/{run_id}").text
+    assert "以提問時的語言記錄" not in chinese, (
+        "a run asked in this language has nothing to explain"
+    )
+
+
+def test_a_run_from_before_the_column_is_labelled_rather_than_claimed(client):
+    """`unrecorded` is not the language being read either, so the badge is
+    shown -- and "recorded in the language it was asked in" is exactly true of
+    a row whose language nobody recorded."""
+    from aoi_agent.provenance import UNRECORDED
+
+    run_id = _asked_in(UNRECORDED)
+
+    for locale in ("zh-TW", "en"):
+        page = read_in(client, locale).get(f"/ask/{run_id}").text
+        assert STRINGS[locale]["analysis.as_asked"] in page

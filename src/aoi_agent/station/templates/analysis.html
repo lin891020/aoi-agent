@@ -9,6 +9,16 @@
 {%- else %}{{ span.text }}{% endif -%}
 {%- endfor -%}
 {%- endmacro %}
+{%- macro as_asked(run) -%}
+{#- The badge on a section the switch does not touch. Shown only when the run
+    was asked in another language, because on a run asked in this one there is
+    nothing to explain. A run stored before `asked_lang` existed reads
+    `unrecorded`, which is not this language either -- and saying "recorded in
+    the language it was asked in" about it is exactly true. -#}
+{%- if run.asked_lang and run.asked_lang != request.state.locale %}
+<span class="as-asked" title="{{ t('analysis.as_asked_title') }}">{{ t('analysis.as_asked') }}</span>
+{%- endif -%}
+{%- endmacro %}
 {% block content %}
 <section class="panel">
   <h1>{{ t('analysis.title') }}</h1>
@@ -62,13 +72,13 @@
 
   {% if run %}
     <div class="answer-block">
-      <h2>{{ t('analysis.s1') }}</h2>
+      <h2>{{ t('analysis.s1') }} {{ as_asked(run) }}</h2>
       <p>{{ run.plan.interpretation if run.plan else run.answer }}</p>
     </div>
 
     {% if run.plan and run.plan.assumptions %}
     <div class="answer-block">
-      <h2>{{ t('analysis.s3') }}</h2>
+      <h2>{{ t('analysis.s3') }} {{ as_asked(run) }}</h2>
       <ul>{% for a in run.plan.assumptions %}<li>{{ a }}</li>{% endfor %}</ul>
     </div>
     {% endif %}

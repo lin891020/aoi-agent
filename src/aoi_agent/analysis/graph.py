@@ -81,7 +81,7 @@ def make_plan_node(client, domains: Domains):
         started = time.perf_counter()
         try:
             result = client.chat(
-                build_planning_messages(state["question"], domains),
+                build_planning_messages(state["question"], domains, state.get("lang")),
                 think="low",
                 response_format=PLAN_SCHEMA,
             )
@@ -189,7 +189,8 @@ def make_synthesise_node(client):
         try:
             result = client.chat(
                 build_synthesis_messages(
-                    state["question"], state.get("plan") or {}, state.get("results") or []
+                    state["question"], state.get("plan") or {},
+                    state.get("results") or [], state.get("lang"),
                 ),
                 think="low",
             )

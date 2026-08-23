@@ -334,3 +334,9 @@ table.kv td { padding: 0.15rem 0; vertical-align: top; }
 .prose-table table { min-width: 100%; }
 .prose-table td, .prose-table th { white-space: nowrap; }
 .prose-table td { font-variant-numeric: tabular-nums; }
+
+/* The badge on a section the language switch deliberately does not touch. */
+.as-asked { font-size: 0.7rem; font-weight: 400; color: #8b8b96;
+            border: 1px solid #2e2e35; border-radius: 3px;
+            padding: 0.05rem 0.35rem; margin-left: 0.4rem;
+            vertical-align: middle; white-space: nowrap; }

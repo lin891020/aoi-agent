@@ -22,6 +22,7 @@ from aoi_agent.analysis.plan import PLANNABLE_TOOLS, Domains
 # import points at the station from the analysis layer, which is the wrong
 # direction on paper -- taken deliberately, because two copies of an invariant
 # is the failure it is meant to prevent, and `result_view` imports nothing.
+from aoi_agent.i18n import DEFAULT_LOCALE, normalise
 from aoi_agent.station.result_view import strip_hidden
 
 SYSTEM_PROMPT = """You plan data lookups for a PCB production line's review station.
@@ -199,8 +200,37 @@ def _domain_note(domains: Domains) -> str:
     )
 
 
-def build_planning_messages(question: str, domains: Domains) -> list[dict]:
-    """System prompt, catalogue, domains, five examples, then the question."""
+#: Appended to whichever prompt is being built. One sentence, and only about
+#: the language: everything else in both prompts is a constraint that has been
+#: measured, and re-wording a measured constraint invalidates the measurement
+#: it was taken under.
+LANGUAGE_NOTE = {
+    "zh-TW": "Write all prose you produce in Traditional Chinese (繁體中文). "
+             "Leave identifiers -- defect classes, line, machine and lot ids, "
+             "document numbers, tool names -- exactly as they appear in the "
+             "data.",
+    "en": "Write all prose you produce in English. Leave identifiers -- defect "
+          "classes, line, machine and lot ids, document numbers, tool names -- "
+          "exactly as they appear in the data.",
+}
+
+
+def _language_note(lang: str | None) -> str:
+    return LANGUAGE_NOTE.get(normalise(lang), LANGUAGE_NOTE[DEFAULT_LOCALE])
+
+
+def build_planning_messages(
+    question: str, domains: Domains, lang: str | None = None
+) -> list[dict]:
+    """System prompt, catalogue, domains, five examples, then the question.
+
+    The language reaches the planner because what it writes -- the reading of
+    the question, the assumptions, each call's justification -- is shown to the
+    person who asked, and they asked in their own language. What it writes here
+    is then frozen: the planning call is not made again, so this text is a
+    record of how the question was read, and a record is not re-rendered when
+    somebody changes the switch.
+    """
     examples = "\n\n".join(
         f"Question: {e['question']}\nPlan: {json.dumps(e['plan'], ensure_ascii=False)}"
         for e in FEW_SHOT
@@ -211,13 +241,24 @@ def build_planning_messages(question: str, domains: Domains) -> list[dict]:
         f"Examples:\n\n{examples}"
     )
     return [
-        {"role": "system", "content": f"{SYSTEM_PROMPT}\n\n{context}"},
+        {"role": "system",
+         "content": f"{SYSTEM_PROMPT}\n\n{_language_note(lang)}\n\n{context}"},
         {"role": "user", "content": f"Question: {question}"},
     ]
 
 
-def build_synthesis_messages(question: str, plan: dict, results: list[dict]) -> list[dict]:
-    """The question, what was assumed, and everything the tools returned."""
+def build_synthesis_messages(
+    question: str, plan: dict, results: list[dict], lang: str | None = None
+) -> list[dict]:
+    """The question, what was assumed, and everything the tools returned.
+
+    The only prompt in this module whose output is re-derivable: the same
+    results can be written up again in another language, which is what the
+    station's switch does rather than translating what is already stored. Every
+    constraint in `SYSTEM_PROMPT` is unchanged when it does -- those have been
+    measured, and the figures the second pass quotes have to come off the same
+    payload the first pass's did.
+    """
     rendered = []
     for result in results:
         if result["ok"]:
@@ -247,6 +288,7 @@ def build_synthesis_messages(question: str, plan: dict, results: list[dict]) -> 
         f"Results:\n\n" + "\n\n".join(rendered)
     )
     return [
-        {"role": "system", "content": SYNTHESIS_PROMPT},
+        {"role": "system",
+         "content": f"{SYNTHESIS_PROMPT}\n\n{_language_note(lang)}"},
         {"role": "user", "content": body},
     ]
