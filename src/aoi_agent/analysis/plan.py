@@ -4,18 +4,31 @@ The model proposes; this module disposes. Every plan is validated against the
 real tool signatures and the real value domains before a single tool runs, and
 a plan that fails is shown to the user rather than retried.
 
-Three layers, and the third is the one that earns its keep. A bad tool name or
-a bad argument name would raise on its own. `line_id="L4"` raises nothing: it is
-a valid string in a valid parameter that happens to match no row, so the query
-succeeds, the series is missing from the chart, and the gap reads as a finding.
-That is the same failure the project's no-SQL invariant exists to prevent, one
-level up.
+Three layers on the plan, and the third is the one that earns its keep. A bad
+tool name or a bad argument name would raise on its own. `line_id="L4"` raises
+nothing: it is a valid string in a valid parameter that happens to match no
+row, so the query succeeds, the series is missing from the chart, and the gap
+reads as a finding. That is the same failure the project's no-SQL invariant
+exists to prevent, one level up.
+
+There is a fourth, and it runs before any of them, at import: `Registration`
+accounts for every parameter each plannable tool exposes, and a tool the
+account does not cover cannot be registered at all. Validating arguments says
+nothing about the surface they are passed to -- `run_query(sql: str)` passed
+every test this module had, because `sql` was a known argument of a known tool
+holding a value with no domain to be outside of.
 """
 
 from __future__ import annotations
 
+import ast
+import importlib.util
 import inspect
-from typing import Any, Callable, TypedDict
+import textwrap
+from dataclasses import dataclass, field
+from functools import lru_cache
+from pathlib import Path
+from typing import Any, Callable, Mapping, TypedDict
 
 from sqlalchemy import func, select
 
@@ -93,6 +106,13 @@ _EXECUTORS = {
     "scalar",
     "scalars",
 }
+
+
+#: `*args` and `**kwargs` are not arguments a plan can name or omit. Read as
+#: though they were, a catch-all signature rejects every plan that names it
+#: twice over: once for an argument it does accept, once for a parameter that
+#: does not exist to be passed.
+_VARIADIC = (inspect.Parameter.VAR_KEYWORD, inspect.Parameter.VAR_POSITIONAL)
 
 
 class UnregistrableTool(Exception):
@@ -206,8 +226,9 @@ def _sql_from_a_string(registration: Registration) -> list[str]:
             argument = node.args[0]
             if isinstance(argument, (ast.Constant, ast.JoinedStr, ast.BinOp)):
                 problems.append(
-                    f"{registration.name} executes a string it composed, at line "
-                    f"{argument.lineno - 1} of its body"
+                    f"{registration.name} executes a string it composed, "
+                    f"{ast.dump(argument)[:60]}..., rather than a query built "
+                    "from typed parameters"
                 )
             elif isinstance(argument, ast.Name) and argument.id in parameters:
                 problems.append(
@@ -316,14 +337,25 @@ REGISTRATIONS: tuple[Registration, ...] = (
     Registration(list_candidates, identifiers=frozenset({"board"})),
 )
 
-_REFUSED = registration_errors(REGISTRATIONS)
-if _REFUSED:
-    raise UnregistrableTool(
-        "the planner's registry offers a surface it cannot account for:\n  "
-        + "\n  ".join(_REFUSED)
-    )
+def registry(registrations: tuple[Registration, ...]) -> dict[str, Callable]:
+    """The tools a plan may name, or nothing at all.
 
-PLANNABLE_TOOLS: dict[str, Callable] = {r.name: r.tool for r in REGISTRATIONS}
+    Called at import, so a tool the registry cannot account for does not
+    become unavailable to the planner -- it stops the module loading, and the
+    suite fails on every test that touches the analysis path. There is no
+    degraded mode here: a registry that offers a query language is not a
+    smaller feature, it is the failure the invariant is about.
+    """
+    refused = registration_errors(registrations)
+    if refused:
+        raise UnregistrableTool(
+            "the planner's registry offers a surface it cannot account for:\n  "
+            + "\n  ".join(refused)
+        )
+    return {registration.name: registration.tool for registration in registrations}
+
+
+PLANNABLE_TOOLS: dict[str, Callable] = registry(REGISTRATIONS)
 
 PLAN_SCHEMA: dict = {
     "type": "object",
@@ -386,13 +418,6 @@ def store_domains() -> Domains:
         "defect_class": empty["defect_class"],
         "max_days": span,
     }
-
-
-#: `*args` and `**kwargs` are not arguments a plan can name or omit. Read as
-#: though they were, a catch-all signature rejects every plan that names it
-#: twice over: once for an argument it does accept, once for a parameter that
-#: does not exist to be passed.
-_VARIADIC = (inspect.Parameter.VAR_KEYWORD, inspect.Parameter.VAR_POSITIONAL)
 
 
 def _signature_errors(name: str, args: dict, position: int) -> list[str]:
