@@ -6,9 +6,10 @@ the top-ranked passage for the disposition path's own `open` query was
 WI-206's "Within limits and outside pads: release. Inside a pad: reject." --
 a pin-hole limit, ranked above WI-201's own classification section, which says
 any confirmed open is critical with no size below which it is acceptable. The
-model read both, fused them, and told five operators to establish whether the
-open was inside a pad "(critical) or outside". That sentence points at
-releasing a critical defect and no document contains it.
+model read both, fused them, and wrote into all five escalations in the store
+that the criteria require establishing whether the open is inside a pad
+"(critical) or outside". That sentence points at releasing a critical defect
+and no document contains it.
 
 Three things are checked, and the third is the one that matters:
 
@@ -169,3 +170,18 @@ def test_an_unscoped_search_still_reaches_every_document(index):
     passages = standards.search("when do we stop the line", top_k=5)
     assert passages
     assert {p.document for p in passages} - {"open-circuit"}
+
+
+def test_a_rebuild_underneath_a_held_collection_is_survivable(index):
+    """The station is a long-running process and the index is rebuilt by a
+    script. Holding the collection open is what keeps a query from paying for
+    the embedding model twice; re-opening it once on failure is what keeps that
+    from turning a rebuild into a station that answers nothing until someone
+    restarts it."""
+    assert standards.search("open", top_k=1, defect_class="open")
+
+    client = standards._client()
+    client.delete_collection(standards.COLLECTION)
+    standards.build_index()
+
+    assert standards.search("open", top_k=1, defect_class="open")

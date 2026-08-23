@@ -254,8 +254,20 @@ def search(
         where = {"defect_class": {"$in": scope_of(defect_class)}}
 
     _client()  # so a missing directory is created before the collection is read
-    collection = _collection_at(str(CHROMA_DIR))
-    result = collection.query(query_texts=[query], n_results=top_k, where=where)
+    try:
+        result = _collection_at(str(CHROMA_DIR)).query(
+            query_texts=[query], n_results=top_k, where=where
+        )
+    except Exception:
+        # The held handle points at a collection somebody rebuilt underneath
+        # it -- the index is rebuilt by a script, and the station is a
+        # long-running process that would otherwise answer nothing until it
+        # was restarted. Re-open once; a second failure is a real one and is
+        # raised, because the tool turns it into "build the index first".
+        _collection_at.cache_clear()
+        result = _collection_at(str(CHROMA_DIR)).query(
+            query_texts=[query], n_results=top_k, where=where
+        )
 
     passages = []
     for document, metadata, distance in zip(
