@@ -54,6 +54,7 @@ uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
 uv run python scripts/routing_report.py          # how much never reaches the LLM
 uv run python scripts/retrieval_report.py        # can a class's criteria come back as another's?
+uv run python scripts/threshold_sweep.py         # what each graph threshold costs and buys
 uv run python scripts/latency_report.py          # does the reason node fit the response budget?
 uv run python scripts/reverifier_latency.py      # what one candidate costs: MPS vs CPU, cold vs warm (~7 min)
 uv run python scripts/agent_eval.py              # does the agent layer beat the classifier? (~9 min)
@@ -152,7 +153,14 @@ board is back under the unscoped reading.
   Leaving the scope unset is for questions that genuinely span classes, which
   is `/ask`'s case and never the queue's.
 - **Thresholds come from the sweep or the work instructions**, not from hand
-  tuning against the test set. See docs/architecture.md.
+  tuning against the test set, and every one of them cites a file a reader can
+  open. Two did not until 2026-08-23: `CONFIDENT` was cited to a clause of
+  WI-300 that names no number, and `ESCALATE_BELOW` to a sweep nobody had run.
+  `scripts/threshold_sweep.py` is that sweep and
+  `tests/test_threshold_citations.py` is what stops the citations rotting
+  again -- it fails on a value that drifts from its source, and on a threshold
+  that reaches the code with no row in the table at all. See
+  docs/architecture.md.
 - **Use the official DeepPCB split.** Do not re-split; comparability matters.
 - Split train/val **by image**, never by patch -- patches from one board leak.
 - **Say what is simulated.** Production metadata is generated with one planted

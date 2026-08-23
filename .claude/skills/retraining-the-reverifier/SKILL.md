@@ -46,8 +46,17 @@ the operating-point table. After it runs:
 1. Read the new threshold out of the report output / `docs/benchmarks.md`.
 2. Update `DEFAULT_DISMISS_THRESHOLD` in `src/aoi_agent/vision/inference.py`.
 3. Update the threshold row in `docs/architecture.md` (the table that records
-   where each threshold came from).
+   where each threshold came from). `tests/test_threshold_citations.py` fails
+   until you do.
 4. Only then run `scripts/routing_report.py` — it imports the constant.
+
+`ESCALATE_BELOW` needs no separate carry-across: it *is*
+`DEFAULT_DISMISS_THRESHOLD`, which is the point of setting it that way. A
+second swept number here would be a second silent failure of exactly this
+shape. Re-run `scripts/threshold_sweep.py` after a retrain anyway — it
+re-derives both graph thresholds from the new predictions, and
+`tests/test_threshold_citations.py -m dataset` asserts the agent branch still
+dismisses nothing.
 
 The number comes from the sweep. Never hand-tune it to make a routing number
 look better; that is fitting the test set through the back door.
