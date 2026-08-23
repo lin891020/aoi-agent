@@ -1,3 +1,6 @@
+---
+defect_class: any
+---
 # WI-300 AOI re-verification station — operating procedure
 
 ## Purpose

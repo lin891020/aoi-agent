@@ -1,3 +1,6 @@
+---
+defect_class: short
+---
 # WI-202 Short circuit — acceptance and disposition
 
 ## Definition

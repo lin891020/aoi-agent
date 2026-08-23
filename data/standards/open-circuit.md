@@ -1,3 +1,6 @@
+---
+defect_class: open
+---
 # WI-201 Open circuit — acceptance and disposition
 
 ## Definition

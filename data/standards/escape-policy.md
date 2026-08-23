@@ -1,3 +1,6 @@
+---
+defect_class: any
+---
 # QP-110 Escape tolerance and review budget
 
 ## Principle

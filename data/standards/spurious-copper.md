@@ -1,3 +1,6 @@
+---
+defect_class: copper
+---
 # WI-205 Spurious copper — acceptance and disposition
 
 ## Definition

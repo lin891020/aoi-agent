@@ -1,3 +1,6 @@
+---
+defect_class: pin-hole
+---
 # WI-206 Pin hole — acceptance and disposition
 
 ## Definition

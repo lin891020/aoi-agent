@@ -1,3 +1,6 @@
+---
+defect_class: spur
+---
 # WI-204 Spur — acceptance and disposition
 
 ## Definition

@@ -1,3 +1,6 @@
+---
+defect_class: mousebite
+---
 # WI-203 Mousebite — acceptance and disposition
 
 ## Definition
