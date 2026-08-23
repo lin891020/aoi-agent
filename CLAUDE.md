@@ -33,7 +33,7 @@ src/aoi_agent/
     cli.py
 scripts/                    gate_check, build_patches, train, report, seed_store,
                             analysis_eval, ...
-tests/                      620 tests; dataset-dependent ones behind `-m dataset`
+tests/                      659 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -48,7 +48,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 620 tests, no GPU needed, no model called
+uv run pytest                                    # 659 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
@@ -176,6 +176,13 @@ board is back under the unscoped reading.
   When it runs, an LLM call's wall time can be 25x its inference time. Always
   check `ollama ps` before believing a latency number, and report
   `eval_duration`, never `total_duration`.
+- **`ollama ps` is not a GPU check.** It reports Ollama's own resident models
+  and nothing else, so a torch/MPS job in another shell saturates the same
+  silicon while that check comes back clean. It has already cost one run: an
+  MPS benchmark taken beside a concurrent detector training job, with a clean
+  residency check the whole way. Sweep the process table too --
+  `scripts/reverifier_latency.py` does both and refuses to publish when either
+  fires.
 - MCP SDK is **2.0**: `MCPServer` not `FastMCP`, `server_info` not `serverInfo`.
 - torch runs on **MPS**. Python is pinned to 3.12 for torch compatibility.
 - Dataset (231MB), patches, models, the SQLite db and the Chroma index are all
@@ -184,6 +191,19 @@ board is back under the unscoped reading.
 ## Still open
 
 Retraining from operator corrections, INT8/ONNX quantisation, demo video.
+
+INT8/ONNX is now scoped by a measurement rather than by intuition: the
+re-verifier costs **2.5ms per candidate on CPU** (p50, single-shot) and the
+43MB checkpoint fits anywhere, so quantisation buys memory and portability, not
+latency. A re-verification station does not need a GPU -- and at a batch of one
+the GPU is 2.9x *slower* than the CPU, because dispatch costs more than the
+forward on a model this small. MPS only overtakes at batch 8. See
+docs/benchmarks.md.
+
+Two things that run counter to intuition and are easy to undo by accident:
+sustained CPU inference throttles about 20% past the first 60 seconds on this
+fanless chassis, and CPU per-candidate cost gets *worse* past batch 8 -- by
+several-fold, independent of core count. Batch at 8 on CPU.
 
 `gpt-oss:20b` misses WI-300's 10s response budget -- p90 service time 15.6s on a
 quiet machine, 20 of 24 calls over. It no longer gates anything, because the LLM

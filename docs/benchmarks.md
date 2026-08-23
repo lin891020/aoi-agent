@@ -60,7 +60,9 @@ Measured over 9070 stored candidates from 500 boards.
 | confirmed by the vision model | 2398 | 26.4% | no |
 | investigated | 1610 | 17.8% | yes |
 
-**82.2% of candidates never reach a language model.** They are dispositioned by the vision model in tens of milliseconds. The LLM is spent only on the fraction that is genuinely ambiguous, which is what makes a 20B model affordable at line rate.
+**82.2% of candidates never reach a language model.** They are dispositioned by the vision model in 2.5ms each on CPU. The LLM is spent only on the fraction that is genuinely ambiguous, which is what makes a 20B model affordable at line rate.
+
+> Corrected 2026-08-23. This line originally read "tens of milliseconds", which was never measured. It was out by more than an order of magnitude in the pessimistic direction. The number above comes from the re-verifier latency run at the end of this file; nothing else in this section was touched.
 
 Escapes on the dismissal path: 15 (0.30% of dismissals).
 
@@ -616,3 +618,115 @@ buys a guarantee that does not have to be re-earned: 33 of the 47 were agent
 *dismissals*, and there are now none of those at all. `CONFIDENT` did not move,
 because the sweep says the value cannot matter as long as it stays above
 `ESCALATE_BELOW`.
+
+## 2026-08-23 · commit 4371015
+
+### Re-verifier latency — what one candidate costs, and on what hardware
+
+**A first run of this benchmark was discarded for GPU contention and is not
+reported here.** It was taken while a concurrent torchvision detector benchmark
+held MPS under sustained load, and `ollama ps` -- the check this project has
+always used -- came back clean throughout, because it reports Ollama's own
+resident models and knows nothing about a torch job in another shell. That is a
+hole in the convention, not a one-off: every MPS figure in that run was
+competing for the same silicon and none of them said so. The script now checks
+twice, `ollama ps` plus a process sweep for anything busy enough to be
+computing, and refuses to append when either fires. The run below was taken
+after both checks came back empty, with a neighbouring Ollama translation job
+waited out rather than measured through.
+
+
+ResNet-18 re-verifier, 42.7MB checkpoint, 11.2M parameters, 3x64x64 input. Patches are real candidates from the official DeepPCB test split (8143 of them).
+
+The timed path is the one `ReVerifier.classify_batch` runs: uint8 patches to float, divide by 255, move to the device, forward, softmax, back to the host. Timing the bare forward would hide the transfer, which on MPS is not free. Every MPS measurement is bracketed by `torch.mps.synchronize()`; without it the timer measures how fast Python enqueues work.
+
+CPU figures are on 4 torch threads, which is what this machine defaults to; an edge box with fewer cores scales roughly with that number and the figure below is not transferable without it.
+
+Devices are measured in the order they appear below, in one process. The second device therefore starts from an already-warm machine, and the peak RSS covers both sets of weights rather than one station's footprint. Both are stated rather than corrected for.
+
+Contention was checked two ways, because one of them is not enough. `ollama ps` reports Ollama's own resident models and nothing else, so a torch/MPS job in another shell saturates the same GPU while that check comes back clean. The second check is a process sweep for anything busy enough to be computing -- `llama-server`, any running `.py`, `mlx`, `mediaanalysisd`. Both are recorded below.
+
+```
+ollama ps before the run
+NAME    ID    SIZE    PROCESSOR    CONTEXT    UNTIL
+
+busy processes before the run
+(none)
+
+ollama ps after the run
+NAME    ID    SIZE    PROCESSOR    CONTEXT    UNTIL
+
+busy processes after the run
+(none)
+```
+
+#### Single candidate, warm
+
+| device | calls | p50 | p90 | p99 | max | mean |
+|---|---|---|---|---|---|---|
+| MPS | 300 | 7.34ms | 7.71ms | 8.30ms | 8.56ms | 7.18ms |
+| CPU | 300 | 2.50ms | 2.53ms | 2.87ms | 3.23ms | 2.51ms |
+
+The claim of "tens of milliseconds" was wrong, and wrong in the pessimistic direction -- the model is faster than the README said. Measured: 2.50ms, which is single-digit milliseconds.
+
+**At one candidate the GPU is the slower device.** MPS p50 is 7.34ms against the CPU's 2.50ms -- 2.9x slower. On a model this small the forward is cheaper than dispatching it and copying the result back, and the GPU has nothing to amortise that over. MPS only overtakes at batch 8, and from there it pulls away hard -- 3.2x at that batch alone. The station classifies one region at a time; the seeding pass classifies a whole board at once. They want different devices.
+
+#### Cold against warm
+
+A station restarting mid-shift pays the load and the first forward. Everything after that is the warm number above.
+
+| device | checkpoint load | first forward | warm p50 | cold penalty |
+|---|---|---|---|---|
+| MPS | 134ms | 83.8ms | 7.34ms | 11x |
+| CPU | 87.6ms | 2.98ms | 2.50ms | 1x |
+
+#### Batched throughput
+
+`classify_batch` is handed every candidate on one board at once, so the pipeline's batch size is the board's candidate count. On the test split that is a median of 8 trainable candidates per board (mean 16.3, max 159). The sweep is around that.
+
+| batch | MPS | CPU |
+|---|---|---|
+| 1 | 6.65ms/cand, 150/s | 2.50ms/cand, 401/s |
+| 2 | 3.28ms/cand, 305/s | 1.82ms/cand, 551/s |
+| 4 | 1.67ms/cand, 597/s | 1.16ms/cand, 860/s |
+| 8 ← | 0.31ms/cand, 3,201/s | 1.00ms/cand, 1,002/s |
+| 16 | 0.21ms/cand, 4,833/s | 4.18ms/cand, 239/s |
+| 32 | 0.17ms/cand, 6,009/s | 3.38ms/cand, 296/s |
+| 64 | 0.15ms/cand, 6,549/s | 2.96ms/cand, 338/s |
+| 128 | 0.14ms/cand, 6,991/s | 2.77ms/cand, 361/s |
+
+The arrow marks the bucket nearest the pipeline's real batch.
+
+#### Does the CPU cliff move with the core count?
+
+The sweep above has a cliff on CPU between batch 8 and batch 16: past it the per-candidate cost jumps several-fold rather than falling. An edge recommendation of "batch at 8" is only useful if that is a property of the model rather than of this machine's cores, so the same two batches were run again across torch thread counts.
+
+| torch threads | batch 8 | batch 16 |
+|---|---|---|
+| 1 | 2.31ms/cand | 6.05ms/cand |
+| 2 | 1.89ms/cand | 5.92ms/cand |
+| 4 | 1.49ms/cand | 5.99ms/cand |
+| 8 | 1.58ms/cand | 6.07ms/cand |
+
+Thread count moves the batch-8 figure and leaves the batch-16 figure essentially untouched. The cliff is therefore in the model's CPU convolution path, not in this laptop's core count, and it transfers: batch at 8 on any CPU box, and do not assume more batching is more throughput.
+
+#### Thermal — first 60s against steady state
+
+150s of sustained batched inference per device on a fanless M5 Air.
+
+| device | first 60s (n, p50) | steady state (n, p50) |
+|---|---|---|
+| MPS | 13236, 4.62ms | 19436, 4.63ms |
+| CPU | 716, 83.7ms | 891, 100ms |
+
+- MPS: **No throttle observed.** Median 4.62ms in the first 60s against 4.63ms in steady state, +0% -- inside the 10% band this run calls noise.
+- CPU: **Throttled.** Median went from 83.7ms in the first 60s to 100ms in steady state, +20%. Size an edge box on the steady-state figure, not the first minute of it.
+
+#### Footprint
+
+- checkpoint on disk: **42.7MB** (11.2M float32 parameters)
+- peak process RSS across the whole run: **1144MB**
+- patch construction (two crops and an absolute difference on the board image, which runs before every classification): p50 0.01ms per candidate
+
+**What this means for an edge deployment.** The CPU figure is the one to size on: a re-verification station is a box beside a conveyor, not a laptop with a GPU. At 2.50ms per candidate single-shot and 1,002 candidates/second batched, on CPU alone, the model is not the constraint -- a board carrying twenty candidates is re-verified in well under a second, and the AOI stage in front of it takes longer. The 43MB checkpoint fits anywhere. The open INT8/ONNX work is therefore about memory and portability, not about latency: there is no latency problem here to solve.
+

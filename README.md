@@ -29,9 +29,16 @@ not interchangeable, so the model is reported as a curve against an escape
 budget rather than as a single number. (For reference: 96.5% overall accuracy.)
 
 And **82.2% of candidates never reach a language model at all** — they are
-dispositioned by the vision model in tens of milliseconds. The LLM is spent only
-on the 17.8% that is genuinely ambiguous, which is what makes a 20B model
-affordable at line rate.
+dispositioned by the vision model in **2.5ms each on CPU** (p50, single
+candidate, 300 calls; 7.3ms on MPS, which loses at a batch of one). The LLM is
+spent only on the 17.8% that is genuinely ambiguous, which is what makes a 20B
+model affordable at line rate.
+
+That figure used to read "tens of milliseconds" and had no run behind it. It is
+now measured — see
+[re-verifier latency](docs/benchmarks.md#re-verifier-latency--what-one-candidate-costs-and-on-what-hardware),
+which also answers whether a re-verification station needs a GPU at all. It does
+not.
 
 Full report: [docs/benchmarks.md](docs/benchmarks.md).
 

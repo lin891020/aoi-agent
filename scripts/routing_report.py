@@ -26,6 +26,16 @@ from aoi_agent.store.models import Board, CandidateRecord  # noqa: E402
 from aoi_agent.vision.inference import DEFAULT_DISMISS_THRESHOLD  # noqa: E402
 
 
+#: Single-candidate p50 on CPU, from `scripts/reverifier_latency.py`. Quoted
+#: rather than measured here because this report needs no GPU and no checkpoint,
+#: and importing one to print a sentence would change that.
+#:
+#: This line used to say "tens of milliseconds" and had no run behind it. If the
+#: model is retrained or the patch size changes, re-run that script and move
+#: this constant -- a stale figure here reads exactly like a measured one.
+REVERIFIER_P50_CPU_MS = 2.5
+
+
 def route(predicted_class: str, confidence: float, false_call_probability: float) -> str:
     """Mirror of ``flow.route_after_classify``, over stored predictions."""
     if false_call_probability >= DEFAULT_DISMISS_THRESHOLD:
@@ -77,9 +87,9 @@ def main() -> int:
         f"| investigated | {routes['investigate']} | {routes['investigate'] / total:.1%} | yes |",
         "",
         f"**{llm_free / total:.1%} of candidates never reach a language model.** They are "
-        "dispositioned by the vision model in tens of milliseconds. The LLM is spent "
-        "only on the fraction that is genuinely ambiguous, which is what makes a 20B "
-        "model affordable at line rate.",
+        f"dispositioned by the vision model in {REVERIFIER_P50_CPU_MS}ms each on CPU. "
+        "The LLM is spent only on the fraction that is genuinely ambiguous, which is "
+        "what makes a 20B model affordable at line rate.",
         "",
         f"Escapes on the dismissal path: {escapes_by_route['dismiss']} "
         f"({escapes_by_route['dismiss'] / max(routes['dismiss'], 1):.2%} of dismissals).",
