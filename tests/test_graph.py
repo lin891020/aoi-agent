@@ -47,6 +47,9 @@ class StubClient:
 @pytest.fixture
 def stub_tools(monkeypatch):
     """Replace the three MCP tools with fixed answers."""
+    # 0.55 is below `ESCALATE_BELOW`, so a test that does not set its own
+    # confidence is a test of the escalating branch whether it says so or not.
+    # Tests whose subject is the branch state the number themselves.
     state = {"classify": {
         "predicted_class": "open",
         "confidence": 0.55,
@@ -253,16 +256,50 @@ def test_resuming_records_the_operator_as_the_decider(stub_tools):
     assert state["trace"][-2:] == ["escalate", "record_human"]
 
 
-def test_an_unparseable_verdict_escalates_rather_than_guessing(stub_tools):
-    """A response that is not JSON is not a verdict."""
+def test_an_unparseable_verdict_reaches_a_person_at_a_confidence_of_0_55(stub_tools):
+    """A response that is not JSON is not a verdict -- but it is not what sends
+    this region to a person either.
+
+    `route_after_reason` reads `model_confidence` and nothing else, so the 0.55
+    is the whole reason this interrupts, and it is stated here rather than
+    inherited from the fixture. The pair below is the same call above the
+    threshold, and it does not escalate."""
+    stub_tools["classify"]["confidence"] = 0.55
     graph = flow.build_graph(StubClient(raw_text="I think it's fine?"), InMemorySaver())
     state, _ = run(graph)
 
     assert "__interrupt__" in state
+    assert state["agent_rationale"] == "the model's response could not be parsed"
 
 
-def test_an_unreachable_model_escalates_rather_than_crashing(stub_tools):
-    """The GPU being busy must not leave a flagged board undispositioned."""
+def test_an_unparseable_verdict_at_0_93_is_decided_anyway(stub_tools):
+    """The uncomfortable half, and the one the docs used to get wrong.
+
+    "Unparseable verdict -> escalate" was true while the LLM decided. It is not
+    true now: the parse failure is recorded in the rationale the operator would
+    read, and the region is dispositioned on the classifier's own call, because
+    nothing downstream ever consulted the text that failed to parse. The
+    failure direction is intact -- what was lost is an explanation, not a
+    verdict -- but the sentence describing it was not, so it is written down as
+    a test here."""
+    stub_tools["classify"]["confidence"] = 0.93
+    graph = flow.build_graph(StubClient(raw_text="I think it's fine?"), InMemorySaver())
+    state, _ = run(graph)
+
+    assert "__interrupt__" not in state
+    assert state["verdict"] == "open", "the classifier's class, not the unparsed text"
+    assert state["decided_by"] == "agent"
+    assert state["agent_rationale"] == "the model's response could not be parsed"
+
+
+def test_an_unreachable_model_at_0_55_reaches_a_person_rather_than_crashing(stub_tools):
+    """The GPU being busy must not leave a flagged board undispositioned.
+
+    Same reading as the two above: the 0.55 escalates, the outage does not.
+    Twelve lines up, `test_an_unreachable_model_no_longer_forces_an_escalation`
+    runs the identical dead client at 0.93 and settles. Both are green because
+    of a number, and now both name it."""
+    stub_tools["classify"]["confidence"] = 0.55
 
     class DeadClient:
         def chat(self, messages, **kwargs):
