@@ -289,6 +289,18 @@ def test_competing_processes_does_not_flag_the_benchmark_itself():
                    for line in competing_processes(table, own_pid=99999))
 
 
+def test_competing_processes_catches_the_transcode_that_eats_the_cores():
+    # The second hole, found the same way as the first. The claimant list was
+    # written for an MPS benchmark, so four ffmpeg transcodes holding roughly
+    # 800% CPU passed both checks -- and the number that matters for an edge
+    # box, and every number in the quantisation report, is a CPU number.
+    table = PS_TABLE + (
+        "95096 201.2 /opt/homebrew/opt/ffmpeg-full/bin/ffmpeg -y -i blk_0030_v.mp4\n"
+    )
+    found = competing_processes(table, own_pid=1)
+    assert any("ffmpeg" in line for line in found)
+
+
 def test_competing_processes_is_quiet_on_a_quiet_machine():
     assert competing_processes("  PID  %CPU COMMAND\n", own_pid=1) == []
 

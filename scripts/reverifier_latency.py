@@ -269,6 +269,22 @@ def throttle_verdict(
 #: because macOS runs it on the GPU without being asked.
 GPU_CLAIMANTS = ("llama-server", "mlx", "mediaanalysisd", ".py")
 
+#: Command fragments that mean something else is eating the cores.
+#:
+#: Added 2026-08-23, when the quantisation run went to take its numbers and
+#: found four `ffmpeg` transcodes from a neighbouring project holding roughly
+#: 800% CPU while both checks above came back clean. The list was GPU-shaped
+#: because the first version of this benchmark was about MPS. The figure that
+#: matters for an edge box is the CPU one, and INT8 is a CPU story end to end,
+#: so a CPU contender is now exactly as fatal as a GPU one and has to fire the
+#: same refusal. `ffmpeg` is here because that is what actually happened;
+#: the rest are the neighbours of that job on this machine.
+CPU_CLAIMANTS = ("ffmpeg", "ffprobe", "HandBrake", "x264", "whisper")
+
+#: What the process sweep looks for. Both lists, because a benchmark that
+#: publishes a CPU number cannot afford to notice only GPU contention.
+CLAIMANTS = GPU_CLAIMANTS + CPU_CLAIMANTS
+
 #: Below this a process is idling, not computing. `pet server` and the editor's
 #: python helpers sit at zero all day and would otherwise block every run.
 BUSY_CPU_PERCENT = 5.0
@@ -277,11 +293,12 @@ BUSY_CPU_PERCENT = 5.0
 def competing_processes(
     ps_output: str, own_pid: int, min_cpu: float = BUSY_CPU_PERCENT
 ) -> list[str]:
-    """Processes busy enough to be sharing the GPU, from `ps -Ao pid,pcpu,command`.
+    """Processes busy enough to be sharing this machine, from `ps -Ao pid,pcpu,command`.
 
     The residency check this pairs with only sees Ollama. This one sees whatever
     else is computing, which on a single fanless laptop shared between several
-    agents is the failure that actually happens.
+    agents is the failure that actually happens -- on the GPU when the run is an
+    MPS run, and on the cores when it is a CPU one.
     """
     found = []
     for line in ps_output.strip().splitlines():
@@ -295,7 +312,7 @@ def competing_processes(
             continue          # the header row
         if pid == own_pid or cpu < min_cpu:
             continue
-        if not any(marker in command for marker in GPU_CLAIMANTS):
+        if not any(marker in command for marker in CLAIMANTS):
             continue
         found.append(f"{pid} {cpu:.0f}% {command[:110]}")
     return found
@@ -366,7 +383,8 @@ def render(results: dict) -> list[str]:
         "torch/MPS job in another shell saturates the same GPU while that check "
         "comes back clean. The second check is a process sweep for anything busy "
         "enough to be computing -- `llama-server`, any running `.py`, `mlx`, "
-        "`mediaanalysisd`. Both are recorded below.",
+        "`mediaanalysisd`, and since 2026-08-23 the CPU claimants too, `ffmpeg` "
+        "first among them. Both are recorded below.",
         "",
         "```",
         "ollama ps before the run",
