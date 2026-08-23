@@ -25,16 +25,29 @@ import httpx
 BASE_URL = "http://localhost:11434"
 KEEP_ALIVE = "30m"
 
-#: Seconds one analysis may take before the region goes to an operator
-#: unanswered. WI-300 "Response budget", which derives it from QP-110: analysis
-#: that takes longer than an operator would have taken to look has already spent
-#: the saving it exists to make.
+#: How long this client waits for a response before giving up.
 #:
-#: This is a station policy, not a property of the model. If a model cannot meet
-#: it, WI-300 says to change the model, not the budget. httpx's own default is
-#: 5s and the previous value here was 600s -- neither was a number anyone chose,
-#: and 600s turned a contended GPU into a ten-minute blocked workstation.
-RESPONSE_BUDGET_S = 10.0
+#: **Not WI-300's response budget.** That budget is a promise to the operator
+#: about when a *verdict* reaches the record, it lives on the disposition path
+#: in ``graph.flow``, and it is met by the classifier in single-digit
+#: milliseconds. This number is a resource bound on a client waiting for prose,
+#: and the two were the same constant until 2026-08-23. Sharing it made more
+#: than half of the station's explanations fail by construction: measured
+#: service time on ``gpt-oss:20b`` is a median of 12.5s and a p90 of 15.6s, so
+#: a 10s client timeout cut 20 calls in 24 -- and writing the operator's
+#: explanation is the only job the LLM still has.
+#:
+#: Sized from that measurement rather than chosen. The slowest of 24 calls on a
+#: verified-quiet machine was 21.1s, so anything under that discards healthy
+#: work; contention can multiply an LLM call's wall time by 25x, which no
+#: deadline should absorb and the old 600s value did -- it turned a busy GPU
+#: into a ten-minute blocked workstation. 60s is 2.8x the slowest healthy call
+#: and a minute is what a stuck worker costs. Nothing waits on it: the
+#: disposition is decided before this call is made.
+#:
+#: Raising it is a measurement, not a preference. See
+#: ``scripts/latency_report.py`` and docs/benchmarks.md.
+EXPLANATION_DEADLINE_S = 60.0
 
 Think = bool | Literal["low", "medium", "high"] | None
 
@@ -88,7 +101,7 @@ class OllamaClient:
         model: str,
         base_url: str = BASE_URL,
         keep_alive: str = KEEP_ALIVE,
-        timeout: float = RESPONSE_BUDGET_S,
+        timeout: float = EXPLANATION_DEADLINE_S,
     ):
         self.model = model
         self.base_url = base_url.rstrip("/")

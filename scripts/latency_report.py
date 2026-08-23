@@ -1,9 +1,16 @@
-"""Does the agent layer fit inside WI-300's response budget?
+"""How long does the reason node take, and does it fit the deadline it runs under?
 
-The budget is 10 seconds per escalated region. Whether `gpt-oss:20b` can meet
-it is the open question that decides whether the model stays -- WI-300 says a
-model that cannot meet the budget is the wrong size for the line, and that the
-budget is not to be raised to accommodate it.
+Two numbers, and until 2026-08-23 this script conflated them because the code
+did. WI-300's **response budget** is 10 seconds and covers the *verdict* -- the
+disposition that holds or releases a part. The verdict is `classify_node`'s,
+measured at 2.5ms per candidate, so the budget is not in question and a
+reason-node service time is not the thing to compare against it. What the reason
+node runs under is the **explanation deadline**: the client's own bound on
+waiting for prose nothing blocks on. That is what this script reports against.
+
+The deadline is where the answer to "is this model the right size" now lives.
+`gpt-oss:20b` misses the response budget only if you ask it to produce a verdict,
+which it does not.
 
 Method follows the `measuring-llm-latency` procedure:
 
@@ -21,6 +28,11 @@ Method follows the `measuring-llm-latency` procedure:
 * Any request with `load_ms > 100` was served after an eviction and is dropped.
 * First 60 seconds and steady state are reported separately, because the M5 Air
   is fanless and a single mean hides the throttle.
+* **The run uses the deadline the station uses.** It used to override it to
+  180s, which measured a configuration nothing runs. A call that exceeds the
+  deadline is now counted as a call that produced no explanation, which is what
+  it is in production, and the distribution below is reported as censored at
+  that point rather than quietly completed past it.
 
 Real prompts only. The candidates are drawn from the store and pushed through
 the actual flow, so the prompt is the one the reason node builds rather than a
@@ -45,31 +57,47 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from langgraph.checkpoint.memory import InMemorySaver  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
-from aoi_agent.graph.flow import CONFIDENT, DEFAULT_MODEL, build_graph  # noqa: E402
-from aoi_agent.llm.ollama import RESPONSE_BUDGET_S, ChatResult, OllamaClient  # noqa: E402
+from aoi_agent.graph.flow import (  # noqa: E402
+    CONFIDENT,
+    DEFAULT_MODEL,
+    RESPONSE_BUDGET_S,
+    build_graph,
+)
+from aoi_agent.llm.ollama import (  # noqa: E402
+    EXPLANATION_DEADLINE_S,
+    ChatResult,
+    OllamaClient,
+)
 from aoi_agent.store.boards import session_factory  # noqa: E402
 from aoi_agent.store.models import Board, CandidateRecord  # noqa: E402
 from aoi_agent.vision.inference import DEFAULT_DISMISS_THRESHOLD  # noqa: E402
 
-#: Long enough to observe an over-budget call instead of cutting it short. The
-#: point is to find out how long the model takes, which a 10s client timeout
-#: would hide behind a ReadTimeout.
-BENCH_TIMEOUT_S = 180.0
 
 THERMAL_SPLIT_S = 60.0
 
 
 class RecordingClient:
-    """Delegates to a real client and keeps every ``Timing``."""
+    """Delegates to a real client and keeps every ``Timing``.
+
+    Failures are recorded too, and separately. A call that hits the deadline
+    produces no ``Timing`` at all, so summarising only what came back would
+    report the surviving calls as the distribution and hide the censoring -- the
+    exact shape of the defect this script was rewritten for.
+    """
 
     def __init__(self, inner: OllamaClient):
         self.inner = inner
         self.calls: list[tuple[float, ChatResult]] = []
+        self.failures: list[str] = []
         self.started = time.perf_counter()
 
     def chat(self, messages, **kwargs) -> ChatResult:
         offset = time.perf_counter() - self.started
-        result = self.inner.chat(messages, **kwargs)
+        try:
+            result = self.inner.chat(messages, **kwargs)
+        except Exception as error:
+            self.failures.append(type(error).__name__)
+            raise
         self.calls.append((offset, result))
         return result
 
@@ -135,7 +163,7 @@ def main() -> int:
     ps_before = ollama_ps()
     print(f"ollama ps before:\n{ps_before}\n")
 
-    inner = OllamaClient(args.model, timeout=BENCH_TIMEOUT_S)
+    inner = OllamaClient(args.model, timeout=EXPLANATION_DEADLINE_S)
     print("warming up (discarded) ...")
     warm = inner.warm_up()
     print(f"  load {warm.load_ms:.0f}ms, eval {warm.eval_ms:.0f}ms\n")
@@ -193,6 +221,7 @@ def main() -> int:
         return 1
 
     overall = summarise(every)
+    over_deadline = len(client.failures)
     over_budget = sum(1 for ms in every if ms > RESPONSE_BUDGET_S * 1000)
     queued_share = statistics.fmean(queueing) / statistics.fmean(
         [r.timing.wall_ms for _, r in kept]
@@ -200,11 +229,20 @@ def main() -> int:
 
     lines = [
         "",
-        "### Agent-layer latency — does the reason node fit the response budget?",
+        "### Agent-layer latency — does the reason node fit the explanation deadline?",
         "",
         f"`{args.model}` at `think=\"low\"`, {len(kept)} real reason-node calls "
-        f"over candidates the router sends to the LLM. Budget is WI-300's "
-        f"{RESPONSE_BUDGET_S:.0f}s.",
+        f"over candidates the router sends to the LLM. The deadline is "
+        f"`EXPLANATION_DEADLINE_S`, {EXPLANATION_DEADLINE_S:.0f}s, and the run "
+        f"used it rather than overriding it — a call that misses it here is a "
+        f"call that produces no explanation in production.",
+        "",
+        f"**This is not WI-300's {RESPONSE_BUDGET_S:.0f}s response budget, and "
+        f"comparing it against that budget is the error this script used to "
+        f"make.** The budget covers the verdict, which is `classify_node`'s at "
+        f"2.5ms per candidate. The LLM writes the operator's explanation and "
+        f"dispositions nothing, so what bounds it is a resource limit, not a "
+        f"promise.",
         "",
         "Latency here is **service time**: Ollama's `total_duration` less "
         "`load_duration`. It is not `eval_ms`. Measured on this model, "
@@ -233,19 +271,33 @@ def main() -> int:
             f"{s['mean'] / 1000:.1f}s | {s['p90'] / 1000:.1f}s | {s['max'] / 1000:.1f}s |"
         )
 
+    attempted = len(every) + over_deadline
     verdict = (
-        f"**Within budget.** p90 is {overall['p90'] / 1000:.1f}s against a "
-        f"{RESPONSE_BUDGET_S:.0f}s budget."
-        if overall["p90"] <= RESPONSE_BUDGET_S * 1000
-        else f"**Over budget.** p90 is {overall['p90'] / 1000:.1f}s against a "
-             f"{RESPONSE_BUDGET_S:.0f}s budget, and {over_budget} of {len(every)} "
-             f"calls exceeded it. WI-300 says the model is the wrong size for the "
-             f"line, not that the budget moves."
+        f"**Inside the deadline.** p90 is {overall['p90'] / 1000:.1f}s against "
+        f"{EXPLANATION_DEADLINE_S:.0f}s, and {over_deadline} of {attempted} "
+        f"calls produced no explanation."
+        if over_deadline == 0
+        else f"**Censored.** {over_deadline} of {attempted} calls hit the "
+             f"{EXPLANATION_DEADLINE_S:.0f}s deadline and wrote no explanation, "
+             f"so every figure in the table above is the distribution of the "
+             f"calls that survived. p90 of those is "
+             f"{overall['p90'] / 1000:.1f}s. A deadline this model routinely "
+             f"misses is the signal WI-300 means: change the model, not the "
+             f"number."
+    )
+    against_budget = (
+        f"Against WI-300's {RESPONSE_BUDGET_S:.0f}s response budget, for "
+        f"reference and not as the verdict: {over_budget} of {len(every)} "
+        f"explanations took longer than the budget allows a *verdict* to take. "
+        f"No verdict waited on any of them — `classify_node` had already "
+        f"produced the disposition before the reason node was entered."
     )
 
     lines += [
         "",
         verdict,
+        "",
+        against_budget,
         "",
         f"Of that service time, `eval_duration` accounts for "
         f"{statistics.fmean(evals) / 1000:.1f}s and prompt ingestion for "

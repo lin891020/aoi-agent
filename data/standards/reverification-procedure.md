@@ -58,6 +58,48 @@ The budget is a property of the station, not of the analysis method. If the
 configured model cannot meet it, the model is the wrong size for this line and
 is to be changed; the budget is not to be raised to accommodate it.
 
+### What the budget covers, and what it does not
+Revised 2026-08-23. This section as first written measured the wrong thing, and
+the correction is not "the station was slower than the document" — that is the
+direction of dependency this procedure exists to prevent, and the number above
+has not moved.
+
+The budget was written when the decision authority for an escalated region and
+the written rationale for it came out of the same step. §1 and §2 no longer read
+that way: decision authority sits with the re-verification model's calibrated
+threshold, and the automated analysis downstream of it may confirm or escalate
+and does nothing else. So this section and §1–§2 had come to describe two
+different stations, and only one of them exists. What the budget bounds is the
+**verdict** — the disposition that reaches the record and releases or holds the
+part. That is produced by the re-verification model, and nothing in the
+escalated path is consulted to produce it.
+
+The **written rationale** is a separate item with a separate character. It is a
+record entry and an aid to the operator reading the region; no part is held or
+released by it, and no queue fills behind it. It is therefore not covered by the
+response budget above, and a station that made it so would be enforcing a
+deadline on a step nobody waits for while reporting nothing about the step
+everyone does.
+
+### Rationale deadline
+The written rationale shall have its own deadline, set from measurement of the
+configured model and recorded with that measurement. It is a resource bound —
+the point past which a station stops waiting on a model and reclaims the worker
+— and not a promise to anyone, so unlike the response budget above it is
+allowed to follow the model.
+
+Where no rationale is produced within it, the following are mandatory:
+
+- the disposition stands, unchanged, and is recorded with its source as usual
+- the record shall state that no rationale is available, and why, in terms an
+  operator can read. An error string from the software is not such a statement
+- the absence shall be counted. A station shall be able to report how many of
+  its dispositions carry no written rationale, and for what reason. An automated
+  step that fails silently is one nobody fixes, and the rationale is the whole
+  of what the automated analysis still contributes
+- a rationale shall never be inferred, reconstructed or written by any other
+  means to fill the gap. An absent rationale is absent
+
 ## Records
 Every disposition is recorded with its source -- model, agent or human -- and a
 rationale. Operator corrections are the training data for the next model

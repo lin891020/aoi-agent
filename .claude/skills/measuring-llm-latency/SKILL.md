@@ -21,11 +21,25 @@ corrupt it silently, and both produce plausible-looking figures:
 Neither one raises an error. You only catch them by checking.
 
 There is now a third thing to know, and this one *does* raise an error:
-`RESPONSE_BUDGET_S` caps every call at 10 s (it was 600 s). Under contention a
-call no longer produces a slow-but-usable number — it times out and the region
-escalates. **A timeout under contention is correct behaviour, not a failed
-measurement.** Do not raise the budget to make a benchmark complete; WI-300 says
-to change the model, not the budget.
+`EXPLANATION_DEADLINE_S` caps every call at 60 s. Under contention a call no
+longer produces a slow-but-usable number — it times out, and the region is
+dispositioned with no written explanation. **A timeout under contention is
+correct behaviour, not a failed measurement.** Do not raise the deadline to make
+a benchmark complete: it is sized from the measured distribution, so raising it
+to fit a run is the run rewriting its own ruler.
+
+That constant is **not** WI-300's response budget, and it was until 2026-08-23.
+Two names now, because they are two things:
+
+| | what it is | may it follow the model? |
+|---|---|---|
+| `RESPONSE_BUDGET_S`, 10 s, `graph/flow.py` | WI-300's promise about when a *verdict* reaches the record. Met by `classify_node` at 2.5 ms | **no** — WI-300 forbids it |
+| `EXPLANATION_DEADLINE_S`, 60 s, `llm/ollama.py` | the httpx client's bound on waiting for prose nobody blocks on | yes — it is sized from measurement |
+
+Quoting `gpt-oss:20b`'s 12.5 s median against "the 10 s budget" is now the wrong
+comparison and was always the wrong conclusion: the budget is about a verdict
+the LLM does not produce. Compare a reason-node service time against
+`EXPLANATION_DEADLINE_S`.
 
 ## Procedure
 
@@ -95,8 +109,10 @@ before trusting `eval_ms` as a whole-request figure.
 - Wall time exceeds `total_duration` by more than a few percent — that gap is
   the contention tell. The `wall_ms`/`eval_ms` ratio is **not**: it sits near 2x
   on a perfectly healthy reasoning-model run.
-- A raised `RESPONSE_BUDGET_S`, or a per-call `timeout=` override, used to let a
-  slow benchmark finish
+- A raised `EXPLANATION_DEADLINE_S`, or a per-call `timeout=` override, used to
+  let a slow benchmark finish
+- A reason-node latency compared against `RESPONSE_BUDGET_S`. That budget covers
+  the verdict, which is the classifier's, not the LLM's
 
 ## Common Mistakes
 
@@ -108,14 +124,15 @@ before trusting `eval_ms` as a whole-request figure.
 
 ## What This Skill Reads From the Code
 
-This skill states facts that live in `src/aoi_agent/llm/ollama.py`. If any of
-them change, this file is wrong until someone updates it — and nothing will
+This skill states facts that live in `src/aoi_agent/llm/ollama.py`, and one that
+lives in `src/aoi_agent/graph/flow.py`. If any of them change, this file is
+wrong until someone updates it — and nothing will
 raise an error. `scripts/check_skill_freshness.py` asserts every row below.
 
 | Symbol | Stated here as |
 |---|---|
 | `KEEP_ALIVE` | `"30m"` |
-| `RESPONSE_BUDGET_S` | `10.0` |
+| `EXPLANATION_DEADLINE_S` | `60.0` |
 | `Timing.was_reloaded` | exists; tests `load_ms > Timing.RELOAD_MS` |
 | `Timing.RELOAD_MS` | `2000.0` |
 | `Timing.eval_ms` | exists |
@@ -123,6 +140,7 @@ raise an error. `scripts/check_skill_freshness.py` asserts every row below.
 | `Timing.wall_ms` | exists |
 | `OllamaClient.warm_up` | exists |
 | `OllamaClient.resident_models` | exists |
+| `RESPONSE_BUDGET_S` (in `graph/flow.py`) | `10.0`, and absent from `llm/ollama.py` |
 
 This skill is a *reference*, not a discipline rule. Its failure mode is going
 stale, not being argued around — so it is verified by the freshness check, not

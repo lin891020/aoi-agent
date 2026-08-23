@@ -34,8 +34,8 @@ from pathlib import Path
 import pytest
 
 from aoi_agent.aoi.matching import FRAGMENT_GAP_PX, IOU_THRESHOLD
-from aoi_agent.graph.flow import CONFIDENT, ESCALATE_BELOW
-from aoi_agent.llm.ollama import RESPONSE_BUDGET_S
+from aoi_agent.graph.flow import CONFIDENT, ESCALATE_BELOW, RESPONSE_BUDGET_S
+from aoi_agent.llm.ollama import EXPLANATION_DEADLINE_S
 from aoi_agent.vision.inference import DEFAULT_DISMISS_THRESHOLD, LOW_CONFIDENCE
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -51,6 +51,7 @@ CONSTANTS = {
     "ESCALATE_BELOW": ESCALATE_BELOW,
     "CONFIDENT": CONFIDENT,
     "RESPONSE_BUDGET_S": RESPONSE_BUDGET_S,
+    "EXPLANATION_DEADLINE_S": EXPLANATION_DEADLINE_S,
     "IOU_THRESHOLD": IOU_THRESHOLD,
     "FRAGMENT_GAP_PX": FRAGMENT_GAP_PX,
 }

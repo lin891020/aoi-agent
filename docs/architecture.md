@@ -162,6 +162,7 @@ table.
 | `CONFIDENT` | 0.95 | a cost gate: changes no disposition at or above `ESCALATE_BELOW`, and must not drop below it -- `scripts/threshold_sweep.py` |
 | `LOW_CONFIDENCE` | 0.70 | WI-300 escalation triggers, stated there as a floor -- `data/standards/reverification-procedure.md` |
 | `RESPONSE_BUDGET_S` | 10.0 | WI-300 response budget, derived from QP-110 -- `data/standards/reverification-procedure.md` |
+| `EXPLANATION_DEADLINE_S` | 60.0 | how long the client waits for a rationale nobody blocks on; 2.8x the slowest of 24 measured calls -- `scripts/latency_report.py` |
 | `IOU_THRESHOLD` | 0.33 | DeepPCB's own benchmark convention -- `data/DeepPCB/README.md` |
 | `FRAGMENT_GAP_PX` | 20 | measured: 6.1% of unmatched candidates touch a real defect -- `scripts/diagnose_false_calls.py` |
 
@@ -200,10 +201,42 @@ happens to the board. What it must not do is fall below `ESCALATE_BELOW`, where
 it starts confirming unreviewed regions the flow would have escalated -- 66 of
 them at 0.70. The constraint is the citation; the value inside it is a dial.
 
-The response budget is the one that most invites being quietly raised, so
-WI-300 states the direction explicitly: if the configured model cannot answer
-within it, the model is the wrong size for the line. Whether `gpt-oss:20b` fits
-inside 10s is an open measurement -- see docs/benchmarks.md.
+The last two rows look like one number split in half and are not. Until
+2026-08-23 they *were* one number: `RESPONSE_BUDGET_S` was both WI-300's promise
+to the operator and the httpx client's timeout, and the two roles pull opposite
+ways. The budget is a promise and must not follow the model; a client timeout is
+a resource bound and must follow the measurement. Held together at 10s, against
+a model whose measured service time has a median of 12.5s, more than half of the
+station's LLM calls failed by construction -- and after the LLM came off the
+decision path, writing the operator's explanation was the only job it had left.
+The queue held an escalation whose entire content was `the model did not answer
+(ReadTimeout)`, and nothing counted how many others there were.
+
+So each role now has its own name and its own justification:
+
+- **`RESPONSE_BUDGET_S`** is unchanged at 10s and still read from WI-300, which
+  still forbids raising it. It bounds the **verdict** -- the disposition that
+  holds or releases a part. That is `classify_node`, measured at 2.5ms per
+  candidate on CPU, so the budget is met with three orders of magnitude to
+  spare. It lives in `graph/flow.py` now, on the path it describes.
+- **`EXPLANATION_DEADLINE_S`** is the client's own bound on waiting for prose.
+  Nothing blocks on it: the disposition is decided from `model_class` and
+  `model_confidence`, both of which exist before the reason node is entered. It
+  is sized from the measured distribution -- 60s is 2.8x the slowest of 24 calls
+  on a verified-quiet machine -- and bounded above by the fact that a contended
+  GPU can multiply an LLM call's wall time 25x, which no deadline should absorb.
+  The previous value in that role, before 10s, was 600s: a busy GPU then meant a
+  ten-minute blocked workstation.
+
+WI-300 was corrected to say which of the two it governs. The correction is not
+"the station was slower than the document" -- that is the failure this project
+spent 2026-08-23 curing, and the budget did not move. It is that WI-300's §1 and
+§2 had already moved decision authority to the re-verification model's
+calibrated threshold when the agent layer was measured, and the Response budget
+section was not revisited, so the two sections described different stations. The
+budget bounds the verdict; the rationale is a record item with its own deadline,
+and WI-300 now requires its absence to be recorded and counted rather than
+substituted.
 
 ## Failure directions
 

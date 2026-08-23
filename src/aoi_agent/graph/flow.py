@@ -42,6 +42,26 @@ from aoi_agent.vision.inference import DEFAULT_DISMISS_THRESHOLD
 
 DEFAULT_MODEL = "gpt-oss:20b"
 
+#: Seconds within which one escalated region must have a verdict on the record.
+#:
+#: WI-300 "Response budget", derived from QP-110: analysis that takes longer
+#: than an operator would have taken to look has already spent the saving it
+#: exists to make. It is a promise about the *verdict*, and the verdict is
+#: ``classify_node`` -- 2.5ms per candidate on CPU, measured -- so the budget is
+#: met with about three orders of magnitude to spare.
+#:
+#: It lives here, on the disposition path, and not in ``llm.ollama`` where it
+#: sat until 2026-08-23 doubling as the httpx client timeout. That conflation is
+#: the defect: a promise to an operator and a resource bound on a client are
+#: different things that happened to share a number, and sharing it made a
+#: written explanation fail on more than half of the station's calls. The client
+#: bound is ``EXPLANATION_DEADLINE_S``, sized from measurement; this number is
+#: read from the work instruction and is not to be raised to accommodate a
+#: model. What the explanation deadline may not do is push a *verdict* past
+#: this: it cannot, because nothing downstream of ``classify_node`` is consulted
+#: to produce one.
+RESPONSE_BUDGET_S = 10.0
+
 #: Within the investigation branch, the classifier's confidence below which the
 #: region goes to a person.
 #:

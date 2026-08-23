@@ -92,9 +92,26 @@ def check_measuring_llm_latency() -> list[str]:
     if keep_alive != "30m":
         bad.append(f"{rel}: KEEP_ALIVE is {keep_alive!r}, skill says '30m'")
 
-    budget = _assign(tree, "RESPONSE_BUDGET_S")
+    deadline = _assign(tree, "EXPLANATION_DEADLINE_S")
+    if deadline != 60.0:
+        bad.append(
+            f"{rel}: EXPLANATION_DEADLINE_S is {deadline!r}, skill says 60.0"
+        )
+
+    # The two were one constant until 2026-08-23, and the skill's whole third
+    # section is about their being two. A ``RESPONSE_BUDGET_S`` back in the
+    # client module is that merge happening again.
+    if _assign(tree, "RESPONSE_BUDGET_S") is not None:
+        bad.append(
+            f"{rel}: RESPONSE_BUDGET_S is back in the client module -- the skill "
+            "says it lives on the disposition path in graph/flow.py, and the "
+            "defect it names is exactly the client timeout wearing that name"
+        )
+
+    flow_rel = "src/aoi_agent/graph/flow.py"
+    budget = _assign(_module(flow_rel), "RESPONSE_BUDGET_S")
     if budget != 10.0:
-        bad.append(f"{rel}: RESPONSE_BUDGET_S is {budget!r}, skill says 10.0")
+        bad.append(f"{flow_rel}: RESPONSE_BUDGET_S is {budget!r}, skill says 10.0")
 
     for member in ("wall_ms", "load_ms", "prompt_eval_ms", "eval_ms", "was_reloaded"):
         if not _has_member(tree, "Timing", member):
