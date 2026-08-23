@@ -38,24 +38,53 @@ from aoi_agent.llm.ollama import OllamaClient
 from aoi_agent.mcp_servers.classify import classify_defect
 from aoi_agent.mcp_servers.production import query_board_context, query_machine_stats
 from aoi_agent.mcp_servers.standards import search_standards
+from aoi_agent.vision.inference import DEFAULT_DISMISS_THRESHOLD
 
 DEFAULT_MODEL = "gpt-oss:20b"
 
-#: Above this the model's own class call stands without further evidence.
-CONFIDENT = 0.95
-
 #: Within the investigation branch, the classifier's confidence below which the
-#: region goes to a person. Derived the same way as
-#: ``DEFAULT_DISMISS_THRESHOLD``: the lowest threshold at which this branch adds
-#: no escape to the line's budget. See docs/benchmarks.md.
+#: region goes to a person.
 #:
-#: This used to be the LLM's own ``confident`` flag. Measured, that flag was
-#: worse than the number the classifier had already produced -- it escalated
-#: more (61.7% against 48.5%) and kept a less accurate set (91.3% against
-#: 94.9%), while its escalated set carried escapes this threshold does not.
-#: WI-300 states 0.70 for operator escalation, but 0.70 leaks eight real defects
-#: here, and the escape budget in QP-110 outranks it.
-ESCALATE_BELOW = 0.90
+#: Set equal to ``DEFAULT_DISMISS_THRESHOLD``, and that equality is the whole
+#: rule: **the agent branch may confirm a defect, it may never dismiss one.**
+#: The only way this branch can drop a real defect is ``decide_node`` writing
+#: ``dismissed``, which needs ``model_class == "false_call"``; for that class
+#: ``model_confidence`` *is* ``false_call_probability``, so the region would
+#: have to sit in the band [this threshold, the dismissal threshold). At
+#: equality that band is empty, and it is empty by construction rather than by
+#: measurement -- it stays empty through a retrain, where a swept number would
+#: have to be swept again and silently would not be.
+#:
+#: This was 0.90 until 2026-08-23, cited as "the lowest threshold adding no
+#: escape". ``scripts/threshold_sweep.py`` measured that claim for the first
+#: time and it was false twice over: the lowest such threshold on this split is
+#: 0.875, and 0.90 was not derived from the sweep at all -- it was a round
+#: number that happened to be conservative. Neither number was the one to ship;
+#: 0.875 clears the worst observed miss by 0.003, which is the test split read
+#: to three decimal places. The change costs 47 more escalations out of 8143
+#: candidates, 0.6% of the queue. See docs/benchmarks.md.
+#:
+#: WI-300 requires escalation below 0.70. That is a floor, not the operative
+#: number: used as the operative number it dismisses eight real defects here and
+#: puts the line at 0.767% against QP-110's 0.5% budget. ``LOW_CONFIDENCE``
+#: carries the floor and this constant must stay at or above it.
+ESCALATE_BELOW = DEFAULT_DISMISS_THRESHOLD
+
+#: Above this the classifier's class stands without the LLM being asked.
+#:
+#: A cost gate, not a decision gate. ``confirm_node`` and ``decide_node`` write
+#: the same verdict -- ``model_class`` -- so anywhere at or above
+#: ``ESCALATE_BELOW`` this threshold changes which path a candidate takes and
+#: not what happens to it: swept from 0.90 to 0.999 it changes zero
+#: dispositions and adds zero escapes. What it buys is the LLM's written
+#: rationale on the quality record, at one 20B-model call each.
+#:
+#: It must not fall below ``ESCALATE_BELOW``. There it stops being free and
+#: starts confirming, unreviewed, regions the flow would have handed to a
+#: person -- 66 of them at 0.70. That constraint is the citation; the value
+#: within it is a dial. ``docs/architecture.md`` cited "WI-300 decision
+#: authority" until 2026-08-23, and WI-300 states no such number.
+CONFIDENT = 0.95
 
 VERDICT_SCHEMA = {
     "type": "object",
@@ -277,6 +306,11 @@ def route_after_reason(state: ReviewState) -> str:
     unanswered call was a decision not made. Now the decision never depended on
     it, so an outage costs the operator an explanation, not a verdict, and does
     not flood the queue with every candidate on the line.
+
+    The second consequence is the one ``ESCALATE_BELOW``'s value buys: because
+    it equals the dismissal threshold, every region this edge sends to
+    ``decide`` whose class is ``false_call`` has already been dismissed
+    upstream. So this branch cannot dismiss, and cannot add an escape.
     """
     return (
         "escalate"
@@ -341,6 +375,11 @@ def decide_node(state: ReviewState) -> dict[str, Any]:
     """
     state.setdefault("trace", []).append("decide")
     verdict = state["model_class"]
+    # The ``dismissed`` arm is unreachable as the routers are set: reaching here
+    # with ``false_call`` needs a confidence above ``ESCALATE_BELOW``, which
+    # equals the dismissal threshold, and such a region was dismissed before the
+    # investigation began. It is kept so this node is correct read on its own --
+    # ``test_the_agent_branch_cannot_dismiss`` is what holds the guarantee.
     return {
         "disposition": "dismissed" if verdict == "false_call" else "defect_confirmed",
         "verdict": verdict,

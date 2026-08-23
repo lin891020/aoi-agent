@@ -146,6 +146,55 @@ def test_an_uncertain_case_gathers_evidence_and_goes_to_a_person(stub_tools):
     assert "__interrupt__" in state
 
 
+def test_the_agent_branch_cannot_dismiss():
+    """The guarantee `ESCALATE_BELOW`'s value buys, held on the routers alone.
+
+    Only two nodes can write `dismissed`. `dismiss_node` is the calibrated
+    threshold, swept and budgeted. `decide_node` is the agent branch, and it
+    would have to be swept separately -- and after every retrain, silently, or
+    it is a second unaudited place where the line's escape budget gets spent.
+
+    Setting `ESCALATE_BELOW` to the dismissal threshold removes the question
+    instead of answering it. Reaching `decide` with class `false_call` needs a
+    confidence at or above `ESCALATE_BELOW`; for that class the confidence *is*
+    `P(false call)`, so such a region was dismissed before the investigation
+    began. The band is empty by construction, and this test walks it rather
+    than trusting the argument.
+    """
+    step = 0.005
+    values = [round(i * step, 3) for i in range(int(1 / step) + 1)]
+
+    for false_call in values:
+        for confidence in values:
+            for predicted in ("false_call", "open", "short", "spur"):
+                # The classifier's own arithmetic: `confidence` is the top
+                # class's probability, so for `false_call` the two are one
+                # number, and for any other class it cannot be the smaller.
+                if predicted == "false_call" and confidence != false_call:
+                    continue
+                if predicted != "false_call" and confidence < false_call:
+                    continue
+
+                state = {
+                    "model_recommendation": (
+                        "dismiss"
+                        if false_call >= flow.DEFAULT_DISMISS_THRESHOLD
+                        else "review"
+                    ),
+                    "model_confidence": confidence,
+                    "model_class": predicted,
+                }
+                if flow.route_after_classify(state) != "investigate":
+                    continue
+                if flow.route_after_reason(state) != "decide":
+                    continue
+
+                assert flow.decide_node(state)["disposition"] != "dismissed", (
+                    f"the agent branch dismissed {predicted} at confidence "
+                    f"{confidence}, P(false call) {false_call}"
+                )
+
+
 def test_a_confident_classification_is_decided_after_the_evidence(stub_tools):
     stub_tools["classify"]["confidence"] = 0.93
     state, _ = run(flow.build_graph(StubClient(confident=True), InMemorySaver()))

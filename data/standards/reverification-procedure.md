@@ -13,15 +13,32 @@ or routed to rework.
    above the configured threshold are removed from the queue without operator
    review. The threshold is set from the operating-point analysis and may only
    be changed by quality engineering.
+
+   Dismissal is reserved to this threshold. No later stage may take a region
+   off the queue: automated analysis downstream of it confirms a defect or
+   escalates, and does nothing else. The dismissal threshold is the only place
+   in the station where the escape budget is spent, so it is the only place
+   where it can be audited.
 2. **Model-classified, high confidence.** The verdict stands and the board is
-   dispositioned per the relevant work instruction (WI-201 to WI-206).
+   dispositioned per the relevant work instruction (WI-201 to WI-206). The
+   confidence at which analysis is skipped rather than run is a cost setting,
+   not a decision: the disposition is the same either way, and what running it
+   adds is the written rationale on the record. It shall not be set below the
+   escalation threshold in §3.
 3. **Low confidence, or a conditional class near its limit.** Escalate to an
    operator. The operator's verdict is final and is recorded against the
-   candidate.
+   candidate. Like the dismissal threshold in §1, the confidence at which this
+   applies is set from the operating-point analysis and not fixed by this
+   document; it shall be at or above the floor in the escalation triggers
+   below.
 
 ## Escalation triggers
 Escalate when any of the following holds:
-- the model's top class carries confidence below 0.70
+- the model's top class carries confidence below 0.70. This is a floor, not the
+  operating threshold: escalation is mandatory below it and the configured
+  threshold is normally higher. A station escalating only below 0.70 does not
+  meet the escape budget in QP-110 — measured, it dismisses real defects the
+  analysis was never confident about
 - the top two classes are within 0.15 of each other
 - the class is `open` and the evidence is not unambiguous
 - the same coordinates were escalated on the previous panel of the same lot
