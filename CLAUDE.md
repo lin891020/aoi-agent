@@ -33,7 +33,7 @@ src/aoi_agent/
     cli.py
 scripts/                    gate_check, build_patches, train, report, seed_store,
                             analysis_eval, ...
-tests/                      547 tests; dataset-dependent ones behind `-m dataset`
+tests/                      569 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -48,12 +48,13 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 547 tests, no GPU needed, no model called
+uv run pytest                                    # 569 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
 uv run python scripts/routing_report.py          # how much never reaches the LLM
 uv run python scripts/latency_report.py          # does the reason node fit the response budget?
+uv run python scripts/reverifier_latency.py      # what one candidate costs: MPS vs CPU, cold vs warm (~7 min)
 uv run python scripts/agent_eval.py              # does the agent layer beat the classifier? (~9 min)
 uv run python scripts/analysis_eval.py           # does the planner plan the right lookups, and refuse the rest?
 uv run python scripts/analysis_eval.py --plan-only  # the same score, without the tools and the prose nobody scores
