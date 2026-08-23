@@ -605,13 +605,12 @@ explanation step needs the container to be able to reach it.
   context tools have something real to find. See `src/aoi_agent/store/seed.py`.
 - Acceptance criteria are original documents written for this project.
   IPC-A-610 and its equivalents are copyrighted and deliberately absent.
-- **Four of this project's twelve invariants are only partly guarded, and one
-  cannot be guarded at all.** `CLAUDE.md` states twelve rules that must not be
+- **Two of this project's thirteen invariants are only partly guarded, and one
+  cannot be guarded at all.** `CLAUDE.md` states thirteen rules that must not be
   quietly changed; `scripts/invariant_audit.py` reports which of them would
   actually fail a test if broken, and `tests/test_invariant_audit.py` fails when
-  one loses its guard. Seven are enforced. The operating-point rule, the
-  no-text-to-SQL rule, the fan-out rule and the official-split rule are each
-  held in part and named in full; "say what is simulated" is prose discipline
+  one loses its guard. Ten are enforced. The fan-out rule and the
+  official-split rule are each held in part and named in full; "say what is simulated" is prose discipline
   and is declared unenforceable rather than counted as passing. Every claim was
   checked by breaking the invariant and watching the suite —
   [the audit, with the mutations](docs/benchmarks.md#the-invariant-audit--which-of-this-projects-own-rules-are-unguarded).

@@ -339,6 +339,30 @@ REGISTRY: tuple[Entry, ...] = (
         ),
     ),
     Entry(
+        match="An automated disposition names what produced it",
+        status=ENFORCED,
+        tests=(
+            "tests/test_provenance.py::test_an_automated_decision_cannot_be_written_without_provenance",
+            "tests/test_provenance.py::test_a_statement_of_absence_is_not_provenance",
+            "tests/test_provenance.py::test_an_automated_decision_carries_the_weights_the_thresholds_and_the_code",
+            "tests/test_provenance.py::test_a_row_written_before_the_columns_is_not_a_row_with_no_value",
+        ),
+        note=(
+            "The write path is guarded, not just the schema: an automated row "
+            "with no attributable provenance raises. The migration's stamp is "
+            "held too, so `unrecorded` cannot silently become `NULL`."
+        ),
+        gap=(
+            "Nothing checks that the digest on a row is the digest of the "
+            "checkpoint that actually ran -- a stubbed tool can hand out any "
+            "string, and the suite does exactly that."
+        ),
+        proved_by=(
+            "Removed the guard in record_decision: 5 tests failed. Removed the "
+            "migration backfill: 2 failed."
+        ),
+    ),
+    Entry(
         match="Say what is simulated",
         status=UNENFORCEABLE,
         note=(

@@ -872,10 +872,12 @@ They are spread over 7 boards, one each, so this is a property of the detector r
 
 ### The invariant audit — which of this project's own rules are unguarded
 
-CLAUDE.md states twelve invariants. They are the part of this repository a
-reader is asked to trust and an agent is asked not to undo, and until yesterday
-nothing checked that breaking one broke anything. An outside audit found that
-**five of the twelve** would have failed a test. The worst of them was the
+CLAUDE.md stated twelve invariants when this audit was written, and states
+thirteen now -- the provenance rule was added with the work that made it true.
+They are the part of this repository a reader is asked to trust and an agent is
+asked not to undo, and until yesterday nothing checked that breaking one broke
+anything. An outside audit found that **five of the twelve** would have failed
+a test. The worst of them was the
 durability rule: it names `InMemorySaver` as the thing the checkpointer must
 never be, and it was verified by a suite in which every single test passed an
 `InMemorySaver`.
@@ -932,8 +934,10 @@ the two that remain are described under the count.
 
 #### The count
 
-**9 enforced, 2 partly enforced, 1 unenforceable.** It was 7 / 4 / 1 when the
-audit was written; the two that moved are described below.
+**10 enforced, 2 partly enforced, 1 unenforceable**, of thirteen. It was
+7 / 4 / 1 when the audit was written: two moved when their gaps were closed,
+and the thirteenth arrived enforced, because the rule and the test that holds
+it were written together.
 
 - **enforced** — breaking it fails a named test that runs in CI: the LLM off the
   decision path, the escalation direction, checkpoint durability, the

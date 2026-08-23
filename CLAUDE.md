@@ -188,6 +188,13 @@ board is back under the unscoped reading.
   docs/architecture.md.
 - **Use the official DeepPCB split.** Do not re-split; comparability matters.
 - Split train/val **by image**, never by patch -- patches from one board leak.
+- **An automated disposition names what produced it.** A `model` or `agent`
+  decision carries the checkpoint's SHA-256, the thresholds that routed it and
+  the commit that ran; `store.boards.record_decision` raises on one that does
+  not. Derived, never declared -- a `model_version` somebody must bump is worse
+  than no field, because the release it is forgotten on is the release where it
+  is wrong and looks right. The three absences (`unrecorded`, `unavailable`,
+  `unknown`) are three words and none of them is `NULL`.
 - **Say what is simulated.** Production metadata is generated with one planted
   signal; acceptance criteria are original documents, not IPC-A-610 (copyrighted,
   must stay out).

@@ -504,11 +504,10 @@ wheel。什麼都不 mount 直接跑，會得到一個對著空 queue 起來的 
   佔比排序分配到機台的，這會在某一台上種下一個具體、有記錄的訊號，好讓 context tool
   真的有東西可以找。見 `src/aoi_agent/store/seed.py`。
 - 允收標準是為這個專案寫的原創文件。IPC-A-610 之類的有版權，刻意不放進來。
-- **這個專案的十二條不變式裡，有四條只守住一半，還有一條根本守不住。**
-  `CLAUDE.md` 列了十二條不能被悄悄改掉的規則；`scripts/invariant_audit.py` 會報出
+- **這個專案的十三條不變式裡，有兩條只守住一半，還有一條根本守不住。**
+  `CLAUDE.md` 列了十三條不能被悄悄改掉的規則；`scripts/invariant_audit.py` 會報出
   哪幾條真的會在被違反時讓測試失敗，而 `tests/test_invariant_audit.py` 會在某一條
-  失去守衛時掛掉。七條有守。operating-point 那條、no-text-to-SQL 那條、fan-out 那條
-  和官方 split 那條各自只守住一部分，而且逐條寫明守住的是哪一部分；「說清楚哪些是
+  失去守衛時掛掉。十條有守。fan-out 那條和官方 split 那條各自只守住一部分，而且逐條寫明守住的是哪一部分；「說清楚哪些是
   模擬的」是散文紀律，被明確宣告為無法測試，而不是算它通過。每一格都是真的去破壞
   那條規則、跑完整套測試得出來的 ——
   [稽核結果](docs/benchmarks.md#the-invariant-audit--which-of-this-projects-own-rules-are-unguarded)。
