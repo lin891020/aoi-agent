@@ -248,9 +248,24 @@ table.kv td { padding: 0.15rem 0; vertical-align: top; }
    disappearing, because it is the mark that says which row is still running.
    Nothing here is the only carrier of state: `#progress-head` says the phase
    in words, and it is the element a screen reader is given. */
-.spin { display: inline-block; color: var(--accent); }
+/* A ring, not a turning glyph. `⟳` was a character being rotated, and a
+   character's optical centre is not its bounding box's centre -- so it wobbled
+   about a point slightly off itself, which is what made it read as amateur
+   rather than as busy. Every interface that does this well draws a circle and
+   turns that: the geometry is symmetric, so there is nothing to wobble.
+
+   Sized in `em` so it tracks the text it sits beside, and given `currentColor`
+   for the faint part so it works on either theme without a second rule. */
+.spin {
+  display: inline-block;
+  width: 0.8em; height: 0.8em;
+  border: 2px solid color-mix(in srgb, currentColor 22%, transparent);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  vertical-align: -0.08em;
+  animation: aoi-spin 0.7s linear infinite;
+}
 @keyframes aoi-spin { to { transform: rotate(360deg); } }
-.spin { animation: aoi-spin 1.6s linear infinite; }
 
 /* The run, drawn: planning, the branches the plan fanned out into, the join,
    and the answer being written. Parallel because the lookups are independent
@@ -282,6 +297,8 @@ table.kv td { padding: 0.15rem 0; vertical-align: top; }
      active stage keeps a heavier accent outline instead of breathing, so a
      reader who turns animation off loses the movement and nothing else --
      the seconds still count and the words still change. */
+  /* Still a ring, and still three-quarters of one: stopped, it reads as
+     waiting rather than as finished. The movement goes, the state stays. */
   .spin { animation: none; }
   .flow-box.is-active { animation: none; stroke-width: 2.4; }
 }

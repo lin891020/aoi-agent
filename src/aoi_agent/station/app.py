@@ -133,10 +133,19 @@ def _strings_for(context, prefix: str) -> str:
     request = context.get("request")
     locale = getattr(request.state, "locale", None) if request is not None else None
     table = STRINGS[normalise(locale)]
-    encoded = json.dumps(
-        {key: value for key, value in table.items() if key.startswith(prefix)},
-        ensure_ascii=False,
+    return _script_json(
+        {key: value for key, value in table.items() if key.startswith(prefix)}
     )
+
+
+def _script_json(value: object) -> Markup:
+    """JSON for a `<script type="application/json">` block.
+
+    Kept in one function because the safety is the encoding rather than the
+    marking, and two call sites encoding it two ways is how one of them stops
+    being safe.
+    """
+    encoded = json.dumps(value, ensure_ascii=False)
     # A `<script>` element's content is raw text: HTML entities inside it are
     # not decoded, so Jinja's autoescaping would put `&quot;` where the quotes
     # belong and `JSON.parse` would fail on every page. It has to go out
@@ -595,6 +604,35 @@ EXAMPLE_QUESTIONS = [
 ]
 
 
+def _flow_events(run: dict) -> list[dict]:
+    """A finished run, as the event sequence the flow view reads.
+
+    Rebuilt rather than stored: the events were never a record, the plan and
+    the results are, and a second copy of them in another shape would be a
+    second thing to keep true.
+    """
+    plan = run.get("plan") or {}
+    calls = plan.get("calls") or []
+    events: list[dict] = [{
+        "event": "plan",
+        "data": {"interpretation": plan.get("interpretation", ""),
+                 "calls": [{"tool": c.get("tool", ""), "args": c.get("args") or {}}
+                           for c in calls]},
+    }]
+    for position, result in enumerate(run.get("results") or []):
+        events.append({"event": "tool", "data": {
+            "tool": result.get("tool", ""),
+            "args": result.get("args") or {},
+            "ok": bool(result.get("ok")),
+            "elapsed_ms": result.get("elapsed_ms", 0),
+            "position": result.get("position", position),
+        }})
+    if calls and not run.get("refused"):
+        events.append({"event": "synthesising", "data": {}})
+    events.append({"event": "done", "data": {"run_id": run.get("id")}})
+    return events
+
+
 def _analysis_context(run: dict | None) -> dict:
     """Everything ``analysis.html`` renders, for both of its entrances.
 
@@ -636,6 +674,12 @@ def _analysis_context(run: dict | None) -> dict:
         # How many of the rows are fields the tool returned. The overflow
         # note is a row but not an item, and the summary counted it.
         "shown_count": shown_count,
+        # The same events the live panel was fed, rebuilt from what was
+        # stored. The diagram is a pure function of them, so a run reopened
+        # next quarter draws the shape its plan actually took rather than
+        # nothing at all -- and the fan-out stops being visible only to
+        # whoever happened to be watching for those twenty-five seconds.
+        "flow_events": _script_json(_flow_events(run)) if run else None,
         # The answer's Markdown, as blocks of spans. A callable for the same
         # reason as `readable_data`: the parsing is the boundary and it lives in
         # Python. What comes back is structure with no field a tag could travel

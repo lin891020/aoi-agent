@@ -42,7 +42,7 @@
      the bound reaches a listener without a per-second reading. #}
   <div class="progress" id="progress" hidden>
     <p class="phase">
-      <span class="spin" id="progress-mark" aria-hidden="true">⟳</span>
+      <span class="spin" id="progress-mark" aria-hidden="true"></span>
       <span class="label" id="progress-head" role="status" aria-live="polite"
             ><span id="progress-phase">{{ t('flow.phase.planning') }}</span
             ><span class="sr-only" id="progress-since"></span></span>
@@ -158,6 +158,12 @@
          see it is not being asked to take the parallel figure on trust.
          This is not a saving: the two model calls either side cost around
          twenty-five seconds whatever these do. #}
+      {# The shape the run actually took, on the page that keeps it. It was
+         only ever on screen while the stream was live, so the one picture that
+         shows the plan fanning out was visible to whoever happened to be
+         watching and to nobody afterwards. Drawn from `plan` and `results`,
+         which are the record; the events are rebuilt, not stored. #}
+      <div class="flow" id="run-flow" aria-hidden="true"></div>
       <p class="sub dim">{{ t('analysis.s4_timings',
         tools=run.results|length,
         wall='%.0f'|format(run.timings.tools_wall or 0),
@@ -233,7 +239,21 @@
    needs `"`; what makes that safe is that it has already replaced `<`, `>` and
    `&` with `\uXXXX`, so no string in the table can close this element. #}
 <script type="application/json" id="flow-strings">{{ strings_for('flow.') }}</script>
+{% if flow_events %}<script type="application/json" id="run-events">{{ flow_events }}</script>{% endif %}
 <script src="/static/flow.js"></script>
+<script>
+  // The stored run's diagram. Its own listener rather than a branch inside the
+  // live one: that script returns early on a plain GET, which is exactly the
+  // request this draws for.
+  (function () {
+    var data = document.getElementById('run-events');
+    var host = document.getElementById('run-flow');
+    if (!data || !host) return;
+    var strings = document.getElementById('flow-strings');
+    if (strings) AoiFlow.setStrings(JSON.parse(strings.textContent));
+    AoiFlow.render(AoiFlow.mount(host), AoiFlow.model(JSON.parse(data.textContent)));
+  }());
+</script>
 <script>
   // Enhancement only: with JavaScript off the form posts and the server
   // renders the finished page. With it on, the same run streams its progress
@@ -285,7 +305,7 @@
     since.textContent = '';
     asked.textContent = '';
     mark.className = 'spin';
-    mark.textContent = '⟳';
+    mark.textContent = '';
 
     // Every event received, in arrival order. The flow view is a pure
     // function of this list -- see flow.js -- so there is no second copy of
@@ -328,7 +348,7 @@
       // phase it is attached to.
       since.textContent = say('flow.since', { seconds: seconds() });
       mark.className = AoiFlow.running(state) ? 'spin' : '';
-      mark.textContent = AoiFlow.running(state) ? '⟳' : (state.stopped ? '✗' : '✓');
+      mark.textContent = AoiFlow.running(state) ? '' : (state.stopped ? '✗' : '✓');
       AoiFlow.render(svg, state);
       if (!AoiFlow.running(state)) stopTimer();
     }
@@ -356,7 +376,7 @@
         var glyph = document.createElement('span');
         glyph.className = 'spin';
         glyph.setAttribute('aria-hidden', 'true');
-        glyph.textContent = '⟳';
+        glyph.textContent = '';
         var text = document.createElement('span');
         text.className = 'row-text';
         text.textContent = call.tool;

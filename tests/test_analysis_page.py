@@ -991,3 +991,39 @@ def test_reduced_motion_keeps_the_state_and_drops_only_the_movement(client):
     assert ".spin { animation: none; }" in reduced
     assert "display: none" not in reduced, "the state must survive the query"
     assert "stroke-width" in reduced, "the active stage stays distinguishable"
+
+
+def test_a_stored_run_still_shows_the_shape_its_plan_took(client, monkeypatch):
+    """The diagram outlives the twenty-five seconds it was drawn during.
+
+    It lived only in the live progress panel, so the one picture that shows a
+    plan fanning out was visible to whoever happened to be watching a stream
+    and to nobody afterwards -- including anybody opening the run later, which
+    is what a stored run is for. Rebuilt from `plan` and `results`, which are
+    the record; the events were never stored and are not now.
+    """
+    run_id = client.post("/ask", data={"question": "M22 正常嗎"},
+                         follow_redirects=True).url.path.rsplit("/", 1)[-1]
+    page = client.get(f"/ask/{run_id}").text
+
+    assert 'id="run-flow"' in page, "somewhere to draw it"
+    events = json.loads(page.split('id="run-events">')[1].split("</script>")[0])
+    kinds = [e["event"] for e in events]
+
+    assert kinds[0] == "plan" and kinds[-1] == "done"
+    assert "synthesising" in kinds, "the join, so the diagram ends complete"
+    assert kinds.count("tool") == len(PLAN["calls"])
+
+
+def test_the_waiting_mark_is_drawn_rather_than_typed(client):
+    """`⟳` was a character being rotated, and a character's optical centre is
+    not its bounding box's centre -- so it turned about a point slightly off
+    itself. A circle has nothing to wobble."""
+    page = client.get("/ask").text
+    css = client.get("/static/style.css").text
+
+    rule = css.split(".spin {")[1].split("}")[0]
+
+    assert "⟳" not in page, "no glyph reaches the document"
+    assert "border-radius: 50%" in rule and "border-top-color" in rule
+    assert "content:" not in rule, "and none is put back through CSS"
