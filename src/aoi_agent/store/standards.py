@@ -39,13 +39,21 @@ from pathlib import Path
 # how onnxruntime enters this process -- this module is the only door to either.
 # onnxruntime has Microsoft's 1DS "OneCollector" telemetry client statically
 # linked into its wheel -- the macOS one this is developed on and the manylinux
-# one CI installs, both -- and constructs it at import: two threads, one of them
-# an HTTP uploader posting to mobile.events.data.microsoft.com. Nothing joins
-# that uploader at exit. If a response lands while the C++ static destructors are
-# running, its `DebugEventSource` locks a recursive_mutex that has already been
-# destroyed, throws `system_error` on a thread with no handler, and the process
-# aborts -- after every test has passed. It cost this suite a 60% abort rate
-# (6 of 10 full runs) and exit 134 on a green CI job.
+# one CI installs and the container runs, all three -- and constructs it at
+# import: an HTTP uploader posting to mobile.events.data.microsoft.com, two
+# threads on macOS and one on manylinux. Nothing joins that uploader at exit. If
+# a response lands while the C++ static destructors are running, its
+# `DebugEventSource` locks a recursive_mutex that has already been destroyed,
+# throws `system_error` on a thread with no handler, and the process aborts --
+# after every test has passed. It cost this suite a 60% abort rate (6 of 10 full
+# runs) and exit 134 on a green CI job.
+#
+# The switch was measured on all three: with it set, `import onnxruntime` starts
+# zero threads on macOS, on manylinux x86_64 and on manylinux aarch64. CI's
+# first run said otherwise and CI was right to be believed and wrong -- the
+# thread it counted was numpy's OpenBLAS pool, which starts `nproc - 1` workers
+# on Linux and none on macOS. See tests/test_onnx_telemetry.py, which now
+# measures this import on its own and calibrates against telemetry left on.
 #
 # This is the only lever that removes the thread rather than quieting it. The
 # Python API, `onnxruntime.disable_telemetry_events()`, runs after import and so
