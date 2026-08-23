@@ -31,8 +31,24 @@ uv run python scripts/report.py                           # reads test_predictio
                                                           # -> docs/benchmarks.md
 # --- THRESHOLD GATE: see below, do not skip ---
 uv run python scripts/routing_report.py                   # imports the threshold constant
-uv run pytest                                             # 54 tests
+uv run python scripts/escape_accounting.py                # the whole-line escape rate
+uv run pytest
 ```
+
+`escape_accounting.py` is in the chain because it runs the model: it re-derives
+the whole-line escape rate by asking, per defect, whether anything was flagged
+on it and what the re-verifier then did with every candidate covering it. A new
+checkpoint moves that number and nothing else recomputes it.
+
+**`report.py` does not produce a whole-line figure and must not be made to.** It
+had a `--aoi-escape-rate` argument until 2026-08-23, defaulting to 0.050, into
+which the operator was expected to hand-carry `build_patches.py`'s
+unmatched-at-IoU-0.33 print. That print is a box-tightness statistic — 150 of
+the 157 "missed" defects on the test split have a candidate sitting on them —
+and composing it with the model's escape rate published 5.4% for a line that
+escapes 0.61%. Anything reading `test_predictions.npz` is working from
+candidates with every `fragment` already dropped, and cannot see whether a
+defect was flagged at all.
 
 **Both splits or neither.** `train.py` loads `trainval.npz` and `test.npz`
 together. Rebuilding one and not the other trains a new model against old test
@@ -91,3 +107,4 @@ differencing stage: changing it invalidates the gate check too.
 | Run `routing_report.py` before updating the constant | Reports the previous model's routing split. |
 | Quote "96.5% accuracy" as the headline | Violates the operating-point invariant. |
 | Benchmark LLM latency while training runs | `train.py` holds MPS. See the `measuring-llm-latency` skill. |
+| Quote an IoU miss rate as an escape rate | Off by 8x. A defect whose candidate drew a looser box is reviewed, not escaped. |

@@ -109,9 +109,18 @@ def system_escape_rate(
 ) -> float:
     """Total share of defects that reach the customer.
 
-    The re-verification model only ever sees what the AOI stage flagged. Any
-    defect the AOI missed is already gone, and no threshold recovers it. The
-    honest number for the line is the union of both stages.
+    ``aoi_stage_escape_rate`` must be the share of defects the AOI stage put
+    *no candidate on at all*. Those are gone -- the pixels never reach the
+    classifier, so no threshold recovers them -- and the honest number for the
+    line is the union of that with what the model then dismisses.
+
+    It is not the share of defects that failed an IoU cut. Both this project's
+    published 5.4% and the sentence that justified it came from feeding a
+    box-tightness statistic in here: on the test split 150 of the 157 defects
+    counted "missed" at IoU 0.33 have a candidate sitting on them, the model
+    keeps almost all of them, and an operator sees the region. The arithmetic
+    below was never the problem. See `scripts/escape_accounting.py`, which is
+    the only thing in this repository entitled to call this function.
     """
     caught_by_aoi = 1.0 - aoi_stage_escape_rate
     return aoi_stage_escape_rate + caught_by_aoi * reverification_escape_rate

@@ -78,6 +78,10 @@ them: a plain template-differencing detector — the same principle real AOI use
 boxes labels each one as a genuine defect or a false call.
 
 Measured on the full trainval split: 95.3% recall, 7.07 false calls per board.
+That recall is DeepPCB's own IoU 0.33 convention and is a box-tightness figure
+as much as a detection one — on the test split the detector puts a candidate on
+99.78% of defects and merely draws a looser box than the annotator on many of
+them. Both numbers are in [docs/benchmarks.md](docs/benchmarks.md).
 
 Candidates that merely *fragment* a real defect are held out rather than
 labelled spurious. Measurement showed those to be 6.1% of unmatched boxes, and
@@ -247,10 +251,21 @@ explanation step needs the container to be able to reach it.
 
 ## Known limits
 
-- **The AOI stage dominates the escape rate.** The simulator misses 5.0% of
-  defects outright, against 0.47% added by the re-verifier — 5.4% for the line
-  as a whole. Improving the model past this point buys nothing until the
-  detector's recall improves.
+- **The whole-line escape rate is 0.61%, and it is two numbers rather than
+  one.** 0.22% of defects (7 of 3,140 on the test split) have no candidate on
+  them at all — nothing recovers those. A further 0.38% are flagged and then
+  dismissed by the re-verifier, which is what the dismissal threshold governs.
+  See [the accounting](docs/benchmarks.md#whole-line-escape-rate-recounted-on-defects-instead-of-boxes).
+
+  This bullet read "the simulator misses 5.0% of defects outright, against 0.47%
+  added by the re-verifier — 5.4% for the line as a whole" until 2026-08-23, and
+  said the AOI stage dominated. It does not. The 5.0% was the share of defects
+  whose best candidate failed DeepPCB's IoU 0.33 cut, and 150 of those 157 have
+  a candidate sitting on them — the detector found them and drew a box a median
+  0.51× the size of the annotator's. Measured with the model in the loop, 145 of
+  the 150 reach an operator. A box-tightness statistic was being published as a
+  detection failure, and the sentence that carried it — "already gone and no
+  threshold recovers them" — was true of seven defects and applied to 157.
 - Escapes concentrate in the `open` class (1.35% at the ≤0.5% budget) — thin
   breaks in a trace, the hardest thing to tell from a registration artefact.
   The flow routes every `open` to investigation regardless of confidence for

@@ -19,7 +19,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from aoi_agent.vision.operating_point import (  # noqa: E402
     best_at_escape_budget,
     sweep,
-    system_escape_rate,
 )
 
 BUDGETS = [0.001, 0.0025, 0.005, 0.01, 0.02, 0.05]
@@ -38,12 +37,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--predictions", type=Path, default=Path("models/test_predictions.npz")
-    )
-    parser.add_argument(
-        "--aoi-escape-rate",
-        type=float,
-        default=0.050,
-        help="share of defects the AOI simulator never flagged on the test split",
     )
     parser.add_argument("--out", type=Path, default=Path("docs/benchmarks.md"))
     args = parser.parse_args()
@@ -101,18 +94,20 @@ def main() -> int:
     emit()
 
     if headline:
-        total = system_escape_rate(headline.escape_rate, args.aoi_escape_rate)
         emit("### Whole-line escape rate")
         emit()
-        emit("The model only sees what the AOI stage flagged. Defects the AOI never")
-        emit("caught are already gone and no threshold recovers them.")
+        emit("Not computed here. This script reads `test_predictions.npz`, which")
+        emit("holds one row per *candidate* and excludes every candidate labelled")
+        emit("`fragment` -- so it cannot see whether anything was flagged on a")
+        emit("given defect, which is exactly the question a line escape rate asks.")
+        emit("Composing one from an AOI miss rate handed in on the command line is")
+        emit("what produced the 5.4% this project published until 2026-08-23, and")
+        emit("that number was wrong by an order of magnitude.")
         emit()
-        emit(f"- AOI stage misses: **{args.aoi_escape_rate:.1%}** of defects")
-        emit(f"- re-verification adds: {headline.escape_rate:.2%} of what reached it")
-        emit(f"- **whole line: {total:.1%}**")
-        emit()
-        emit("The AOI stage dominates. Tuning the model past this point buys nothing")
-        emit("until the detector's recall improves.")
+        emit("Run `scripts/escape_accounting.py`. It accounts per defect rather")
+        emit("than per box, with the model in the loop, and reports the two figures")
+        emit("separately: what the dismissal threshold governs, and what nothing")
+        emit("recovers.")
         emit()
 
         emit("### Where the escapes are")

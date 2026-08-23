@@ -21,7 +21,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from aoi_agent.aoi.matching import match  # noqa: E402
+from aoi_agent.aoi.matching import IOU_THRESHOLD, match  # noqa: E402
 from aoi_agent.aoi.simulator import DetectorConfig, detect  # noqa: E402
 from aoi_agent.data.deeppcb import CLASS_NAMES, FALSE_CALL, load_split  # noqa: E402
 from aoi_agent.vision.patches import PATCH_SIZE, PatchSet, patches_for_image  # noqa: E402
@@ -98,9 +98,14 @@ def main() -> int:
     for name in LABEL_NAMES:
         print(f"{name:<12} {counts[name]:>7} {counts[name] / total:>7.1%}")
     print()
-    print(f"AOI-stage escapes: {missed_total}/{annotation_total} "
-          f"({missed_total / annotation_total:.1%}) -- defects the simulator never "
-          f"flagged, which no re-verification model can recover")
+    print(f"unmatched at IoU {IOU_THRESHOLD}: {missed_total}/{annotation_total} "
+          f"({missed_total / annotation_total:.1%})")
+    print("  A box-tightness figure, not an escape rate. Most of these defects "
+          "have a candidate sitting on them that simply drew a looser box; it is "
+          "labelled `fragment` and held out of the patch set, which is why they "
+          "read as missed here. This line was quoted as a 5.0% AOI escape rate "
+          "until 2026-08-23, when the same split measured 0.22%. For the escape "
+          "rate run scripts/escape_accounting.py.")
     print(f"wrote {out} ({out.stat().st_size / 1e6:.1f} MB)")
     return 0
 
