@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from aoi_agent.i18n import DEFAULT_LOCALE
 from aoi_agent.store import analysis as store
 
 
@@ -37,7 +38,9 @@ def in_plan_order(results: list[dict]) -> list[dict]:
     return sorted(results, key=lambda r: r.get("position", 0))
 
 
-def persist_run(state: dict, question: str, asked_by: str | None) -> int:
+def persist_run(
+    state: dict, question: str, asked_by: str | None, asked_lang: str | None = None
+) -> int:
     """Write one finished run to the store, and return its id."""
     return store.save_run(
         question=question,
@@ -48,10 +51,21 @@ def persist_run(state: dict, question: str, asked_by: str | None) -> int:
         timings=state.get("timings_ms") or {},
         refused=bool(state.get("refused")),
         asked_by=asked_by,
+        # The language the plan was written in, which is what makes the page
+        # able to say that section 1 is a record rather than a rendering.
+        asked_lang=asked_lang,
     )
 
 
-def answer_question(graph, question: str, asked_by: str | None = "operator") -> dict[str, Any]:
+def answer_question(
+    graph,
+    question: str,
+    asked_by: str | None = "operator",
+    asked_lang: str | None = None,
+) -> dict[str, Any]:
     """Run one question through the analysis graph and persist the result."""
-    state = graph.invoke({"question": question, "results": [], "timings_ms": {}})
-    return store.get_run(persist_run(state, question, asked_by))
+    state = graph.invoke({
+        "question": question, "results": [], "timings_ms": {},
+        "lang": asked_lang or DEFAULT_LOCALE,
+    })
+    return store.get_run(persist_run(state, question, asked_by, asked_lang))

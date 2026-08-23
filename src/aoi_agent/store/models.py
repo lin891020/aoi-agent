@@ -341,6 +341,31 @@ class AnalysisRun(Base):
 
     asked_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
+    asked_lang: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    """The language the question was asked in, and therefore the language the
+    plan was written in.
+
+    A record, not a preference. `interpretation`, `assumptions` and every
+    `why` in `plan_json` came out of the planning call, and the planning call
+    is not re-run -- so what they say is what happened, in the language it
+    happened in, and the page labels them rather than rewriting them.
+
+    Rows written before this column read `unrecorded`, stamped by the
+    migration. `NULL` would have to mean both "predates the column" and "the
+    language was not captured", and only the first is true of them."""
+
+    answers_json: Mapped[str | None] = mapped_column(String, nullable=True)
+    """The synthesised answer, per language: ``{"zh-TW": "...", "en": "..."}``.
+
+    The one thing on this page that *is* re-derivable. A language it does not
+    hold yet is written by running the synthesis node again over the stored
+    `results_json` -- the same measured path, never a translation of what is
+    already here, and never a re-plan. See `analysis/service.py`.
+
+    `answer` above is unchanged and still holds the version the run was
+    created with, which is what every reader written before this column
+    expects."""
+
 
 def make_engine(url: str | None = None):
     return create_engine(url or DATABASE_URL, future=True)
@@ -367,6 +392,7 @@ ADDED_COLUMNS: dict[str, dict[str, str]] = {
         "reviewer_auth": "VARCHAR(16)",
     },
     "escalations": {"explanation_status": "VARCHAR(16)"},
+    "analysis_runs": {"asked_lang": "VARCHAR(16)", "answers_json": "TEXT"},
 }
 
 #: Columns whose ``NULL`` would mean two different things, and the value that
@@ -398,6 +424,19 @@ BACKFILL_ON_ADD: dict[str, dict[str, str]] = {
         # migration stamps the first meaning and ``record_decision`` writes
         # ``automated`` for the second.
         "reviewer_auth": UNRECORDED,
+    },
+    "analysis_runs": {
+        # Same argument once more. A run stored before the station had two
+        # languages was answered in whichever one the page was written in at
+        # the time, and that is not recoverable from the row -- but "nobody
+        # recorded the language" and "this run has no language" would otherwise
+        # be the same NULL, and only the first is true.
+        #
+        # `answers_json` is deliberately *not* backfilled. Copying `answer`
+        # into it under a guessed key would assert the language the stamp above
+        # says was never recorded, and would make a re-synthesis in the other
+        # language look like it already existed.
+        "asked_lang": UNRECORDED,
     },
 }
 

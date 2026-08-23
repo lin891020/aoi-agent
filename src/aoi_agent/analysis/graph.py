@@ -56,6 +56,12 @@ __all__ = ["AnalysisState", "PLANNABLE_TOOLS", "build_analysis_graph"]
 
 class AnalysisState(TypedDict, total=False):
     question: str
+    #: The language to write in. Set from the asker's locale and then frozen
+    #: onto the run: what the planning call produces is a record of what
+    #: happened, and a record does not get rewritten when somebody changes the
+    #: switch. Only the synthesised answer is produced again -- see
+    #: `analysis/service.py`.
+    lang: str
     plan: dict | None
     plan_errors: list[str]
     refused: bool

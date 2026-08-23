@@ -275,6 +275,17 @@ async def require_operator(request: Request, call_next):
     return await call_next(request)
 
 
+def locale_of(request: Request) -> str:
+    """The language this request is being read in.
+
+    `getattr` with a fallback, like `operator_of` below and `_t` above: the
+    middleware sets it on every real request, and a route driven directly --
+    which the stream tests do, because `TestClient.stream` buffers the whole
+    body -- should still produce a run rather than an `AttributeError`.
+    """
+    return normalise(getattr(request.state, "locale", None))
+
+
 def operator_of(request: Request) -> ReviewerIdentity:
     """The identity a decision written on this request carries.
 
@@ -653,7 +664,8 @@ def ask(request: Request, question: str = Form(...)):
     if not question.strip():
         raise HTTPException(400, "a question is required")
     run = analysis_service.answer_question(
-        analysis_graph(), question.strip(), operator_of(request).name
+        analysis_graph(), question.strip(), operator_of(request).name,
+        asked_lang=locale_of(request),
     )
     return RedirectResponse(f"/ask/{run['id']}", status_code=303)
 
@@ -724,6 +736,10 @@ def ask_stream(request: Request, question: str):
     # parameter with a default, which meant the name beside a stored question
     # was whatever the caller typed into a URL.
     asked_by = operator_of(request).name
+    # Read here rather than inside `stream()`: the generator outlives the
+    # request object's convenient lifetime, and the language a run is recorded
+    # under has to be the one the asker was reading.
+    asked_lang = locale_of(request)
 
     def stream():
         graph = analysis_graph()
@@ -834,7 +850,8 @@ def ask_stream(request: Request, question: str):
             # completion order, so the normalising that puts the results back
             # in plan order lives with the write rather than in whichever of
             # the two callers remembered it.
-            run_id = analysis_service.persist_run(state, question.strip(), asked_by)
+            run_id = analysis_service.persist_run(
+                state, question.strip(), asked_by, asked_lang=asked_lang)
         except Exception as error:  # noqa: BLE001 -- the stream must close cleanly
             yield _sse("error", {"message": f"{type(error).__name__}: {error}"})
             return

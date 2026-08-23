@@ -82,13 +82,25 @@ import pytest  # noqa: E402,F811
 from fastapi.testclient import TestClient  # noqa: E402
 
 from aoi_agent.station import app as station_app  # noqa: E402
+from aoi_agent.store.models import create_all, make_session_factory  # noqa: E402
 from conftest import read_in, sign_in  # noqa: E402
 
 TEMPLATES = pathlib.Path(station_app.__file__).parent / "templates"
 
 
 @pytest.fixture
-def client(operators):
+def client(tmp_path, monkeypatch, operators):
+    """A station on a store of its own.
+
+    Without the redirect below this fixture reached the developer's real
+    `data/aoi_agent.db` -- which passed until the schema moved under it, and
+    would have been writing test rows into a store holding operator
+    corrections the whole time.
+    """
+    url = f"sqlite:///{tmp_path / 'a.db'}"
+    create_all(url)
+    monkeypatch.setattr("aoi_agent.store.boards._session_factory",
+                        make_session_factory(url))
     return sign_in(TestClient(station_app.app))
 
 
