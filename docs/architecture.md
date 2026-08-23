@@ -9,6 +9,7 @@
 | MCP tools | expose the model, the production store and the criteria as callable functions | choose which of themselves to call, or answer about one defect class out of another's document |
 | LangGraph flow | route on confidence, gather evidence, hand over to a person | contain domain rules that belong in the work instructions |
 | Review station | show a person the evidence the agent had, and take their answer | re-run the flow to render a page, or show the ground truth |
+| The store | be the record: what was decided, by what, under which weights and thresholds | accept an automated decision that names none of them, or let one absence stand for two |
 | Local LLM | explain to an operator why a region reached them | decide anything -- measured worse than the classifier at both the class and the hand-off |
 | Analysis planner (LLM) | turn a supervisor's question into a typed plan of tool calls, or refuse it | run anything, choose a chart, or answer from its own knowledge |
 | Plan validator | reject a tool, argument or value that does not exist, before any of it runs | retry, or repair a plan on the model's behalf |
@@ -82,6 +83,122 @@ other order drops an operator's verdict silently.
 The station reads the suspended state rather than re-running the flow. Re-running
 would spend another 20B-model inference and could hand back a different rationale
 than the one on the operator's screen.
+
+## What a decision names
+
+A customer returns a batch and the auditor asks three questions: who decided
+this board was fine, when, and on what basis. Until 2026-08-23 this store could
+answer none of them. It held 9,140 decisions, each naming a verdict and a
+source -- `model`, `agent` or `human` -- and nothing about the weights, the
+operating point or the code that produced it. There was also no row anywhere
+about a *board*, which is the thing a line ships.
+
+That is not only an audit problem. A decision you cannot attribute to a model
+version and a threshold is a decision you cannot revisit, and "which model
+produced these dispositions" is the first question asked when a metric moves.
+
+Three things are recorded, and all three are **derived rather than declared**:
+
+| what | where it comes from | why not the obvious thing |
+|---|---|---|
+| `model_digest` | SHA-256 of the checkpoint file, first 16 hex | not the path: `models/reverifier.pt` is a slot every training run overwrites. Not a `model_version` string: a field somebody must remember to bump is worse than no field, because the release it is forgotten on is the release where it is wrong and looks right |
+| `thresholds_json` | the constants the flow routed on | the same weights disposition differently at a different operating point, and the operating point is the half that moves -- `ESCALATE_BELOW` moved on 2026-08-23 |
+| `code_version` | `git rev-parse`, `+dirty` where the tree has changes | read from the tree, not kept in a constant. `AOI_AGENT_CODE_VERSION` covers a container that ships no `.git`; failing both, `unknown` |
+
+The digest is computed once, when `ReVerifier` loads the checkpoint, and travels
+out of `classify_defect` with the reading. It goes into the **graph state**, so
+it is checkpointed with the run and comes back with it: an escalation answered a
+week after a retrain is attributed to the weights that raised it, not to
+whatever is on disk that morning.
+
+The columns are storage. The mechanism is `store.boards.record_decision`, which
+raises on a `model` or `agent` row that names no model. An operator's answer is
+never refused for want of it -- a run checkpointed before this existed resumes
+carrying none, and their label is the scarcest thing in the system.
+
+Three absences, three words, and none of them is `NULL`:
+
+| value | means |
+|---|---|
+| `unrecorded` | the row predates the columns. Stamped by the migration, at the one moment "written before provenance existed" is knowable without guessing |
+| `unavailable` | written after the columns existed and still could not name the model -- an operator's answer resumed from an older checkpoint |
+| `unknown` | the code version could not be read: no git, no build stamp |
+
+`NULL` therefore means nothing at all, and `tests/test_provenance.py` says so.
+Folding these into one word, or into `NULL`, is the defect
+`explanation_status` was fixed for in miniature: an absence that reads like a
+value gets counted as one.
+
+## What happened to the board
+
+Every other table records a judgement about a *region*. `board_dispositions` is
+the one that answers for a board, and it holds the smallest thing that answers
+the auditor: released or held, when, on whose authority, under which model, and
+the counts it was computed from.
+
+```
+  candidates ── latest decision each ──┐
+  escalations (pending) ───────────────┤
+                                       ▼
+                             released | held
+                                       │
+                            board_dispositions
+```
+
+The rule is deliberately dull. A region's fate is its **latest** decision,
+because decisions accumulate and an operator's correction is a second row
+rather than an edit of the first. A region with no decision, or one still on the
+queue, is pending. A region whose latest verdict is anything but `false_call` is
+confirmed. A board with any confirmed or any pending region is **held**;
+otherwise it is **released**.
+
+Both reasons to hold are one state because the line does the same thing with
+them, and the counts on the row say which it was. The pending half is the one
+that matters: aggregating over decisions alone comes back clean while a person
+is still holding the region that would have stopped the board. "Nobody has
+looked at it yet" is not a release.
+
+Rows accumulate the way decisions do -- held on Monday, released on Tuesday
+after an operator answered, is two rows and the pair is the record. Written when
+a board reaches a settled state: the end of a board run, and the moment an
+operator answers the last region on it, which is also where "on whose
+authority" gets a name rather than "automated". That name is free text until
+the station has authentication, and the record carries it verbatim rather than
+rounding it up to "a person".
+
+Where the board's decisions do not agree on one model -- part-decided before a
+retrain and part after -- the row says `mixed`. It was not released under a
+model; naming one of the two would be the comfortable lie.
+
+Read at `/board/<stem>` on the station and `uv run python -m aoi_agent
+provenance <board>` at a terminal. Neither shows `ground_truth`, held at the
+dict boundary like every other route out of this store.
+
+## Two tables that disagreed
+
+`escalations` and `review_decisions` are meant to agree: `resume_review` writes
+the verdict and *then* closes the queue entry, so a crash between the two costs
+a second look rather than an operator's judgement. Five rows were closed with no
+human decision beneath them -- a combination the station cannot produce.
+
+They are the residue of the incident in CLAUDE.md: five regions clicked through
+without the domain knowledge to judge them, four of the five labels wrong, and
+the labels deleted by hand on 2026-08-22. The queue rows were left closed, so
+the two tables spent three days disagreeing about what happened to those
+regions.
+
+They are marked, not repaired, on the precedent
+`quarantine_fabricated_criteria.py` set the day before. Deleting the queue rows
+repeats the mistake that caused this. Re-opening them asserts the first review
+never happened, days after the boards left the line. Back-filling a synthetic
+human decision invents the label that was deleted, and it would be
+indistinguishable from a judgement in the next training round.
+
+So `resolved_unattributed` is a third status -- one the station cannot write,
+and one no query treats as pending -- and the reason carries a banner over the
+original text, kept verbatim because it is what the operator was shown.
+`scripts/mark_unattributed_resolutions.py` applies it, is idempotent, and
+`uv run python -m aoi_agent queue` prints the disagreement under the queue.
 
 ## The analysis path
 

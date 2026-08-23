@@ -18,7 +18,9 @@ src/aoi_agent/
     vision/                 patches, dataset, ResNet-18, inference, operating
                             point, ONNX export and INT8 quantisation
     store/                  SQLAlchemy models, seeding, standards retrieval,
-                            the analysis_runs log
+                            the analysis_runs log, and the provenance every
+                            automated decision carries -- dispositions.py is
+                            the board-level record
     mcp_servers/            three MCP servers (classify, production, standards)
     graph/                  LangGraph flow with the human escalation,
                             durable SQLite checkpointer
@@ -33,7 +35,7 @@ src/aoi_agent/
                             chart_svg.py renders a chart spec server-side
     cli.py
 scripts/                    gate_check, build_patches, train, report, seed_store,
-                            analysis_eval, ...
+                            analysis_eval, mark_unattributed_resolutions, ...
 tests/                      802 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
@@ -71,7 +73,10 @@ uv run python -m aoi_agent board 20085294 --queue  # run a board, queue what it 
 uv run python -m aoi_agent station               # review station on :8000 -- the queue, and /ask
 uv run python -m aoi_agent queue                 # what is waiting on a person
 uv run python -m aoi_agent explanations          # how many dispositions carry no rationale, and why
+uv run python -m aoi_agent provenance 20085294   # who decided this board, when, and under which model
 uv run python scripts/seed_store.py --migrate-only  # add missing columns to an existing store
+uv run python scripts/mark_unattributed_resolutions.py --dry-run
+                                                 # queue entries closed with no human decision behind them
 
 docker build -t aoi-agent .                      # CPU torch; nothing heavy baked in
 docker run --rm -p 8000:8000 \
@@ -211,6 +216,16 @@ board is back under the unscoped reading.
 
 Retraining from operator corrections, deploying the quantised model, demo video.
 
+**Every decision the store held before 2026-08-23 reads `unrecorded`** -- 9,140
+of them, stamped by the migration rather than left `NULL`, because a decision
+whose provenance was never captured must not be readable as one that has none.
+They stay that way: the digest that produced them is not recoverable and
+inventing one would be worse than the gap. Decisions written from here name the
+checkpoint's SHA-256, the thresholds that routed them and the commit that ran
+-- `store.boards.record_decision` raises on an automated row that does not, and
+`tests/test_provenance.py` is the guard. Reseeding the store is what makes the
+figure move; nothing else will.
+
 INT8/ONNX is measured, and the answer was not a speed-up. **INT8 static holds
 the operating point** -- 56.0% review removed at the ≤0.5% escape budget
 against FP32's 56.2%, calibrated on 512 trainval patches, never test -- and
@@ -258,17 +273,26 @@ again.
 
 On the station itself:
 
-- Board browser, so the 82% the agent settled is visible and not just the queue.
-- **Timestamps are stored UTC and displayed UTC**, unlabelled. On a quality
-  record read at UTC+8 that is an eight-hour lie. Store UTC, render local, say
-  which -- pairs with the operator-identity gap below.
+- Board browser, so the 82% the agent settled is visible and not just the
+  queue. Half-built: `/board/<stem>` renders one board's record -- its
+  disposition and every region's, with the weights, thresholds and code behind
+  each -- but there is no index of boards to reach it from except a link on a
+  queued region.
+- **Timestamps are stored UTC and displayed UTC**, and now labelled `UTC` on
+  the board record and the CLI. On the queue and the corrections page they are
+  still unlabelled, which on a quality record read at UTC+8 is an eight-hour
+  lie. Store UTC, render local, say which -- pairs with the operator-identity
+  gap below.
 - **Authentication, which `/ask` turned from a backlog item into a
   precondition.** There is none, on either page. Two separate costs now. The
   one that was always here: `reviewer` is a free-text field, so the corrections
   that feed retraining carry no trustworthy identity -- demonstrated the hard
   way, when five regions were clicked through without domain knowledge, four of
   them wrong, and nothing in the system could tell those labels from an
-  expert's. They had to be deleted by hand. The one this branch added: an
+  expert's. They had to be deleted by hand -- and the five queue entries were
+  left closed behind them, so `escalations` and `review_decisions` disagreed
+  about those regions until 2026-08-23. They now read `resolved_unattributed`,
+  which is the true statement: reviewed, and attributable to nobody. The one this branch added: an
   unauthenticated visitor to the queue sees the regions on one line, and the
   same visitor at `/ask` can pull production statistics for the whole plant.
   That is a change of kind, and it is the item on this list that should block
