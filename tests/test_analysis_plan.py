@@ -12,7 +12,9 @@ from __future__ import annotations
 import pytest
 
 from aoi_agent.analysis.plan import (
+    DOMAIN_OF,
     PLANNABLE_TOOLS,
+    Domains,
     store_domains,
     validate_plan,
 )
@@ -21,6 +23,10 @@ DOMAINS = {
     "line_id": {"L1", "L2", "L3"},
     "machine_id": {"M11", "M12", "M21", "M22", "M31", "M32"},
     "defect_type": {"open", "short", "mousebite", "spur", "copper", "pin-hole"},
+    # Wider than `defect_type` by one: the criteria are asked about a class the
+    # classifier emitted, and `false_call` is one of those.
+    "defect_class": {"open", "short", "mousebite", "spur", "copper", "pin-hole",
+                     "false_call"},
     "max_days": 9,
 }
 
@@ -123,6 +129,34 @@ def test_store_domains_reads_the_real_store():
     assert domains["line_id"] == {"L1", "L2", "L3"}
     assert len(domains["machine_id"]) == 6
     assert 1 <= domains["max_days"] <= 400
+
+
+def test_this_files_domains_carry_every_key_the_validator_looks_up():
+    """The fixture is the validator's whole world here. A domain added to
+    `Domains` and not to this dict does not fail a test on the way in -- it
+    raises `KeyError` out of the validator the first time a plan names that
+    argument, which on `/ask` is a page that does not render."""
+    assert set(DOMAINS) == set(Domains.__annotations__)
+    for argument, domain in DOMAIN_OF.items():
+        assert domain in DOMAINS, argument
+
+
+@pytest.mark.parametrize("scope", ["open", "false_call"])
+def test_a_standards_scope_the_classifier_can_emit_is_accepted(scope):
+    errors = validate_plan(
+        plan(("search_standards", {"query": "x", "defect_class": scope})), DOMAINS
+    )
+    assert errors == []
+
+
+def test_a_standards_scope_nobody_classifies_is_rejected_before_it_runs():
+    """`defect_class="pinhole"` is a legal string in a real parameter. The tool
+    would refuse it, but the third validation layer exists so that a plan is
+    shown to the person whole rather than one failed branch at a time."""
+    errors = validate_plan(
+        plan(("search_standards", {"query": "x", "defect_class": "pinhole"})), DOMAINS
+    )
+    assert any("pinhole" in e for e in errors)
 
 
 def test_a_tool_taking_kwargs_accepts_arguments_rather_than_requiring_one(monkeypatch):

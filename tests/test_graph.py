@@ -70,13 +70,18 @@ def stub_tools(monkeypatch):
             "machines": [{"machine": "L2-M22", "share_of_defects": 0.321, "per_board": 2.3}],
         },
     )
-    monkeypatch.setattr(
-        flow, "search_standards",
-        lambda query, top_k=2: {
+    def search_standards(query, top_k=2, defect_class=None):
+        # Recorded, not ignored. The scope is the whole defence against a
+        # pin-hole limit being quoted at an open, and it is passed from here.
+        state.setdefault("standards_calls", []).append(
+            {"query": query, "top_k": top_k, "defect_class": defect_class}
+        )
+        return {
             "passages": [{"document": "open-circuit", "heading": "Classification",
                           "text": "Any confirmed open is a critical defect."}]
-        },
-    )
+        }
+
+    monkeypatch.setattr(flow, "search_standards", search_standards)
     return state
 
 
@@ -197,6 +202,31 @@ def test_the_evidence_reaches_the_prompt(stub_tools):
     assert "M22" in prompt
     assert "critical defect" in prompt
     assert "32.1%" in prompt, "the machine's defect mix should be quoted"
+
+
+def test_the_criteria_are_retrieved_scoped_to_the_class_in_hand(stub_tools):
+    """The disposition path always has a class, so it never asks the criteria
+    the open-ended question. Unscoped, the top passage for `open` was pin-hole's
+    "inside a pad: reject", and the model handed that to five operators as the
+    rule for an open."""
+    run(flow.build_graph(StubClient(), InMemorySaver()))
+
+    calls = stub_tools["standards_calls"]
+    assert [call["defect_class"] for call in calls] == ["open"]
+
+
+def test_a_false_call_asks_the_criteria_as_a_false_call(stub_tools):
+    """No work instruction governs a region with no defect, and scoping to
+    `false_call` says so: WI-300 and QP-110 answer it, no acceptance limit
+    does. Passing the class through unchecked is what keeps that true when the
+    classifier's vocabulary grows."""
+    stub_tools["classify"] = {
+        "predicted_class": "false_call", "confidence": 0.60,
+        "false_call_probability": 0.60, "recommendation": "escalate",
+    }
+    run(flow.build_graph(StubClient(verdict="false_call"), InMemorySaver()))
+
+    assert stub_tools["standards_calls"][0]["defect_class"] == "false_call"
 
 
 def test_an_unconfident_agent_interrupts_for_a_person(stub_tools):

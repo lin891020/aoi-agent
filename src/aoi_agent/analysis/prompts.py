@@ -44,6 +44,11 @@ Rules that matter more than completeness:
   to you establishes cause.
 - If the question is too vague to turn into arguments, return no calls and say
   in "interpretation" what you would need to know.
+- When a question is about one defect class, pass that class as
+  `defect_class` to `search_standards`. Unscoped, it can return a limit
+  written for a different class, and a limit quoted at the wrong class is a
+  wrong acceptance rule, not a near miss. Leave it unset only when the
+  question genuinely spans classes.
 
 A plan with no calls is a valid answer. Guessing arguments to avoid returning
 one is not."""
@@ -93,8 +98,9 @@ FEW_SHOT: list[dict[str, Any]] = [
                 {
                     "tool": "search_standards",
                     "args": {"query": "open circuit acceptance and disposition",
-                             "top_k": 2},
-                    "why": "what the criteria require once an open is confirmed",
+                             "top_k": 2, "defect_class": "open"},
+                    "why": "what the criteria require once an open is confirmed, "
+                           "out of WI-201 and the policy documents only",
                 },
             ],
         },

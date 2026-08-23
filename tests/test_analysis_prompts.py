@@ -19,6 +19,10 @@ DOMAINS = {
     "line_id": {"L1", "L2", "L3"},
     "machine_id": {"M11", "M12", "M21", "M22", "M31", "M32"},
     "defect_type": {"open", "short", "mousebite", "spur", "copper", "pin-hole"},
+    # Wider than `defect_type` by one: the criteria are asked about a class the
+    # classifier emitted, and `false_call` is one of those.
+    "defect_class": {"open", "short", "mousebite", "spur", "copper", "pin-hole",
+                     "false_call"},
     "max_days": 9,
 }
 

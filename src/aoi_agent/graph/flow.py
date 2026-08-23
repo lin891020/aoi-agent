@@ -147,8 +147,16 @@ def gather_context_node(state: ReviewState) -> dict[str, Any]:
         if defect not in ("false_call",)
         else {}
     )
+    # Scoped to the class in hand. This path always has one -- it is reasoning
+    # about a single classified region -- so it never asks the open-ended
+    # question, and a limit written for another class cannot reach the prompt
+    # as evidence about this one. Unscoped, the top passage for `open` was
+    # pin-hole's "inside a pad: reject", and the model duly told five operators
+    # to check whether the open was inside a pad. See docs/benchmarks.md.
     passages = search_standards(
-        f"acceptance criteria and disposition for {defect}", top_k=2
+        f"acceptance criteria and disposition for {defect}",
+        top_k=2,
+        defect_class=defect,
     ).get("passages", [])
 
     _timed(state, "gather_context", (time.perf_counter() - started) * 1000)

@@ -26,6 +26,7 @@ from aoi_agent.mcp_servers.production import (
 )
 from aoi_agent.mcp_servers.standards import search_standards
 from aoi_agent.mcp_servers.classify import list_candidates
+from aoi_agent.store.standards import SCOPES
 
 
 class ToolCall(TypedDict):
@@ -44,6 +45,7 @@ class Domains(TypedDict):
     line_id: set[str]
     machine_id: set[str]
     defect_type: set[str]
+    defect_class: set[str]
     max_days: int
 
 
@@ -62,6 +64,12 @@ DOMAIN_OF = {
     "line_id": "line_id",
     "machine_id": "machine_id",
     "defect_type": "defect_type",
+    #: `search_standards`'s scope, and a wider set than `defect_type`: the
+    #: criteria are asked about a class the *classifier* emitted, which
+    #: includes `false_call`, whereas `defect_type` filters production records
+    #: over the six real classes. Same vocabulary plus one, different question,
+    #: so they are two domains rather than one shared name.
+    "defect_class": "defect_class",
 }
 
 PLAN_SCHEMA: dict = {
@@ -100,6 +108,7 @@ def store_domains() -> Domains:
         "line_id": set(),
         "machine_id": set(),
         "defect_type": {"open", "short", "mousebite", "spur", "copper", "pin-hole"},
+        "defect_class": set(SCOPES),
         "max_days": 1,
     }
 
@@ -121,6 +130,7 @@ def store_domains() -> Domains:
         "line_id": lines,
         "machine_id": machines,
         "defect_type": empty["defect_type"],
+        "defect_class": empty["defect_class"],
         "max_days": span,
     }
 
