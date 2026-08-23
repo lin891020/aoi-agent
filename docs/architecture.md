@@ -210,6 +210,10 @@ inside 10s is an open measurement -- see docs/benchmarks.md.
 Every branch that can fail fails towards a person:
 
 - confidence below `ESCALATE_BELOW` → escalate
+- the agent branch reaching a `false_call` it might dismiss → it cannot;
+  `ESCALATE_BELOW` equals the dismissal threshold, so that region was
+  dismissed upstream or it escalates. Only the calibrated threshold spends
+  the escape budget
 - `open` at any confidence → investigate, never short-circuit
 - a candidate that fragments a real defect → held out of training, not labelled spurious
 - the process holding a suspended run dies → the run is on disk, the queue still
