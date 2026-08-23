@@ -684,6 +684,30 @@ def ask_stream(request: Request, question: str):
                                 "error": clip(result["error"]) if result["error"] else None,
                                 "elapsed_ms": result["elapsed_ms"],
                             })
+                    elif node == "collect":
+                        # The join, and the only announcement of the phase that
+                        # follows it. `collect` is the node the `Send` branches
+                        # converge on: under `stream_mode="updates"` every
+                        # `run_tool` branch has already been streamed by the
+                        # time this update exists, and `synthesise` -- the
+                        # second model call, around eight seconds of it -- has
+                        # not been entered yet, because it is the next
+                        # superstep and this generator is what advances it.
+                        # Verified against the graph rather than assumed: the
+                        # update order is plan, run_tool x N, collect,
+                        # synthesise.
+                        #
+                        # Without this event the page had nothing to say for
+                        # that whole phase. Every tool row ticked to a ✓, the
+                        # panel looked finished, and the run then sat silent
+                        # until the redirect -- a visible state saying done
+                        # over a system still working, which is the failure
+                        # this event exists to remove. It carries the branch
+                        # count only so the phase line can name what was
+                        # joined; nothing here is a claim about time.
+                        yield _sse("synthesising", {
+                            "tools": len(state.get("results") or []),
+                        })
             # Persisted inside the try: if `save_run` itself raises, the
             # `except` below still turns that into one clean `error` event
             # instead of an uncaught exception unwinding the ASGI response

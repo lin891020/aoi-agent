@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -324,3 +325,108 @@ def test_the_streamed_run_and_the_posted_run_store_the_same_order(client, monkey
     assert [r["tool"] for r in streamed_run["results"]] == [
         "query_machine_stats", "search_standards"
     ]
+
+
+def test_the_join_is_announced_before_the_answer_is_written(client):
+    """The second dead zone had no event at all.
+
+    Every tool ticks to a ✓ in about a fifth of a second, and then the second
+    model call takes roughly as long as the first -- eight seconds on this
+    machine -- with nothing on the wire. The panel read as finished while the
+    run was half done. `synthesising` is emitted at the join, which is the
+    `collect` node: under `stream_mode="updates"` every `run_tool` branch has
+    already been streamed when it arrives, and `synthesise` has not been
+    entered.
+    """
+    body = client.get("/ask/stream", params={"question": "M22 正常嗎"}).text
+    names = [e["event"] for e in events(body)]
+
+    assert names.count("synthesising") == 1
+    assert names.index("synthesising") > max(
+        index for index, name in enumerate(names) if name == "tool"
+    ), "the join is announced after the last branch, never before one"
+    assert names.index("synthesising") < names.index("done")
+
+
+def test_the_join_event_names_how_many_branches_it_joined(client):
+    body = client.get("/ask/stream", params={"question": "M22 正常嗎"}).text
+    joined = next(e for e in events(body) if e["event"] == "synthesising")
+
+    assert joined["data"]["tools"] == 2
+
+
+def test_a_refusal_never_announces_a_synthesis_that_will_not_happen(client, monkeypatch):
+    """A plan with no calls routes plan -> report, so no join and no second
+    model call ever happen. Announcing one would be the same lie in the other
+    direction: a phase on screen that the graph is not in."""
+    refusal = {"interpretation": "資料涵蓋不到那個區間", "assumptions": [], "calls": []}
+    monkeypatch.setattr(station_app, "_analysis_graph",
+                        analysis.build_analysis_graph(StubClient(plan=refusal), DOMAINS))
+    body = client.get("/ask/stream", params={"question": "去年的資料"}).text
+    names = [e["event"] for e in events(body)]
+
+    assert "synthesising" not in names
+    assert names[-1] == "done"
+
+
+def test_a_rejected_plan_never_announces_a_synthesis_either(client, monkeypatch):
+    bad = {"interpretation": "i", "assumptions": [],
+           "calls": [{"tool": "query_defect_history",
+                      "args": {"line_id": "L9"}, "why": "w"}]}
+    monkeypatch.setattr(station_app, "_analysis_graph",
+                        analysis.build_analysis_graph(StubClient(plan=bad), DOMAINS))
+    body = client.get("/ask/stream", params={"question": "L9"}).text
+
+    assert "synthesising" not in [e["event"] for e in events(body)]
+
+
+def test_the_join_is_on_the_wire_before_the_second_model_call_is_entered(
+    client, monkeypatch
+):
+    """Ordering inside the finished body is not the claim.
+
+    The claim is that the event leaves the server *before* the synthesis call
+    is entered -- the only version of it that removes the dead zone, since the
+    dead zone is that call. `TestClient.stream` cannot show this: its ASGI
+    transport collects the whole body before handing back a line, so a test
+    written over it passes just as happily against an event emitted after
+    synthesis returns. Verified: written that way it took the full five-second
+    timeout and still passed.
+
+    So this drives the route's own generator instead, one chunk at a time, and
+    asks what the stub client has been called with at the moment the chunk
+    appears. `iterate_in_threadpool` is what `StreamingResponse` wraps a
+    synchronous generator in, so stepping `body_iterator` advances the graph by
+    exactly one yield.
+    """
+    import anyio
+
+    entered: list[str] = []
+
+    class Recording(StubClient):
+        def chat(self, messages, **kwargs):
+            entered.append("plan" if kwargs.get("response_format") else "synthesis")
+            return StubClient.chat(self, messages, **kwargs)
+
+    monkeypatch.setattr(
+        station_app, "_analysis_graph",
+        analysis.build_analysis_graph(Recording(), DOMAINS),
+    )
+    request = SimpleNamespace(state=SimpleNamespace(operator="tester"))
+
+    async def drive() -> list[str]:
+        response = station_app.ask_stream(request, "M22 正常嗎")
+        seen_at = None
+        async for chunk in response.body_iterator:
+            if "event: synthesising" in chunk:
+                seen_at = list(entered)
+                break
+        return seen_at
+
+    at_the_event = anyio.run(drive)
+
+    assert at_the_event is not None, "no join was announced at all"
+    assert at_the_event == ["plan"], (
+        "the join must be announced with the synthesis call still ahead of it, "
+        f"not after it -- the model had been called with {at_the_event}"
+    )
