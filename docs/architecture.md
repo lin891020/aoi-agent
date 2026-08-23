@@ -149,21 +149,56 @@ visitor here can pull statistics for the whole plant.
 
 ## Thresholds and where they come from
 
+Every row cites something a reader can open: a script they can run, or a line in
+a document that states the number. `tests/test_threshold_citations.py` parses
+this table and fails when a value drifts from the constant, when a source stops
+resolving, or when a threshold constant is added to the code and not to the
+table.
+
 | constant | value | source |
 |---|---|---|
-| `DEFAULT_DISMISS_THRESHOLD` | 0.915 | the operating-point sweep, at the ≤0.5% escape budget |
-| `CONFIDENT` | 0.95 | WI-300 decision authority |
-| `ESCALATE_BELOW` | 0.90 | lowest threshold adding no escape to the budget; see docs/benchmarks.md |
-| `LOW_CONFIDENCE` | 0.70 | WI-300 escalation triggers |
-| `RESPONSE_BUDGET_S` | 10.0 | WI-300 response budget, derived from QP-110 |
-| `IOU_THRESHOLD` | 0.33 | DeepPCB's own benchmark convention |
-| `FRAGMENT_GAP_PX` | 20 | measured: 6.1% of unmatched candidates touch a real defect |
+| `DEFAULT_DISMISS_THRESHOLD` | 0.915 | the operating-point sweep at the ≤0.5% escape budget -- `scripts/report.py` |
+| `ESCALATE_BELOW` | 0.915 | `= DEFAULT_DISMISS_THRESHOLD`, which empties the only band in which the agent branch could dismiss -- `scripts/threshold_sweep.py` |
+| `CONFIDENT` | 0.95 | a cost gate: changes no disposition at or above `ESCALATE_BELOW`, and must not drop below it -- `scripts/threshold_sweep.py` |
+| `LOW_CONFIDENCE` | 0.70 | WI-300 escalation triggers, stated there as a floor -- `data/standards/reverification-procedure.md` |
+| `RESPONSE_BUDGET_S` | 10.0 | WI-300 response budget, derived from QP-110 -- `data/standards/reverification-procedure.md` |
+| `IOU_THRESHOLD` | 0.33 | DeepPCB's own benchmark convention -- `data/DeepPCB/README.md` |
+| `FRAGMENT_GAP_PX` | 20 | measured: 6.1% of unmatched candidates touch a real defect -- `scripts/diagnose_false_calls.py` |
 
 None of these are tuned by hand against the test set. The dismissal threshold
-comes out of the sweep; the confidence thresholds and the response budget are
-written down in the work instructions and the code reads them from there rather
-than the reverse. `tests/test_response_budget.py` fails if the constant and
-WI-300 stop agreeing.
+comes out of the sweep; the floor and the response budget are written down in
+the work instructions and the code reads them from there rather than the
+reverse. `tests/test_response_budget.py` fails if the budget and WI-300 stop
+agreeing.
+
+Two rows were wrong until 2026-08-23, and how they were wrong is worth keeping.
+`CONFIDENT` was cited to "WI-300 decision authority", which states no such
+number. `ESCALATE_BELOW` was cited as "the lowest threshold adding no escape to
+the budget, see docs/benchmarks.md", and no sweep of it had ever been run --
+`scripts/threshold_sweep.py` is that sweep, written afterwards. It found the
+claim false in both directions: the lowest zero-escape threshold on the test
+split is 0.875, not the 0.90 the code carried, and 0.90 was not derived from
+any sweep at all. It was a round number that happened to be conservative.
+
+Neither number is the one now in the code, because both are read off one split.
+0.875 clears the highest-confidence real defect this branch would dismiss by
+0.003; the next lot's tail sits on top of that. The value that needs no split is
+the dismissal threshold itself. The agent branch can only dismiss when the
+classifier's class is `false_call`, and for that class its confidence *is*
+`P(false call)`, so the region must lie in the band [`ESCALATE_BELOW`,
+`DEFAULT_DISMISS_THRESHOLD`). Setting them equal empties that band by
+construction and keeps it empty through a retrain. **The agent branch may
+confirm a defect; it may never dismiss one** -- WI-300 §1 now says so, and
+`tests/test_graph.py::test_the_agent_branch_cannot_dismiss` holds it
+independently of what the numbers are. It costs 47 more escalations out of 8143
+candidates, 0.6% of the queue.
+
+`CONFIDENT` did not move, and the sweep is why: at or above `ESCALATE_BELOW` it
+changes zero dispositions, because `confirm_node` and `decide_node` write the
+same verdict. It decides who gets an LLM call and a written rationale, not what
+happens to the board. What it must not do is fall below `ESCALATE_BELOW`, where
+it starts confirming unreviewed regions the flow would have escalated -- 66 of
+them at 0.70. The constraint is the citation; the value inside it is a dial.
 
 The response budget is the one that most invites being quietly raised, so
 WI-300 states the direction explicitly: if the configured model cannot answer

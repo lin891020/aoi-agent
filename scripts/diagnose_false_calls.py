@@ -22,7 +22,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from aoi_agent.aoi.matching import iou, match  # noqa: E402
+from aoi_agent.aoi.matching import FRAGMENT_GAP_PX, iou, match  # noqa: E402
 from aoi_agent.aoi.simulator import DetectorConfig, detect  # noqa: E402
 from aoi_agent.data.deeppcb import load_split  # noqa: E402
 
@@ -55,7 +55,7 @@ def main() -> None:
 
             if best > 0 or gap == 0:
                 kind = "fragment"      # touches or overlaps a real defect
-            elif gap <= 20:
+            elif gap <= FRAGMENT_GAP_PX:
                 kind = "near"          # in the halo around a defect
             else:
                 kind = "genuine"       # nowhere near anything real
