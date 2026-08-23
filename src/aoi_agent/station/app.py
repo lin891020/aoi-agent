@@ -52,12 +52,13 @@ from aoi_agent.analysis import service as analysis_service
 from aoi_agent.analysis.graph import build_analysis_graph
 from aoi_agent.analysis.plan import store_domains
 from aoi_agent.graph.flow import DEFAULT_MODEL, build_graph, explanation_notice
+from aoi_agent.provenance import UNAVAILABLE, UNRECORDED
 from aoi_agent.llm.ollama import OllamaClient
 from aoi_agent.station import images, service
 from aoi_agent.station.chart_svg import render_svg
 from aoi_agent.station.result_view import clip, error_text, readable_rows, shown_count
 from aoi_agent.store import analysis as analysis_store
-from aoi_agent.store import escalations
+from aoi_agent.store import dispositions, escalations
 from aoi_agent.store.boards import correction_summary, corrections, resolve_candidate
 
 HERE = Path(__file__).parent
@@ -253,6 +254,37 @@ def patch_png(stem: str, index: int):
     except KeyError as error:
         raise HTTPException(404, str(error)) from error
     return Response(png, media_type="image/png")
+
+
+@app.get("/board/{stem}", response_class=HTMLResponse)
+def board_page(request: Request, stem: str):
+    """What was decided about one board, and under what.
+
+    The question a customer return starts with -- "who decided this board was
+    fine, when, and on what basis" -- had no page and no query behind it until
+    2026-08-23, because the store held judgements about regions and nothing
+    about boards. This renders the board-level record and the regions beneath
+    it side by side, so the aggregate can be checked against what it was
+    computed from rather than believed.
+
+    Read-only. Nothing here dispositions anything: it is the record of
+    dispositions already made.
+    """
+    rows = dispositions.decision_provenance(stem)
+    if not rows:
+        raise HTTPException(404, f"no board {stem}")
+    return templates.TemplateResponse(
+        request,
+        "board.html",
+        {
+            "stem": stem,
+            "rows": rows,
+            "history": dispositions.history(stem),
+            "assessment": dispositions.assess(stem),
+            "absences": (UNAVAILABLE, UNRECORDED),
+            "waiting": len(escalations.pending()),
+        },
+    )
 
 
 @app.get("/queue-count", response_class=HTMLResponse)

@@ -9,6 +9,7 @@
     <span class="dim">
       lot {{ candidate.lot_id }} &middot; line {{ candidate.line_id }} &middot;
       machine {{ candidate.machine_id }} &middot; {{ candidate.shift }} shift
+      &middot; <a href="/board/{{ stem }}">board record</a>
     </span>
     <span class="grow"></span>
     {% if escalation and escalation.status == 'pending' %}

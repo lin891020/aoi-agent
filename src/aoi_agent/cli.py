@@ -5,6 +5,7 @@
     uv run python -m aoi_agent queue
     uv run python -m aoi_agent corrections
     uv run python -m aoi_agent explanations
+    uv run python -m aoi_agent provenance 20085293
     uv run python -m aoi_agent station
 
 ``--queue`` is the normal production shape: the line does not stop to ask a
@@ -22,7 +23,7 @@ import sys
 from aoi_agent.graph.flow import DEFAULT_MODEL, build_graph, explanation_notice
 from aoi_agent.llm.ollama import OllamaClient
 from aoi_agent.station import service
-from aoi_agent.store import escalations
+from aoi_agent.store import dispositions, escalations
 from aoi_agent.store.boards import (
     candidates_for_board,
     corrections,
@@ -128,6 +129,53 @@ def _cmd_explanations() -> int:
     return 0
 
 
+def _cmd_provenance(stem: str) -> int:
+    """Who decided this board was fine, when, and on what basis.
+
+    The auditor's question, answerable from a terminal. It was not answerable
+    at all before 2026-08-23: the store held 9,140 decisions and not one of
+    them named the weights, the thresholds or the code behind it, and nothing
+    anywhere recorded what had happened to a *board*.
+    """
+    rows = dispositions.decision_provenance(stem)
+    if not rows:
+        print(f"no board {stem!r} in the store", file=sys.stderr)
+        return 1
+
+    board_rows = dispositions.history(stem)
+    print(f"board {stem}")
+    if board_rows:
+        for row in board_rows:
+            print(f"  {row['disposition'].upper():<9} "
+                  f"{(row['decided_at'] or '')[:19].replace('T', ' ')} UTC  "
+                  f"by {row['decided_by']}")
+            print(f"      {row['basis']}")
+            print(f"      model {row['model_digest']}  code {row['code_version']}")
+            print(f"      thresholds {row['thresholds_json']}")
+    else:
+        current = dispositions.assess(stem)
+        print(f"  no board-level disposition recorded yet -- "
+              f"{current['basis']}")
+
+    print(f"\n  {len(rows)} flagged regions\n")
+    for row in rows:
+        verdict = row["verdict"] or "-"
+        by = row["reviewer"] or row["source"] or "-"
+        queue = f"  [{row['queue_status']}]" if row["queue_status"] else ""
+        print(f"  {row['reference']:<16} {verdict:<12} by {by:<12} "
+              f"{row['model_digest'] or '-':<24} {row['code_version'] or '-'}{queue}")
+
+    absences = {
+        digest: count
+        for digest, count in dispositions.unattributable().items()
+        if digest in ("unrecorded", "unavailable", "null")
+    }
+    if absences:
+        print("\n  store-wide, decisions that name no model: "
+              + ", ".join(f"{k} {v}" for k, v in sorted(absences.items())))
+    return 0
+
+
 def _cmd_corrections() -> int:
     rows = corrections()
     if not rows:
@@ -174,6 +222,12 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("explanations",
                    help="how many dispositions carry no written rationale, and why")
 
+    provenance = sub.add_parser(
+        "provenance",
+        help="who decided this board, when, and under which model",
+    )
+    provenance.add_argument("board")
+
     station = sub.add_parser("station", help="serve the review station")
     station.add_argument("--host", default="127.0.0.1")
     station.add_argument("--port", type=int, default=8000)
@@ -190,6 +244,8 @@ def main(argv: list[str] | None = None) -> int:
         return _cmd_corrections()
     if args.command == "explanations":
         return _cmd_explanations()
+    if args.command == "provenance":
+        return _cmd_provenance(args.board)
     if args.command == "station":
         return _cmd_station(args.host, args.port)
 
@@ -215,4 +271,18 @@ def main(argv: list[str] | None = None) -> int:
             record["reference"],
             _run_one(graph, record["reference"], args.answer, args.queue),
         )
+
+    # The regions are decided; now say what happened to the board. A board with
+    # regions still on the queue gets no row -- it has not been dispositioned,
+    # someone is still looking at it, and recording a verdict on it here would
+    # be recording one nobody reached.
+    settled = service.settle_board(args.board)
+    if settled:
+        print(f"\n  board {args.board}: {settled['disposition'].upper()} "
+              f"-- {settled['basis']}")
+        print(f"  under model {settled['model_digest']}, "
+              f"code {settled['code_version']}")
+    else:
+        print(f"\n  board {args.board}: not dispositioned -- regions are still "
+              "waiting on a person")
     return 0

@@ -32,6 +32,7 @@ from __future__ import annotations
 from datetime import datetime
 
 import pytest
+from fastapi.testclient import TestClient
 from langgraph.checkpoint.memory import InMemorySaver
 from sqlalchemy import create_engine, inspect, text
 
@@ -44,6 +45,7 @@ from aoi_agent.provenance import (
     checkpoint_digest,
     code_version,
 )
+from aoi_agent.station import app as station_app
 from aoi_agent.station import service
 from aoi_agent.store import boards, dispositions, escalations
 from aoi_agent.store.models import (
@@ -461,6 +463,39 @@ def test_the_board_record_never_carries_the_ground_truth(store):
     for row in rows:
         assert "ground_truth" not in row
         assert "mousebite" not in str(row.values())
+
+
+# ---- where it answers the question --------------------------------------
+
+
+def test_the_board_page_shows_what_decided_each_region(store, monkeypatch):
+    monkeypatch.setattr(station_app, "_graph", object())
+    _decide(REFERENCE, "false_call")
+    dispositions.record(STEM)
+
+    body = TestClient(station_app.app).get(f"/board/{STEM}").text
+    assert STUB_DIGEST in body
+    assert "released" in body or "held" in body
+    assert "mousebite" not in body, "the answer key is not on this page either"
+
+
+def test_the_board_page_is_404_for_a_board_the_store_does_not_hold(store, monkeypatch):
+    monkeypatch.setattr(station_app, "_graph", object())
+    assert TestClient(station_app.app).get("/board/99999999").status_code == 404
+
+
+def test_the_cli_answers_the_auditors_question(store, capsys):
+    from aoi_agent.cli import main
+
+    _decide(REFERENCE, "false_call")
+    _decide(f"{STEM}#1", "short")
+    dispositions.record(STEM)
+
+    assert main(["provenance", STEM]) == 0
+    out = capsys.readouterr().out
+    assert "HELD" in out
+    assert STUB_DIGEST in out
+    assert "escalate_below" in out
 
 
 def test_the_escalation_queue_is_untouched_by_any_of_this(store, stub_tools):  # noqa: F811

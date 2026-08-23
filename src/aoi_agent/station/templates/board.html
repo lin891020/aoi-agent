@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{{ stem }} &middot; record{% endblock %}
+{% block content %}
+<section class="panel">
+  <h1 class="mono">board {{ stem }}</h1>
+  <p class="sub">
+    What was decided about this board, and under what. One page for the
+    question an auditor asks after a batch comes back: who released it, when,
+    and which model and thresholds were in force when they did.
+  </p>
+
+  <h2>Board disposition</h2>
+  {% if history %}
+  <table class="queue">
+    <thead>
+      <tr>
+        <th></th>
+        <th>when (UTC)</th>
+        <th>authority</th>
+        <th>basis</th>
+        <th>model</th>
+        <th>thresholds</th>
+        <th>code</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in history %}
+      <tr>
+        <td>
+          <span class="chip {{ 'warn' if row.disposition == 'held' else 'done' }}">
+            {{ row.disposition }}
+          </span>
+        </td>
+        <td class="dim mono">{{ (row.decided_at or '')[:19]|replace('T', ' ') }}</td>
+        <td>{{ row.decided_by }}</td>
+        <td class="dim">{{ row.basis }}</td>
+        <td class="mono small">{{ row.model_digest }}</td>
+        <td class="mono small dim">{{ row.thresholds_json }}</td>
+        <td class="mono small dim">{{ row.code_version }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+    <p class="empty">
+      No board-level disposition recorded yet.<br>
+      <span class="dim">{{ assessment.basis if assessment }}</span>
+    </p>
+  {% endif %}
+
+  <h2>Every region, and what decided it</h2>
+  <table class="queue">
+    <thead>
+      <tr>
+        <th>region</th>
+        <th>model said</th>
+        <th class="num">conf</th>
+        <th>verdict</th>
+        <th>by</th>
+        <th>model</th>
+        <th>code</th>
+        <th>when (UTC)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td><a class="mono" href="/c/{{ stem }}/{{ row.index }}">{{ row.reference }}</a></td>
+        <td><span class="chip">{{ row.model_class }}</span></td>
+        <td class="num">{{ '%.3f'|format(row.model_confidence) }}</td>
+        <td>
+          {% if row.verdict %}
+            <span class="chip {{ 'warn' if row.verdict != 'false_call' else '' }}">{{ row.verdict }}</span>
+          {% elif row.queue_status == 'pending' %}
+            <span class="chip warn small">waiting on a person</span>
+          {% else %}
+            <span class="dim">&mdash;</span>
+          {% endif %}
+        </td>
+        <td class="dim">{{ row.reviewer or row.source or '&mdash;'|safe }}</td>
+        <td class="mono small {{ 'warn' if row.model_digest in absences else 'dim' }}">
+          {{ row.model_digest or 'null' }}
+        </td>
+        <td class="mono small dim">{{ row.code_version or 'null' }}</td>
+        <td class="dim mono">{{ (row.decided_at or '')[:19]|replace('T', ' ') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <p class="sim">
+    A model column reading <b>unrecorded</b> is a decision written before this
+    store had provenance columns; <b>unavailable</b> is one written after, whose
+    weights still could not be named. They are two different absences and are
+    kept apart on purpose &mdash; neither is <b>null</b>, and neither is a
+    digest. The ground truth is not on this page either, for the same reason it
+    is not on the queue.
+  </p>
+</section>
+{% endblock %}
