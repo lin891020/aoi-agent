@@ -459,7 +459,7 @@ uv run python -m aoi_agent corrections                   # 作業員推翻 model
 `gpt-oss:20b`）。全部在本機跑，沒有任何東西離開這台機器 —— 在產線上這是要求，不是
 偏好。
 
-**921 個測試。** 其中 913 個在乾淨 checkout 上就能在 CI 跑完 —— 它們自己在 tmpdir
+**931 個測試。** 其中 923 個在乾淨 checkout 上就能在 CI 跑完 —— 它們自己在 tmpdir
 裡建 store、建 Chroma collection、建板子，model 是 stub 掉的。另外 8 個要磁碟上有那份
 231 MB 的 DeepPCB，帶 `dataset` marker；CI job 每次跑完都會把它們列出來，因為「測試
 數量默默變少但綠燈照亮」正是那個 job 要防的事。

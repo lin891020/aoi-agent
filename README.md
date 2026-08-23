@@ -544,7 +544,7 @@ Requires [Ollama](https://ollama.com) with a tool-calling model (`gpt-oss:20b`
 by default). Everything runs locally; nothing leaves the machine, which on a
 production line is a requirement rather than a preference.
 
-**921 tests.** 913 of them run on a clean checkout in CI — they build their own
+**931 tests.** 923 of them run on a clean checkout in CI — they build their own
 store, their own Chroma collection and their own boards in a tmpdir, and stub
 the model rather than calling it. The other 8 want the 231 MB DeepPCB clone on
 disk and carry a `dataset` marker; the CI job lists them by name at the end of
