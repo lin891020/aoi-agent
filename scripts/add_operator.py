@@ -10,8 +10,11 @@ operator:
     uv run python scripts/add_operator.py mike --remove
     uv run python scripts/add_operator.py --list
 
-The passphrase is read from a prompt, never from an argument: an argument ends
-up in the shell history and in the process table. It is stored as a salted
+The passphrase is read from a prompt rather than from an argument, because an
+argument ends up in the shell history and in the process table. There is a
+hidden ``--secret`` for the suite, which needs to drive this without a terminal;
+it is undocumented in ``--help`` rather than removed, and using it by hand puts
+the passphrase in both of those places. The value is stored as a salted
 PBKDF2-HMAC-SHA256 record, so the file is not a list of passphrases, and the
 file is written ``0600`` because the protection it has left is the filesystem's.
 
@@ -74,8 +77,8 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         del operators[args.name]
         write_operators(path, operators)
-        print(f"removed {args.name!r}; their existing decisions keep their name, "
-              "because a record of who answered is not revoked by an account being")
+        print(f"removed {args.name!r}. Their existing decisions keep their name: "
+              "a record of who answered is not undone by the account going away.")
         return 0
 
     secret = args.secret

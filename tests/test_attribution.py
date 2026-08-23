@@ -370,6 +370,41 @@ def test_a_signed_in_operator_is_what_the_store_records(operators):
     assert identity.is_attributable
 
 
+def test_the_script_writes_a_file_only_its_owner_can_read(tmp_path, monkeypatch):
+    """It writes credentials. `0600` is the protection this scheme has left
+    once the passphrase is hashed, and the file is gitignored for the same
+    reason."""
+    import add_operator
+
+    path = tmp_path / "operators"
+    monkeypatch.setenv(auth.OPERATORS_ENV, str(path))
+
+    assert add_operator.main(["mike", "--secret", "a passphrase"]) == 0
+
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert "a passphrase" not in path.read_text()
+    assert auth.authenticate("mike", "a passphrase").name == "mike"
+
+
+def test_the_script_replaces_and_removes_without_touching_anyone_else(tmp_path,
+                                                                     monkeypatch):
+    import add_operator
+
+    monkeypatch.setenv(auth.OPERATORS_ENV, str(tmp_path / "operators"))
+    add_operator.main(["mike", "--secret", "one"])
+    add_operator.main(["sara", "--secret", "two"])
+    add_operator.main(["mike", "--secret", "three"])
+
+    assert auth.authenticate("mike", "one") is None
+    assert auth.authenticate("mike", "three").name == "mike"
+
+    assert add_operator.main(["mike", "--remove"]) == 0
+    assert auth.authenticate("mike", "three") is None
+    assert auth.authenticate("sara", "two").name == "sara", (
+        "removing one operator must not disturb another"
+    )
+
+
 # ---- the session ---------------------------------------------------------
 
 
