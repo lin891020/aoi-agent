@@ -179,6 +179,7 @@ def results_fixture() -> dict:
         "checkpoint_mb": 42.7,
         "parameters": 11_181_642,
         "patch_count": 8143,
+        "cpu_threads": 10,
         "ps_before": "NAME  ID  SIZE",
         "ps_after": "NAME  ID  SIZE",
         "devices": [device("MPS", 2.0), device("CPU", 6.0)],

@@ -246,6 +246,10 @@ def render(results: dict) -> list[str]:
         "free. Every MPS measurement is bracketed by `torch.mps.synchronize()`; "
         "without it the timer measures how fast Python enqueues work.",
         "",
+        f"CPU figures are on {results['cpu_threads']} torch threads, which is what "
+        f"this machine defaults to; an edge box with fewer cores scales roughly with "
+        f"that number and the figure below is not transferable without it.",
+        "",
         "Devices are measured in the order they appear below, in one process. The "
         "second device therefore starts from an already-warm machine, and the peak "
         "RSS covers both sets of weights rather than one station's footprint. Both "
@@ -625,6 +629,7 @@ def main() -> int:
         "checkpoint_mb": args.checkpoint.stat().st_size / (1024 * 1024),
         "parameters": parameters,
         "patch_count": len(patches),
+        "cpu_threads": torch.get_num_threads(),
         "ps_before": ps_before,
         "ps_after": ps_after,
         "devices": measured,
