@@ -1,26 +1,24 @@
 {% extends "base.html" %}
-{% block title %}{{ stem }} &middot; record{% endblock %}
+{% block title %}{{ t('board.title', stem=stem) }}{% endblock %}
 {% block content %}
 <section class="panel">
-  <h1 class="mono">board {{ stem }}</h1>
+  <h1 class="mono">{{ t('board.title', stem=stem) }}</h1>
   <p class="sub">
-    What was decided about this board, and under what. One page for the
-    question an auditor asks after a batch comes back: who released it, when,
-    and which model and thresholds were in force when they did.
+    {{ t('board.sub') }}
   </p>
 
-  <h2>Board disposition</h2>
+  <h2>{{ t('board.disposition') }}</h2>
   {% if history %}
   <table class="queue">
     <thead>
       <tr>
         <th></th>
-        <th>when (UTC)</th>
-        <th>authority</th>
-        <th>basis</th>
-        <th>model</th>
-        <th>thresholds</th>
-        <th>code</th>
+        <th>{{ t('common.when_utc') }}</th>
+        <th>{{ t('board.authority') }}</th>
+        <th>{{ t('board.basis') }}</th>
+        <th>{{ t('board.model') }}</th>
+        <th>{{ t('board.thresholds') }}</th>
+        <th>{{ t('board.code') }}</th>
       </tr>
     </thead>
     <tbody>
@@ -43,23 +41,23 @@
   </table>
   {% else %}
     <p class="empty">
-      No board-level disposition recorded yet.<br>
+      {{ t('board.none_yet') }}<br>
       <span class="dim">{{ assessment.basis if assessment }}</span>
     </p>
   {% endif %}
 
-  <h2>Every region, and what decided it</h2>
+  <h2>{{ t('board.every_region') }}</h2>
   <table class="queue">
     <thead>
       <tr>
-        <th>region</th>
-        <th>model said</th>
-        <th class="num">conf</th>
-        <th>verdict</th>
-        <th>by</th>
-        <th>model</th>
-        <th>code</th>
-        <th>when (UTC)</th>
+        <th>{{ t('common.region') }}</th>
+        <th>{{ t('common.model_said') }}</th>
+        <th class="num">{{ t('common.confidence') }}</th>
+        <th>{{ t('board.verdict') }}</th>
+        <th>{{ t('board.by') }}</th>
+        <th>{{ t('board.model') }}</th>
+        <th>{{ t('board.code') }}</th>
+        <th>{{ t('common.when_utc') }}</th>
       </tr>
     </thead>
     <tbody>
@@ -72,7 +70,7 @@
           {% if row.verdict %}
             <span class="chip {{ 'warn' if row.verdict != 'false_call' else '' }}">{{ row.verdict }}</span>
           {% elif row.queue_status == 'pending' %}
-            <span class="chip warn small">waiting on a person</span>
+            <span class="chip warn small">{{ t('board.waiting_on_person') }}</span>
           {% else %}
             <span class="dim">&mdash;</span>
           {% endif %}
@@ -94,12 +92,7 @@
   </table>
 
   <p class="sim">
-    A model column reading <b>unrecorded</b> is a decision written before this
-    store had provenance columns; <b>unavailable</b> is one written after, whose
-    weights still could not be named. They are two different absences and are
-    kept apart on purpose &mdash; neither is <b>null</b>, and neither is a
-    digest. The ground truth is not on this page either, for the same reason it
-    is not on the queue.
+    {{ t('board.absences_note') }}
   </p>
 </section>
 {% endblock %}

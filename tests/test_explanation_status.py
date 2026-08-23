@@ -27,7 +27,7 @@ import pytest
 from fastapi.testclient import TestClient
 from langgraph.checkpoint.memory import InMemorySaver
 
-from conftest import sign_in
+from conftest import read_in, sign_in
 from aoi_agent.graph import flow
 from aoi_agent.station import app as station_app
 from aoi_agent.station import service
@@ -214,7 +214,7 @@ def test_the_queue_page_flags_the_absence_and_counts_it(store, stub_tools, monke
     service.start_review(graph, REFERENCE)
     monkeypatch.setattr(station_app, "_graph", graph)
 
-    body = sign_in(TestClient(station_app.app)).get("/").text
+    body = read_in(sign_in(TestClient(station_app.app)), "en").get("/").text
     assert "no explanation" in body
     assert "1 of 1 carry no written explanation" in body
     assert "ReadTimeout" not in body
@@ -227,7 +227,7 @@ def test_the_region_page_shows_an_absence_rather_than_a_rationale(
     service.start_review(graph, REFERENCE)
     monkeypatch.setattr(station_app, "_graph", graph)
 
-    body = sign_in(TestClient(station_app.app)).get(f"/c/{STEM}/0").text
+    body = read_in(sign_in(TestClient(station_app.app)), "en").get(f"/c/{STEM}/0").text
     assert "no written explanation" in body
     assert "No explanation was written" in body
     assert "ReadTimeout" not in body

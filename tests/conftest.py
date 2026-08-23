@@ -40,6 +40,7 @@ def make_annotation(x1, y1, x2, y2, class_id=1) -> Annotation:
 # shipped six hundred thousand. The count lives in each record, so this is the
 # real code path over a cheap record, not a second path.
 
+from aoi_agent import i18n
 from aoi_agent.station import auth  # noqa: E402
 
 TEST_OPERATOR = "mike"
@@ -57,6 +58,18 @@ def operators(tmp_path, monkeypatch) -> str:
     # a deployment is told to set, so the suite exercises that arrangement.
     monkeypatch.setenv(auth.SECRET_ENV, "a-signing-key-for-the-suite")
     return TEST_OPERATOR
+
+
+def read_in(client, locale: str):
+    """Read the station in one language for the rest of this test.
+
+    Tests that assert on wording have to say which language they mean. Before
+    the station was bilingual they did not have to, and the ones that assert
+    English now say so here -- an English assertion against a station whose
+    default is Traditional Chinese is an assertion about an accident.
+    """
+    client.cookies.set(i18n.LOCALE_COOKIE, locale)
+    return client
 
 
 def sign_in(client, name: str = TEST_OPERATOR, secret: str = TEST_SECRET):

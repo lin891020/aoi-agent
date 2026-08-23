@@ -1,0 +1,12 @@
+{# The language switch. Included by `base.html` and by the sign-in page, which
+   does not extend it -- somebody who cannot read the login form cannot sign in
+   to change the language, so the control has to be there too. #}
+<nav class="locale" aria-label="{{ t('locale.switch') }}">
+  {%- for code, label in locale_choices %}
+    {%- if code == request.state.locale %}
+      <span class="on" aria-current="true">{{ label }}</span>
+    {%- else %}
+      <a href="/locale/{{ code }}?next={{ here()|urlencode }}">{{ label }}</a>
+    {%- endif %}
+  {%- endfor %}
+</nav>

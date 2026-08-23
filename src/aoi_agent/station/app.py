@@ -60,6 +60,9 @@ from fastapi.responses import (
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+import jinja2
+from markupsafe import Markup
+
 from aoi_agent.analysis import service as analysis_service
 from aoi_agent.analysis.graph import build_analysis_graph
 from aoi_agent.analysis.plan import store_domains
@@ -68,6 +71,13 @@ from aoi_agent.provenance import UNAVAILABLE, UNRECORDED, ReviewerIdentity
 from aoi_agent.llm.ollama import OllamaClient
 from aoi_agent.station import auth, images, service
 from aoi_agent.station.chart_svg import render_svg
+from aoi_agent.i18n import (
+    LOCALE_COOKIE,
+    LOCALES,
+    STRINGS,
+    normalise,
+    translate,
+)
 from aoi_agent.station.prose import blocks as prose_blocks
 from aoi_agent.station.result_view import clip, error_text, readable_rows, shown_count
 from aoi_agent.store import analysis as analysis_store
@@ -79,6 +89,75 @@ HERE = Path(__file__).parent
 app = FastAPI(title="AOI re-verification station")
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 templates = Jinja2Templates(directory=HERE / "templates")
+
+
+@jinja2.pass_context
+def _t(context, key: str, **args: object) -> str:
+    """`t("queue.title")` in any template, in this request's language.
+
+    A context function rather than a plain global, so the locale comes off the
+    request that is being rendered instead of being threaded through every
+    route's context dict by hand. Starlette puts `request` in every template
+    context, and one route forgetting to pass a locale is exactly the drift the
+    key-parity test cannot see.
+    """
+    request = context.get("request")
+    locale = getattr(request.state, "locale", None) if request is not None else None
+    return translate(key, locale, **args)
+
+
+@jinja2.pass_context
+def _here(context) -> str:
+    """The path this request is on, for a link that comes back to it.
+
+    Path and query, never the host: it is fed to `_safe_next`, which refuses
+    anything that is not a path on this station, and building the value here
+    the same way keeps the two ends agreeing.
+    """
+    request = context.get("request")
+    if request is None:
+        return "/"
+    return f"{request.url.path}?{request.url.query}" if request.url.query \
+        else request.url.path
+
+
+@jinja2.pass_context
+def _strings_for(context, prefix: str) -> str:
+    """Every string under `prefix`, as JSON for a `<script type="application/
+    json">` block the page parses with `textContent`.
+
+    The browser reads the same table the server renders from. A second list of
+    translations kept in step by hand is the drift the key-parity test exists
+    to catch, and it cannot see one that lives in JavaScript.
+    """
+    request = context.get("request")
+    locale = getattr(request.state, "locale", None) if request is not None else None
+    table = STRINGS[normalise(locale)]
+    encoded = json.dumps(
+        {key: value for key, value in table.items() if key.startswith(prefix)},
+        ensure_ascii=False,
+    )
+    # A `<script>` element's content is raw text: HTML entities inside it are
+    # not decoded, so Jinja's autoescaping would put `&quot;` where the quotes
+    # belong and `JSON.parse` would fail on every page. It has to go out
+    # unescaped -- and the reason that is safe is this line, not the marking:
+    # `<`, `>` and `&` become `\uXXXX`, which JSON reads back as the same
+    # characters and which cannot spell `</script`. So no string in the table,
+    # whatever it is changed to later, can close the element.
+    for character in ("<", ">", "&"):
+        encoded = encoded.replace(character, f"\\u{ord(character):04x}")
+    return Markup(encoded)
+
+
+templates.env.globals["t"] = _t
+templates.env.globals["here"] = _here
+templates.env.globals["strings_for"] = _strings_for
+#: What the switch offers. Each language names itself in itself -- somebody
+#: looking for English does not read 英文, and somebody looking for Chinese does
+#: not read "Chinese".
+templates.env.globals["locale_choices"] = tuple(
+    (code, {"zh-TW": "中文", "en": "English"}[code]) for code in LOCALES
+)
 
 _graph = None
 _analysis_graph = None
@@ -142,7 +221,10 @@ def analysis_graph():
 #: rather than a set of decorated routes so that a route added later is
 #: protected by default; the failure mode of the other arrangement is a new
 #: endpoint that nobody remembered to mark.
-PUBLIC_PREFIXES = ("/login", "/static", "/favicon.ico")
+#: `/locale` is here so the sign-in page can be read in either language --
+#: it writes a display preference and nothing else, and a person who cannot
+#: read the login form cannot sign in to fix that.
+PUBLIC_PREFIXES = ("/login", "/locale", "/static", "/favicon.ico")
 
 
 def _is_public(path: str) -> bool:
@@ -172,6 +254,10 @@ async def require_operator(request: Request, call_next):
     """
     operator = auth.operator_from_session(request.cookies.get(auth.COOKIE_NAME))
     request.state.operator = operator
+    # A cookie rather than the session: a preference about how to read the
+    # screen is not a fact about who is signed in, and it should survive a
+    # sign-out on a shared shop-floor terminal.
+    request.state.locale = normalise(request.cookies.get(LOCALE_COOKIE))
 
     if operator is None and not _is_public(request.url.path):
         if request.method in ("GET", "HEAD"):
@@ -248,6 +334,26 @@ def login(request: Request, name: str = Form(...), secret: str = Form(...),
         samesite="lax",
         secure=auth.secure_cookie_for(request.url.scheme),
         path="/",
+    )
+    return response
+
+
+@app.get("/locale/{code}")
+def set_locale(code: str, next: str = "/"):
+    """Switch the interface language and come back to the same page.
+
+    A `GET` because it is a link in the header and has to work with scripting
+    off. It changes nothing but a display preference -- no record is written,
+    no board moves -- so it does not want a form and a token.
+
+    An unknown code lands on the default rather than 404ing: this is reachable
+    by typing a URL, and a wrong one should leave a working station in the
+    language it started in.
+    """
+    response = RedirectResponse(_safe_next(next), status_code=303)
+    response.set_cookie(
+        LOCALE_COOKIE, normalise(code),
+        max_age=60 * 60 * 24 * 365, httponly=False, samesite="lax",
     )
     return response
 

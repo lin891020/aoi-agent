@@ -7,24 +7,24 @@
   <div class="head">
     <h1 class="mono">{{ reference }}</h1>
     <span class="dim">
-      lot {{ candidate.lot_id }} &middot; line {{ candidate.line_id }} &middot;
-      machine {{ candidate.machine_id }} &middot; {{ candidate.shift }} shift
-      &middot; <a href="/board/{{ stem }}">board record</a>
+      {{ t('region.lot') }} {{ candidate.lot_id }} &middot; {{ t('region.line') }} {{ candidate.line_id }} &middot;
+      {{ t('region.machine') }} {{ candidate.machine_id }} &middot; {{ candidate.shift }} {{ t('region.shift') }}
+      &middot; <a href="/board/{{ stem }}">{{ t('region.board_record') }}</a>
     </span>
     <span class="grow"></span>
     {% if escalation and escalation.status == 'pending' %}
-      <span class="chip warn">waiting on you</span>
+      <span class="chip warn">{{ t('region.waiting_on_you') }}</span>
     {% elif escalation %}
-      <span class="chip done">already answered</span>
+      <span class="chip done">{{ t('region.already_answered') }}</span>
     {% endif %}
   </div>
 
   {% if escalation %}
   <div class="handover">
-    <span class="label">the agent handed this over because</span>
+    <span class="label">{{ t('region.handed_over_because') }}</span>
     <p>{{ escalation.reason }}</p>
     {% if escalation.agent_verdict %}
-      <span class="label">it leaned towards <b>{{ escalation.agent_verdict }}</b>, without confidence</span>
+      <span class="label">{{ t('region.leaned_towards', verdict=escalation.agent_verdict) }}</span>
     {% endif %}
   </div>
   {% endif %}
@@ -34,35 +34,35 @@
      which reads like something the model concluded. #}
   {% if explanation_notice %}
   <div class="handover no-explanation">
-    <span class="label">no written explanation</span>
+    <span class="label">{{ t('region.no_explanation') }}</span>
     <p>{{ explanation_notice }}</p>
   </div>
   {% endif %}
 
   <figure class="triptych">
-    <img src="/c/{{ stem }}/{{ index }}/triptych.png" alt="template, test and difference around the flagged region">
+    <img src="/c/{{ stem }}/{{ index }}/triptych.png" alt="{{ t('region.triptych_alt') }}">
     <figcaption>
-      <span>golden template</span><span>board under test</span><span>difference</span>
+      <span>{{ t('region.template') }}</span><span>{{ t('region.under_test') }}</span><span>{{ t('region.difference') }}</span>
     </figcaption>
   </figure>
 
   <div class="columns">
 
     <div class="col">
-      <h2>What the model read</h2>
+      <h2>{{ t('region.what_model_read') }}</h2>
       <dl class="kv">
-        <dt>class</dt><dd><span class="chip">{{ candidate.predicted_class }}</span></dd>
-        <dt>confidence</dt>
+        <dt>{{ t('region.class') }}</dt><dd><span class="chip">{{ candidate.predicted_class }}</span></dd>
+        <dt>{{ t('common.confidence') }}</dt>
         <dd>
           {{ '%.3f'|format(candidate.confidence) }}
           <span class="meter"><i style="width: {{ (candidate.confidence * 100)|round(1) }}%"></i></span>
         </dd>
-        <dt>P(false call)</dt>
+        <dt>{{ t('queue.false_call_probability') }}</dt>
         <dd>
           {{ '%.3f'|format(candidate.false_call_probability) }}
           <span class="meter"><i style="width: {{ (candidate.false_call_probability * 100)|round(1) }}%"></i></span>
         </dd>
-        <dt>box</dt>
+        <dt>{{ t('region.box') }}</dt>
         <dd class="mono dim">
           {{ candidate.x1 }},{{ candidate.y1 }} &rarr; {{ candidate.x2 }},{{ candidate.y2 }}
           ({{ candidate.area }} px)
@@ -70,34 +70,33 @@
       </dl>
       <figure class="patch">
         <img src="/c/{{ stem }}/{{ index }}/patch.png"
-             alt="the 64 px window the model classified">
+             alt="{{ t('region.patch_alt') }}">
         <figcaption class="dim">
-          the 64&nbsp;px window the model actually classified &mdash; if it is off
-          the region, the disagreement is the crop, not the classifier
+          {{ t('region.patch_caption') }}
         </figcaption>
       </figure>
     </div>
 
     <div class="col">
-      <h2>Production context</h2>
+      <h2>{{ t('region.production_context') }}</h2>
       {% set ctx = state.get('board_context') or {} %}
       {% if ctx %}
       <dl class="kv">
         {% if ctx.get('lot_defects_per_board') is not none %}
-          <dt>lot average</dt><dd>{{ ctx.lot_defects_per_board }} defects / board</dd>
+          <dt>{{ t('region.lot_average') }}</dt><dd>{{ ctx.lot_defects_per_board }}</dd>
         {% endif %}
         {% if ctx.get('board_defect_count') is not none %}
-          <dt>this board</dt><dd>{{ ctx.board_defect_count }} flagged regions</dd>
+          <dt>{{ t('region.this_board') }}</dt><dd>{{ t('board.regions_count', count=ctx.board_defect_count) }}</dd>
         {% endif %}
         {% if ctx.get('inspected_at') %}
-          <dt>inspected</dt><dd class="dim">{{ ctx.inspected_at }}</dd>
+          <dt>{{ t('region.inspected') }}</dt><dd class="dim">{{ ctx.inspected_at }}</dd>
         {% endif %}
       </dl>
       {% endif %}
 
       {% set stats = state.get('machine_stats') or {} %}
       {% if stats.get('machines') %}
-        <h3>{{ stats.defect_type }} by machine, last {{ stats.get('days', 30) }} days</h3>
+        <h3>{{ t('region.by_machine', defect_type=stats.defect_type, days=stats.get('days', 30)) }}</h3>
         <table class="mini">
           {% for m in stats.machines %}
           <tr class="{{ 'this' if m.machine.endswith(candidate.machine_id|string) else '' }}">
@@ -106,25 +105,25 @@
           </tr>
           {% endfor %}
           <tr class="fleet">
-            <td>fleet</td>
+            <td>{{ t('region.fleet') }}</td>
             <td class="num">{{ '%.1f'|format(stats.fleet_share_of_defects * 100) }}%</td>
           </tr>
         </table>
       {% endif %}
-      <p class="sim">lot / line / machine / shift are simulated metadata</p>
+      <p class="sim">{{ t('region.simulated_metadata') }}</p>
     </div>
 
     <div class="col">
-      <h2>Acceptance criteria retrieved</h2>
+      <h2>{{ t('region.criteria_retrieved') }}</h2>
       {% for p in state.get('standards') or [] %}
         <article class="passage">
           <span class="label mono">{{ p.document }} &middot; {{ p.heading }}</span>
           <p>{{ p.text }}</p>
         </article>
       {% else %}
-        <p class="dim">none retrieved for this region</p>
+        <p class="dim">{{ t('region.criteria_none') }}</p>
       {% endfor %}
-      <p class="sim">original documents written for this project, not IPC-A-610</p>
+      <p class="sim">{{ t('region.criteria_simulated') }}</p>
     </div>
 
   </div>
@@ -132,11 +131,11 @@
   {% if escalation and escalation.status == 'pending' %}
   <form class="verdict" method="post" action="/c/{{ stem }}/{{ index }}/verdict">
     <div class="verdict-head">
-      <h2>Your verdict</h2>
+      <h2>{{ t('region.your_verdict') }}</h2>
       {# Not an input. The name comes off the session, and a form field here
          would be a name the browser could choose -- which is how a store ends
          up with 9,140 decisions that identify nobody. #}
-      <span class="reviewer">answering as
+      <span class="reviewer">{{ t('region.answering_as') }}
         <b class="mono">{{ request.state.operator }}</b></span>
     </div>
     <div class="options">
@@ -149,28 +148,26 @@
       {% endfor %}
     </div>
     <p class="sub dim">
-      Your answer resumes the suspended run and is recorded as a human decision
-      under your name. It becomes a label in the next training round, which is
-      why the ground truth is not shown on this page.
+      {{ t('region.verdict_note') }}
     </p>
   </form>
   {% else %}
   <div class="verdict answered">
-    <h2>Already answered</h2>
+    <h2>{{ t('region.already_answered') }}</h2>
     <p class="dim">
-      This region is no longer waiting.
-      {% if next_reference %}<a class="go" href="/next">Next waiting region &rarr;</a>
-      {% else %}<a class="go" href="/">Back to the queue &rarr;</a>{% endif %}
+      {{ t('region.no_longer_waiting') }}
+      {% if next_reference %}<a class="go" href="/next">{{ t('region.next_waiting') }}</a>
+      {% else %}<a class="go" href="/">{{ t('region.back_to_queue') }}</a>{% endif %}
     </p>
   </div>
   {% endif %}
 
   {% if state.get('trace') %}
   <footer class="trace">
-    <span class="label">path</span>
+    <span class="label">{{ t('region.path') }}</span>
     <span class="mono">{{ state.trace|join(' &rarr; ')|safe }}</span>
     {% if state.get('timings_ms') %}
-      <span class="label">timings</span>
+      <span class="label">{{ t('region.timings') }}</span>
       <span class="mono dim">
         {% for name, ms in state.timings_ms.items() %}{{ name }}&nbsp;{{ '%.0f'|format(ms) }}ms{% if not loop.last %} &middot; {% endif %}{% endfor %}
       </span>

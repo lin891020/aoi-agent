@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ request.state.locale }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sign in &middot; re-verification station</title>
+  <title>{{ t('login.title') }} &middot; {{ t('station.name') }}</title>
   <link rel="stylesheet" href="/static/style.css">
 </head>
 {# Standalone rather than an extension of base.html: the header there carries
@@ -12,41 +12,40 @@
    a login page that leaks. #}
 <body>
   <main class="signin">
-    <h1>Re-verification station</h1>
+    {# The switch is here too. Somebody who cannot read this form cannot
+       sign in to change the language, so the control cannot live behind the
+       session. #}
+    {% include "_locale.html" %}
+    <h1>{{ t('station.name') }}</h1>
 
     <form class="signin-form" method="post" action="/login">
       <input type="hidden" name="next" value="{{ next }}">
       <label>
-        operator
+        {{ t('login.name') }}
         <input type="text" name="name" autocomplete="username" autofocus required>
       </label>
       <label>
-        passphrase
+        {{ t('login.passphrase') }}
         <input type="password" name="secret" autocomplete="current-password" required>
       </label>
-      <button type="submit" class="option">sign in</button>
+      <button type="submit" class="option">{{ t('login.submit') }}</button>
       {% if error %}<p class="signin-error">{{ error }}</p>{% endif %}
     </form>
 
     <p class="sub dim">
-      Your name goes on every region you answer, and those answers are the next
-      training round's labels. That is what this asks for &mdash; not a
-      permission, an attribution.
+      {{ t('login.attribution_note') }}
     </p>
 
     {% if no_operators %}
     <p class="signin-note warn-line">
-      No operators are configured, so nobody can sign in and the queue cannot be
-      answered. Add one with
-      <code>uv run python scripts/add_operator.py &lt;name&gt;</code>; the file
-      is <code>{{ operators_path }}</code>.
+      {{ t('login.no_operators') }}
+      <code>uv run python scripts/add_operator.py &lt;name&gt;</code> &mdash;
+      <code>{{ operators_path }}</code>.
     </p>
     {% endif %}
     {% if ephemeral_sessions %}
     <p class="signin-note dim">
-      <code>AOI_AGENT_SESSION_SECRET</code> is unset, so sessions are signed with
-      a key generated for this process and everyone is signed out when it
-      restarts. Fine on a laptop; set it for anything longer-lived.
+      {{ t('login.ephemeral_sessions') }}
     </p>
     {% endif %}
   </main>

@@ -35,16 +35,46 @@
   /* The four stages, in the order the graph runs them. `join` is a boundary
    * rather than a phase -- collect_node is microseconds -- so it never shows
    * as active on its own; it goes done at the moment the join is announced. */
-  var STAGES = [
-    { id: 'plan', label: '規劃' },
-    { id: 'fan', label: '獨立查詢' },
-    { id: 'join', label: '匯整' },
-    { id: 'write', label: '撰寫回答' }
-  ];
+  var STAGE_IDS = ['plan', 'fan', 'join', 'write'];
+
+  /* Every word this file puts on screen, in one object the page replaces.
+   *
+   * Defaults are the shop floor's language, so the file is readable and the
+   * node harness needs no fixture to drive it. `setStrings` is what the
+   * station calls, with the same table `t()` renders the rest of the page
+   * from -- there is no second list of translations to keep in step, and a key
+   * missing from `station/i18n.py` shows up here as the key.
+   */
+  var STRINGS = {
+    'flow.stage.plan': '規劃',
+    'flow.stage.fan': '獨立查詢',
+    'flow.stage.join': '匯整',
+    'flow.stage.write': '撰寫回答',
+    'flow.phase.planning': '規劃中…',
+    'flow.phase.running': '查詢中…（{done}/{total} 完成）',
+    'flow.phase.synthesising': '撰寫回答中…',
+    'flow.phase.refused': '沒有可執行的查詢',
+    'flow.phase.failed': '已中止',
+    'flow.phase.done': '完成',
+    'flow.branches.unplanned': '尚未規劃',
+    'flow.branches.none': '沒有查詢'
+  };
+
+  function say(key, args) {
+    var text = STRINGS[key] === undefined ? key : STRINGS[key];
+    if (!args) return text;
+    return Object.keys(args).reduce(function (out, name) {
+      return out.split('{' + name + '}').join(args[name]);
+    }, text);
+  }
+
+  function setStrings(table) {
+    Object.keys(table || {}).forEach(function (key) { STRINGS[key] = table[key]; });
+  }
 
   /* Fold the events received so far into what the page has to show.
    *
-   * `reached` is the index into STAGES of the stage the run is in. `stopped`
+   * `reached` is the index into STAGE_IDS of the stage the run is in. `stopped`
    * is a run that ended before its last stage -- a refusal, a plan that did
    * not validate, a dropped stream -- and is sticky, so a later `done` cannot
    * repaint a stage that never ran as one that finished.
@@ -110,7 +140,7 @@
 
   /* One state per stage: done, active, pending, or skipped. */
   function stages(state) {
-    return STAGES.map(function (stage, index) {
+    return STAGE_IDS.map(function (stage, index) {
       var status;
       if (state.stopped) {
         status = index < state.reached ? 'done' : 'skipped';
@@ -123,22 +153,23 @@
       } else {
         status = 'pending';
       }
-      return { id: stage.id, label: stage.label, state: status };
+      return { id: stage, label: say('flow.stage.' + stage), state: status };
     });
   }
 
   /* What the status region says. The screen reader gets this; the spinner is
    * decoration over the top of it. */
   function label(state) {
-    if (state.phase === 'planning') return '規劃中…';
     if (state.phase === 'running') {
-      var done = state.branches.length - state.outstanding;
-      return '查詢中…（' + done + '/' + state.branches.length + ' 完成）';
+      return say('flow.phase.running', {
+        done: state.branches.length - state.outstanding,
+        total: state.branches.length
+      });
     }
-    if (state.phase === 'synthesising') return '撰寫回答中…';
-    if (state.phase === 'refused') return '沒有可執行的查詢';
-    if (state.phase === 'failed') return '已中止';
-    return '完成';
+    var known = ['planning', 'synthesising', 'refused', 'failed'];
+    return known.indexOf(state.phase) === -1
+      ? say('flow.phase.done')
+      : say('flow.phase.' + state.phase);
   }
 
   function running(state) {
@@ -234,7 +265,8 @@
       // Two different nothings, and the difference is the whole point of
       // drawing this before the plan arrives: branches not known yet, against
       // branches that will never exist because the model declined.
-      var empty = fanState === 'skipped' ? '沒有查詢' : '尚未規劃';
+      var empty = say(fanState === 'skipped'
+        ? 'flow.branches.none' : 'flow.branches.unplanned');
       boxWithText(doc, svg, geoms[1], 'is-' + fanState, empty);
       connect(doc, svg, geoms[0].x + geoms[0].w, middle, geoms[1].x, middle,
         'is-' + fanState);
@@ -259,6 +291,7 @@
   }
 
   global.AoiFlow = {
+    setStrings: setStrings,
     model: model,
     stages: stages,
     label: label,

@@ -18,7 +18,7 @@ from aoi_agent.station import app as station_app
 from aoi_agent.station import service
 from aoi_agent.store import boards, escalations
 from aoi_agent.store.models import Board, CandidateRecord, create_all, make_session_factory
-from conftest import sign_in
+from conftest import read_in, sign_in
 from test_graph import StubClient, stub_tools  # noqa: F401  (fixture)
 
 STEM = "20085293"
@@ -139,7 +139,7 @@ def test_the_queue_page_lists_what_is_waiting(client, graph):
 
 
 def test_the_queue_page_says_so_when_it_is_empty(client):
-    assert "Nothing waiting" in client.get("/").text
+    assert "Nothing waiting" in read_in(client, "en").get("/").text
 
 
 def test_the_station_shows_the_evidence_the_agent_had(client, graph):
@@ -273,14 +273,15 @@ def _answer(client, index: int, verdict: str) -> None:
 
 
 def test_the_corrections_page_says_so_when_nothing_is_recorded(client):
-    assert "No human decisions recorded yet" in client.get("/corrections").text
+    body = read_in(client, "en").get("/corrections").text
+    assert "No human decisions recorded yet" in body
 
 
 def test_an_answered_region_appears_in_corrections(client, graph):
     service.start_review(graph, REFERENCE)
     _answer(client, 0, "copper")
 
-    page = client.get("/corrections").text
+    page = read_in(client, "en").get("/corrections").text
     assert REFERENCE in page
     assert "overruled" in page
     assert "mike" in page

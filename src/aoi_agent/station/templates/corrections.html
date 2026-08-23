@@ -1,45 +1,42 @@
 {% extends "base.html" %}
-{% block title %}Corrections &middot; {{ summary.overruled }} overruled{% endblock %}
+{% block title %}{{ t('nav.corrections') }} &middot; {{ summary.overruled }} {{ t('corrections.overruled') }}{% endblock %}
 {% block content %}
 <section class="panel">
-  <h1>Where operators overruled the model</h1>
+  <h1>{{ t('corrections.title') }}</h1>
   <p class="sub">
-    Every row is a region a person judged after the agent handed it over. The
-    ones marked overruled are the next training round's corrections &mdash;
-    a region where the model's class and a person's verdict disagree is worth
-    more than a hundred it got right.
+    {{ t('corrections.sub') }}
   </p>
 
   {% if not rows %}
     <p class="empty">
-      No human decisions recorded yet.<br>
-      Answer something on the <a href="/">queue</a> and it appears here.
+      {{ t('corrections.none_yet') }}<br>
+      {{ t('corrections.none_yet_hint') }} <a href="/">{{ t('nav.queue') }}</a>
     </p>
   {% else %}
 
   <div class="stats">
     <div class="stat">
       <b>{{ summary.total }}</b>
-      <span>human decisions</span>
+      <span>{{ t('corrections.human_decisions') }}</span>
     </div>
     <div class="stat">
       <b class="warn">{{ summary.overruled }}</b>
-      <span>overruled the model</span>
+      <span>{{ t('corrections.overruled') }}</span>
     </div>
     <div class="stat">
       <b>{{ '%.0f'|format(summary.overruled / summary.total * 100) }}%</b>
-      <span>overrule rate</span>
+      <span>{{ t('corrections.overrule_rate') }}</span>
     </div>
   </div>
 
-  <h2>By what the model said</h2>
+  <h2>{{ t('corrections.by_model_class') }}</h2>
   <table class="queue">
     <thead>
       <tr>
-        <th>model said</th>
-        <th class="num">reviewed</th>
-        <th class="num">overruled</th>
-        <th>corrected to</th>
+        <th>{{ t('common.model_said') }}</th>
+        <th class="num">{{ t('corrections.reviewed') }}</th>
+        <th class="num">{{ t('corrections.overruled') }}</th>
+        <th>{{ t('corrections.corrected_to') }}</th>
       </tr>
     </thead>
     <tbody>
@@ -64,18 +61,22 @@
     </tbody>
   </table>
 
-  <h2>Every decision, newest first</h2>
+  <h2>{{ t('corrections.every_decision') }}</h2>
   <table class="queue">
     <thead>
       <tr>
         <th></th>
-        <th>region</th>
-        <th>model said</th>
-        <th class="num">conf</th>
-        <th>person said</th>
-        <th>reviewer</th>
-        <th>attribution</th>
-        <th>when</th>
+        <th>{{ t('common.region') }}</th>
+        <th>{{ t('common.model_said') }}</th>
+        <th class="num">{{ t('common.confidence') }}</th>
+        <th>{{ t('corrections.person_said') }}</th>
+        <th>{{ t('corrections.reviewer') }}</th>
+        <th>{{ t('corrections.attribution') }}</th>
+        {# Labelled UTC now. It was the bare word `when` on a quality record
+           read at UTC+8, which is an eight-hour lie by omission -- named as
+           an open item in CLAUDE.md and closed here because this page was
+           being rewritten anyway. #}
+        <th>{{ t('common.when_utc') }}</th>
       </tr>
     </thead>
     <tbody>
@@ -84,9 +85,9 @@
       <tr>
         <td>
           {% if row.overruled %}
-            <span class="chip warn small">overruled</span>
+            <span class="chip warn small">{{ t('corrections.overruled_chip') }}</span>
           {% else %}
-            <span class="dim small">agreed</span>
+            <span class="dim small">{{ t('corrections.agreed') }}</span>
           {% endif %}
         </td>
         <td><a class="mono" href="/c/{{ stem }}/{{ index }}">{{ row.reference }}</a></td>
@@ -113,9 +114,7 @@
   </table>
 
   <p class="sim">
-    The ground truth is not shown here either. Whether the operators were
-    themselves right is a question for the evaluation scripts, not for a page
-    one link away from the queue.
+    {{ t('corrections.ground_truth_note') }}
   </p>
   {% endif %}
 </section>

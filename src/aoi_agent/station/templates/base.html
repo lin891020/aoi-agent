@@ -1,31 +1,40 @@
 <!doctype html>
-<html lang="en">
+{# `lang` is the real locale, not a constant. A screen reader picks its voice
+   from it, and a browser picks its CJK font from it: a page of Traditional
+   Chinese declared as English is read out in the wrong language and rendered
+   in whichever CJK face the browser guesses at. #}
+<html lang="{{ request.state.locale }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Re-verification station{% endblock %}</title>
+  <title>{% block title %}{{ t('station.name') }}{% endblock %}</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="/static/htmx.min.js" defer></script>
 </head>
 <body>
   <header class="bar">
-    <a class="brand" href="/">AOI <span class="dim">&middot;</span> re-verification station</a>
+    <a class="brand" href="/">AOI <span class="dim">&middot;</span> {{ t('station.name') }}</a>
     <nav>
-      <a href="/">queue</a>
-      <a href="/corrections">corrections</a>
-      <a href="/ask">ask</a>
+      <a href="/">{{ t('nav.queue') }}</a>
+      <a href="/corrections">{{ t('nav.corrections') }}</a>
+      <a href="/ask">{{ t('nav.ask') }}</a>
     </nav>
     <span class="grow"></span>
     <span class="badge">
-      <b hx-get="/queue-count" hx-trigger="every 10s" hx-swap="innerHTML">{{ waiting }}</b> waiting
+      <b hx-get="/queue-count" hx-trigger="every 10s" hx-swap="innerHTML">{{ waiting }}</b>
+      {{ t('queue.waiting') }}
     </span>
+    {# A link, not a form: it writes a display preference and nothing else, and
+       it has to work with scripting off like the rest of the station. `next`
+       carries the current path so switching language does not also navigate. #}
+    {% include "_locale.html" %}
     {# Who the station thinks is answering. Shown on every page rather than only
        on the verdict form: the name is what goes on the label, and an operator
        who finds somebody else's session open should see that before they
        answer a region, not after. #}
     <form class="who" method="post" action="/logout">
       <span class="mono">{{ request.state.operator }}</span>
-      <button type="submit">sign out</button>
+      <button type="submit">{{ t('nav.sign_out') }}</button>
     </form>
   </header>
   <main>{% block content %}{% endblock %}</main>

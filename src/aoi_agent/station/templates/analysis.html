@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Ask &middot; production data{% endblock %}
+{% block title %}{{ t('analysis.title') }}{% endblock %}
 {% macro spans(items) -%}
 {#- One run of text. `strong` and `code` are elements; everything else is the
     model's characters, escaped by Jinja like any other variable. -#}
@@ -11,13 +11,13 @@
 {%- endmacro %}
 {% block content %}
 <section class="panel">
-  <h1>問一個關於產線的問題</h1>
+  <h1>{{ t('analysis.title') }}</h1>
 
   <form class="ask" method="post" action="/ask">
     <input type="text" name="question" autocomplete="off" autofocus
            value="{{ run.question if run else '' }}"
-           placeholder="例如：L2-M22 的 open 是不是不尋常？">
-    <button type="submit">問</button>
+           placeholder="{{ t('analysis.placeholder') }}">
+    <button type="submit">{{ t('analysis.ask') }}</button>
   </form>
 
   {# The form posts and redirects, with no JavaScript involved. The progress
@@ -34,7 +34,7 @@
     <p class="phase">
       <span class="spin" id="progress-mark" aria-hidden="true">⟳</span>
       <span class="label" id="progress-head" role="status" aria-live="polite"
-            ><span id="progress-phase">規劃中…</span
+            ><span id="progress-phase">{{ t('flow.phase.planning') }}</span
             ><span class="sr-only" id="progress-since"></span></span>
       <span class="elapsed mono dim" id="progress-elapsed" aria-hidden="true"></span>
     </p>
@@ -43,12 +43,12 @@
     <ul id="progress-list"></ul>
   </div>
 
-  <p class="sub">試試看：
+  <p class="sub">{{ t('analysis.try') }}
     {% for example in examples %}
       <a class="example" href="#" onclick="document.querySelector('.ask input').value=this.textContent;return false">{{ example }}</a>
     {% endfor %}
   </p>
-  <p class="sim">資料涵蓋最近 {{ coverage_days }} 天。超出這個範圍的問題會被拒答，而不是用最接近的窗口代答。產線 metadata 是模擬的；驗收標準是本專案自撰文件，不是 IPC-A-610。</p>
+  <p class="sim">{{ t('analysis.coverage', days=coverage_days) }}</p>
 
   {# A rejected or unparseable plan's reasons never reach this template as
      `plan_errors`: the POST route 303-redirects before they can be attached,
@@ -62,27 +62,35 @@
 
   {% if run %}
     <div class="answer-block">
-      <h2>1 &middot; 它怎麼理解你的問題</h2>
+      <h2>{{ t('analysis.s1') }}</h2>
       <p>{{ run.plan.interpretation if run.plan else run.answer }}</p>
     </div>
 
     {% if run.plan and run.plan.assumptions %}
     <div class="answer-block">
-      <h2>3 &middot; 它假設了什麼</h2>
+      <h2>{{ t('analysis.s3') }}</h2>
       <ul>{% for a in run.plan.assumptions %}<li>{{ a }}</li>{% endfor %}</ul>
     </div>
     {% endif %}
 
     {% if run.results %}
     <div class="answer-block">
-      <h2>2 &middot; 它呼叫了什麼</h2>
+      <h2>{{ t('analysis.s2') }}</h2>
       <table class="queue">
-        <thead><tr><th>工具</th><th>參數</th><th>為什麼</th><th class="num">耗時</th><th></th></tr></thead>
+        <thead><tr><th>{{ t('analysis.tool') }}</th><th>{{ t('analysis.args') }}</th><th>{{ t('analysis.why') }}</th><th class="num">{{ t('analysis.elapsed') }}</th><th></th></tr></thead>
         <tbody>
         {% for r in run.results %}
           {% set tool_said = tool_error(r.data) %}
           <tr>
-            <td class="mono">{{ r.tool }}</td>
+            {# The readable name and the registry name, in that order and both
+               present. `r.tool` is what the plan called and what `validate_plan`
+               checked a signature against -- it is the auditable half, and a
+               row that showed only「缺陷歷史」would have swapped it for
+               decoration. #}
+            <td>
+              {{ t('tool.' + r.tool) }}
+              <span class="mono small dim">{{ r.tool }}</span>
+            </td>
             <td class="mono dim">{{ r.args }}</td>
             {# `r.why`, not `run.plan.calls[loop.index0].why`. Pairing by
                position was only ever right for `POST /ask`, where the reducer
@@ -95,8 +103,8 @@
             <td class="dim">{{ r.why or '' }}</td>
             <td class="num">{{ '%.0f'|format(r.elapsed_ms) }}ms</td>
             <td>
-              {% if not r.ok %}<span class="chip warn">失敗</span>
-              {% elif tool_said %}<span class="chip warn">查無資料</span>
+              {% if not r.ok %}<span class="chip warn">{{ t('analysis.failed') }}</span>
+              {% elif tool_said %}<span class="chip warn">{{ t('analysis.no_data') }}</span>
               {% else %}<span class="chip done">ok</span>{% endif %}
             </td>
           </tr>
@@ -104,7 +112,7 @@
              ok; it just has nothing to say. Shown as neither a success nor a
              crash, because it is neither. #}
           {% if not r.ok %}<tr><td colspan="5" class="dim">{{ r.error }}</td></tr>
-          {% elif tool_said %}<tr><td colspan="5" class="dim">工具回報：{{ tool_said }}</td></tr>
+          {% elif tool_said %}<tr><td colspan="5" class="dim">{{ t('analysis.tool_reported') }}{{ tool_said }}</td></tr>
           {% else %}
             {# The figures the prose was written from. Only two of the five
                tools produce a chart, so for the other three this is the only
@@ -119,7 +127,7 @@
                    the "另外 n 項未顯示" note, which is a statement about the
                    payload rather than a field of it. Counting it made a
                    payload cut from 20 fields to 14 announce 15. #}
-                <summary>回傳的資料（{{ shown_count(rows) }} 項）</summary>
+                <summary>{{ t('analysis.returned_data', count=shown_count(rows)) }}</summary>
                 <table class="kv">
                   {% for label, value in rows %}
                   <tr><th class="mono dim">{{ label }}</th><td class="mono">{{ value }}</td></tr>
@@ -140,14 +148,13 @@
          see it is not being asked to take the parallel figure on trust.
          This is not a saving: the two model calls either side cost around
          twenty-five seconds whatever these do. #}
-      <p class="sub dim">4 &middot;
-        {{ run.results|length }} 個工具 &middot;
-        平行 {{ '%.0f'|format(run.timings.tools_wall or 0) }}ms
-        （最長的單一分支 {{ '%.0f'|format(run.timings.tools_longest_branch or 0) }}ms）/
-        依序 {{ '%.0f'|format(run.timings.tools_sequential or 0) }}ms &middot;
-        規劃 {{ '%.0f'|format(run.timings.plan or 0) }}ms &middot;
-        撰寫 {{ '%.0f'|format(run.timings.synthesise or 0) }}ms
-      </p>
+      <p class="sub dim">{{ t('analysis.s4_timings',
+        tools=run.results|length,
+        wall='%.0f'|format(run.timings.tools_wall or 0),
+        longest='%.0f'|format(run.timings.tools_longest_branch or 0),
+        sequential='%.0f'|format(run.timings.tools_sequential or 0),
+        plan='%.0f'|format(run.timings.plan or 0),
+        synthesise='%.0f'|format(run.timings.synthesise or 0)) }}</p>
     </div>
     {% endif %}
 
@@ -156,7 +163,7 @@
     {% endif %}
 
     <div class="answer-block">
-      <h2>5 &middot; 回答</h2>
+      <h2>{{ t('analysis.s5') }}</h2>
       {# Not `{{ run.answer }}` in one `<p>`, which printed the model's
          asterisks and pipe rows on screen as asterisks and pipe rows. Not
          `|safe` either, now or ever: this text is written by a model from tool
@@ -197,11 +204,11 @@
   {% endif %}
 
   {% if recent %}
-    <h2>最近問過的</h2>
+    <h2>{{ t('analysis.recent') }}</h2>
     <ul class="recent">
       {% for r in recent %}
         <li><a href="/ask/{{ r.id }}">{{ r.question }}</a>
-            {% if r.refused %}<span class="chip">拒答</span>{% endif %}</li>
+            {% if r.refused %}<span class="chip">{{ t('analysis.refused_chip') }}</span>{% endif %}</li>
       {% endfor %}
     </ul>
   {% endif %}
@@ -209,6 +216,13 @@
 {% endblock %}
 
 {% block script %}
+{# Not attributes and not a generated `var`: a `<script type="application/json">`
+   is inert, and `textContent` on it cannot execute anything whatever the
+   strings contain. `strings_for` returns `Markup` because a script element's
+   content is raw text and Jinja's escaping would put `&quot;` where the JSON
+   needs `"`; what makes that safe is that it has already replaced `<`, `>` and
+   `&` with `\uXXXX`, so no string in the table can close this element. #}
+<script type="application/json" id="flow-strings">{{ strings_for('flow.') }}</script>
 <script src="/static/flow.js"></script>
 <script>
   // Enhancement only: with JavaScript off the form posts and the server
@@ -228,6 +242,21 @@
     if (!question) return;
     event.preventDefault();
 
+    // The page's own words, from the same table `t()` renders the markup
+    // from -- read out of a JSON block with `textContent`, never `innerHTML`,
+    // and never a second list of translations kept in step by hand.
+    var STRINGS = JSON.parse(
+      document.getElementById('flow-strings').textContent);
+    AoiFlow.setStrings(STRINGS);
+
+    function say(key, args) {
+      var text = STRINGS[key] === undefined ? key : STRINGS[key];
+      if (!args) return text;
+      return Object.keys(args).reduce(function (out, name) {
+        return out.split('{' + name + '}').join(args[name]);
+      }, text);
+    }
+
     var panel = document.getElementById('progress');
     var list = document.getElementById('progress-list');
     var phase = document.getElementById('progress-phase');
@@ -242,7 +271,7 @@
 
     panel.hidden = false;
     while (list.firstChild) list.removeChild(list.firstChild);
-    phase.textContent = '規劃中…';
+    phase.textContent = say('flow.phase.planning');
     since.textContent = '';
     asked.textContent = '';
     mark.className = 'spin';
@@ -260,7 +289,7 @@
     }
 
     function tick() {
-      elapsed.textContent = seconds() + ' 秒';
+      elapsed.textContent = say('flow.elapsed', { seconds: seconds() });
     }
 
     // The timer is a claim about the run, so it stops when the run does --
@@ -287,7 +316,7 @@
       // phase for anything listening, while the visible counter next to it is
       // the one that ticks. Announcing a tick every second would bury the
       // phase it is attached to.
-      since.textContent = '，已 ' + seconds() + ' 秒';
+      since.textContent = say('flow.since', { seconds: seconds() });
       mark.className = AoiFlow.running(state) ? 'spin' : '';
       mark.textContent = AoiFlow.running(state) ? '⟳' : (state.stopped ? '✗' : '✓');
       AoiFlow.render(svg, state);
@@ -362,15 +391,15 @@
         stopTimer();
         mark.className = '';
         mark.textContent = '✗';
-        phase.textContent = '連線中斷';
-        since.textContent = '，已 ' + seconds() + ' 秒';
+        phase.textContent = say('flow.disconnected');
+        since.textContent = say('flow.since', { seconds: seconds() });
         return;
       }
       var li = document.createElement('li');
       var text = document.createElement('span');
       text.className = 'row-text';
       try { text.textContent = '✗ ' + JSON.parse(e.data).message; }
-      catch (_) { text.textContent = '✗ 連線中斷'; }
+      catch (_) { text.textContent = '✗ ' + say('flow.disconnected'); }
       li.appendChild(text);
       list.appendChild(li);
       try { received.push({ event: 'error', data: JSON.parse(e.data) }); }

@@ -154,6 +154,51 @@ def test_a_stored_run_renders_again_without_the_model(client, monkeypatch):
     assert "sits above the fleet" in page
 
 
+def _flow_strings(page: str) -> dict:
+    """The JSON block the progress panel reads its words out of."""
+    block = page.split('id="flow-strings">')[1].split("</script>")[0]
+    return json.loads(block)
+
+
+@pytest.mark.parametrize("locale,phrase", [
+    ("zh-TW", "規劃中…"),
+    ("en", "Planning…"),
+])
+def test_the_progress_panels_words_are_json_the_browser_can_parse(
+    client, locale, phrase
+):
+    """A `<script>` element's content is raw text -- HTML entities in it are not
+    decoded. Autoescaping the table into one puts `&quot;` where the JSON needs
+    `"`, and every `JSON.parse` on the page throws. Nothing caught that: the
+    tests read the panel's markup and none of them parsed its data.
+    """
+    client.cookies.set("aoi_locale", locale)
+    strings = _flow_strings(client.get("/ask").text)
+
+    assert strings["flow.phase.planning"] == phrase
+    assert all(key.startswith("flow.") for key in strings)
+
+
+def test_no_string_in_that_block_can_close_the_script_element(client):
+    r"""What makes the block safe is the encoding, not the marking. `<`, `>`
+    and `&` leave as `\uXXXX`, which JSON reads back as the same characters
+    and which cannot spell `</script`."""
+    import aoi_agent.i18n as i18n
+
+    hostile = "</script><script>alert(1)</script>"
+    client.cookies.set("aoi_locale", "en")
+    original = i18n.STRINGS["en"]["flow.phase.done"]
+    i18n.STRINGS["en"]["flow.phase.done"] = hostile
+    try:
+        page = client.get("/ask").text
+        # The literal characters never reach the document...
+        assert "</script><script>alert(1)" not in page
+        # ...and what does reach it reads back as exactly what was set.
+        assert _flow_strings(page)["flow.phase.done"] == hostile
+    finally:
+        i18n.STRINGS["en"]["flow.phase.done"] = original
+
+
 def _run_answering(client, monkeypatch, answer: str) -> str:
     """Store one run whose synthesised answer is exactly `answer`."""
     from aoi_agent.store import analysis as analysis_store

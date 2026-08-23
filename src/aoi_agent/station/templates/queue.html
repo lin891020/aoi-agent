@@ -1,36 +1,32 @@
 {% extends "base.html" %}
-{% block title %}Queue &middot; {{ queue|length }} waiting{% endblock %}
+{% block title %}{{ t('nav.queue') }} &middot; {{ queue|length }} {{ t('queue.waiting') }}{% endblock %}
 {% block content %}
 <section class="panel">
-  <h1>Regions waiting for a person</h1>
-  <p class="sub">
-    Every row is a region the vision model could not settle and the agent
-    declined to guess at. Oldest first.
-  </p>
+  <h1>{{ t('queue.title') }}</h1>
+  <p class="sub">{{ t('queue.sub') }}</p>
 
   {% if unexplained %}
   <p class="sub warn-line">
-    {{ unexplained }} of {{ queue|length }} carry no written explanation. The
-    disposition on each is the re-verification model's and is unaffected; what
-    is missing is the paragraph the operator reads.
+    {{ t('queue.unexplained', count=unexplained, total=queue|length) }}
   </p>
   {% endif %}
 
   {% if not queue %}
     <p class="empty">
-      Nothing waiting.<br>
-      Feed the queue with <code>uv run python -m aoi_agent board &lt;stem&gt; --queue</code>.
+      {{ t('queue.empty') }}<br>
+      {{ t('queue.empty_hint') }}
+      <code>uv run python -m aoi_agent board &lt;stem&gt; --queue</code>
     </p>
   {% else %}
   <table class="queue">
     <thead>
       <tr>
-        <th>region</th>
-        <th>model said</th>
-        <th class="num">conf</th>
-        <th class="num">P(false&nbsp;call)</th>
-        <th>line / machine</th>
-        <th>why it was handed over</th>
+        <th>{{ t('common.region') }}</th>
+        <th>{{ t('common.model_said') }}</th>
+        <th class="num">{{ t('common.confidence') }}</th>
+        <th class="num">{{ t('queue.false_call_probability') }}</th>
+        <th>{{ t('queue.line_machine') }}</th>
+        <th>{{ t('queue.why_handed_over') }}</th>
         <th></th>
       </tr>
     </thead>
@@ -45,15 +41,15 @@
         <td class="reason">
           {{ row.reason }}
           {% if row.explanation_status and row.explanation_status != 'ok' %}
-            <span class="chip warn">no explanation</span>
+            <span class="chip warn">{{ t('queue.no_explanation') }}</span>
           {% endif %}
         </td>
-        <td><a class="go" href="/c/{{ row.board_stem }}/{{ row.index }}">review &rarr;</a></td>
+        <td><a class="go" href="/c/{{ row.board_stem }}/{{ row.index }}">{{ t('queue.review') }}</a></td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
-  <p class="sub"><a class="go" href="/next">Start at the top &rarr;</a></p>
+  <p class="sub"><a class="go" href="/next">{{ t('queue.start_at_top') }}</a></p>
   {% endif %}
 </section>
 {% endblock %}
