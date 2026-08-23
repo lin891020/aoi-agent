@@ -291,3 +291,59 @@ def test_static_quantisation_calibrates_and_holds_the_contract(tmp_path, tiny_mo
     probabilities = OnnxReVerifier(quantised).probabilities(patches)
     contract = ShapeContract(batch=2, channels=3, size=16, classes=CONTRACT.classes)
     assert shape_violations(probabilities, contract) == []
+
+
+def test_serving_a_quantised_model_does_not_need_the_conversion_dependency(
+    tmp_path, tiny_model
+):
+    """The runner must load with `onnxruntime` alone.
+
+    `onnx` is in the dev group, not the runtime dependencies, and the argument
+    for that is exactly this: onnxruntime is already in the shipped image
+    through Chroma, so a station serving a quantised model needs nothing new
+    and the 2.43GB image does not grow. That argument is only true while
+    `OnnxReVerifier` never reaches for `onnx`, which is a property of the
+    import graph and would break silently.
+    """
+    import importlib.abc
+    import sys
+
+    pytest.importorskip("onnx")
+    pytest.importorskip("onnxruntime")
+    from aoi_agent.vision.quantise import (
+        OnnxReVerifier,
+        export_module,
+        preprocess_onnx,
+        quantise_dynamic,
+    )
+
+    export_module(tiny_model, tmp_path / "fp32.onnx", size=16)
+    preprocess_onnx(tmp_path / "fp32.onnx", tmp_path / "pre.onnx")
+    quantised = quantise_dynamic(tmp_path / "pre.onnx", tmp_path / "int8.onnx")
+
+    class Blocker(importlib.abc.MetaPathFinder):
+        def find_spec(self, name, path=None, target=None):
+            if name == "onnx" or name.startswith("onnx."):
+                raise ImportError(f"{name} is not in the shipped image")
+            return None
+
+    already_imported = {
+        name: module for name, module in sys.modules.items()
+        if name == "onnx" or name.startswith("onnx.")
+    }
+    for name in already_imported:
+        del sys.modules[name]
+    blocker = Blocker()
+    sys.meta_path.insert(0, blocker)
+    try:
+        probabilities = OnnxReVerifier(quantised).probabilities(
+            np.zeros((2, 3, 16, 16), dtype=np.uint8)
+        )
+    finally:
+        sys.meta_path.remove(blocker)
+        sys.modules.update(already_imported)
+
+    contract = ShapeContract(batch=2, channels=3, size=16, classes=CONTRACT.classes)
+    from aoi_agent.vision.quantise import shape_violations
+
+    assert shape_violations(probabilities, contract) == []
