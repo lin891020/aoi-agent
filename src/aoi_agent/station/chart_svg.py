@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from html import escape
 
-from aoi_agent.station.i18n import label_from
+from aoi_agent.i18n import label_from
 
 PALETTE = ["#60a5fa", "#f59e0b", "#34d399", "#f472b6"]
 

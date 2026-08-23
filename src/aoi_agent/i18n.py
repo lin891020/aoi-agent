@@ -1,4 +1,4 @@
-"""The station's text, in the two languages it is read in.
+"""The interface's text, in the two languages it is read in.
 
 The line this is built for reads Traditional Chinese; the acceptance criteria
 and the benchmark reports are written in English. Both are true at once and the
@@ -13,6 +13,10 @@ another language is a record of something nobody did. The one piece of prose
 that does follow the language is the synthesised answer, and it follows by
 being *written again* from the stored results, down the same measured path,
 never by being translated. See `analysis/service.py`.
+
+Top level rather than under `station/` because the flow reaches it too: a
+refusal is written where the plan is, and `station/` already depends on
+`analysis/`.
 
 A key missing from one table is a bug the suite catches --
 `tests/test_i18n.py` compares the two key sets and fails on any difference,
@@ -46,6 +50,12 @@ STRINGS: dict[str, dict[str, str]] = {
         "chart.series.everything": "全部",
         "chart.series.share_of": "{defect_type} 佔比",
         "chart.series.fleet_average": "全廠平均",
+
+        # -- a question that produced no lookup -------------------------------
+        "analysis.refused.opening":
+            "這個問題沒有可以查的資料，所以沒有作答。",
+        "analysis.refused.capabilities":
+            "這套系統可以回答的是：",
     },
     "en": {
         # -- charts ---------------------------------------------------------
@@ -61,6 +71,12 @@ STRINGS: dict[str, dict[str, str]] = {
         "chart.series.everything": "All",
         "chart.series.share_of": "share of {defect_type}",
         "chart.series.fleet_average": "fleet average",
+
+        # -- a question that produced no lookup -------------------------------
+        "analysis.refused.opening":
+            "No lookup in this system answers that, so nothing was run.",
+        "analysis.refused.capabilities":
+            "What it can answer:",
     },
 }
 

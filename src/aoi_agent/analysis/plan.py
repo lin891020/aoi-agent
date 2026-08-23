@@ -357,6 +357,28 @@ def registry(registrations: tuple[Registration, ...]) -> dict[str, Callable]:
 
 PLANNABLE_TOOLS: dict[str, Callable] = registry(REGISTRATIONS)
 
+
+def capability_summary() -> list[str]:
+    """What this system can be asked, one line per tool.
+
+    Read off `REGISTRATIONS` at call time rather than written out beside it. A
+    hand-kept list of features rots, and it reads as correct the whole time it
+    is rotting -- the same argument that made a decision's model identity the
+    checkpoint's digest rather than a version string somebody remembers to
+    bump. Derived, never declared.
+
+    The sentence for each tool is the first line of its own docstring, which is
+    already written for a person: "Compare every machine's rate for one defect
+    class." A tool with no docstring gets its name and nothing else, because
+    inventing a description for it here is the declared list coming back in.
+    """
+    lines = []
+    for registration in REGISTRATIONS:
+        doc = inspect.getdoc(registration.tool) or ""
+        first = doc.splitlines()[0].strip() if doc else ""
+        lines.append(f"{registration.name} — {first}" if first else registration.name)
+    return lines
+
 PLAN_SCHEMA: dict = {
     "type": "object",
     "properties": {

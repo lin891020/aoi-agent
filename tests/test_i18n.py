@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from aoi_agent.station.i18n import (
+from aoi_agent.i18n import (
     DEFAULT_LOCALE,
     LOCALES,
     STRINGS,

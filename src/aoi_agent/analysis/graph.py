@@ -34,6 +34,7 @@ from aoi_agent.analysis.plan import (
     PLAN_SCHEMA,
     PLANNABLE_TOOLS,
     Domains,
+    capability_summary,
     store_domains,
     validate_plan,
 )
@@ -42,6 +43,7 @@ from aoi_agent.analysis.prompts import (
     build_synthesis_messages,
 )
 from aoi_agent.analysis.tools import ToolResult, run_call
+from aoi_agent.i18n import translate
 
 #: Re-exported so the registry a branch will call is reachable from the flow
 #: that fans out over it. Note that nothing here looks a tool up: `run_call`
@@ -202,6 +204,29 @@ def make_synthesise_node(client):
     return synthesise_node
 
 
+def refusal_answer() -> str:
+    """What to show when the planner declined to plan any lookup.
+
+    A dead end is a place someone has to leave, so it names the exit. The list
+    is `capability_summary()` rather than a paragraph written here: a
+    hand-maintained account of what a system can do goes stale silently, and
+    this one would go stale in the place where a reader is already stuck.
+
+    Written in the station's default language. A refusal is not re-derivable
+    the way a synthesised answer is -- there are no stored results to write it
+    again from -- so, like everything the planning call produced, it keeps the
+    language it was made in. See `station/i18n.py`.
+    """
+    lines = [
+        translate("analysis.refused.opening"),
+        "",
+        translate("analysis.refused.capabilities"),
+        "",
+        *(f"- {line}" for line in capability_summary()),
+    ]
+    return "\n".join(lines)
+
+
 def report_node(state: AnalysisState) -> dict[str, Any]:
     """Terminal for a refusal, a rejected plan, or no plan at all.
 
@@ -212,9 +237,15 @@ def report_node(state: AnalysisState) -> dict[str, Any]:
     look for a fault in a question that was never read.
     """
     if state.get("refused"):
-        plan = state.get("plan") or {}
-        return {"answer": plan.get("interpretation", "No lookup could be planned."),
-                "chart_spec": None}
+        # Not the plan's `interpretation`. That string is already on the page
+        # under "how it read your question", and putting it here too gave a
+        # refusal two headings and one sentence: the reader was shown their own
+        # question restated, twice, and told neither that it could not be
+        # answered nor what could be asked instead.
+        #
+        # What replaces it says the question was not answered, and what can
+        # be asked -- read off the tool registry, so it cannot go stale.
+        return {"answer": refusal_answer(), "chart_spec": None}
 
     errors = "\n".join(f"- {e}" for e in state.get("plan_errors") or [])
     if state.get("plan") is None:

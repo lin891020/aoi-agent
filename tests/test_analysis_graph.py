@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 import pytest
 
 from aoi_agent.analysis import graph as analysis
+from aoi_agent.analysis import plan as plan_module
+from aoi_agent.analysis.plan import capability_summary
 from aoi_agent.llm.ollama import ChatResult, Timing
 
 DOMAINS = {
@@ -151,8 +153,7 @@ def test_an_invalid_plan_runs_nothing_and_reports_every_error(stub_tools):
 
 
 def test_a_refusal_is_not_an_error(stub_tools):
-    """A plan with no calls is the model declining, and it renders as an answer
-    rather than as a failure."""
+    """A plan with no calls is the model declining, not failing."""
     refusal = {"interpretation": "the store does not cover last year",
                "assumptions": [], "calls": []}
     state = run(StubClient(plan=refusal))
@@ -160,6 +161,64 @@ def test_a_refusal_is_not_an_error(stub_tools):
     assert stub_tools == []
     assert state["plan"]["interpretation"]
     assert state["refused"] is True
+
+
+def test_a_refusal_does_not_answer_by_repeating_the_question_back(stub_tools):
+    """The page shows how the question was read, and then the answer.
+
+    Until 2026-08-23 a refusal put the plan's `interpretation` in both, so
+    someone who asked what the system could do was shown their own question
+    restated, twice, and was never told either that it could not be answered or
+    what could be asked instead. Two headings, one string, no answer.
+    """
+    reading = "the user is asking what this system can do"
+    refusal = {"interpretation": reading, "assumptions": [], "calls": []}
+    state = run(StubClient(plan=refusal))
+
+    assert state["answer"] != state["plan"]["interpretation"]
+    assert reading not in state["answer"]
+
+
+def test_a_refusal_says_what_can_be_asked_instead(stub_tools):
+    """And says it from the registry, so it cannot go stale."""
+    refusal = {"interpretation": "no lookup fits", "assumptions": [], "calls": []}
+    state = run(StubClient(plan=refusal))
+
+    for line in capability_summary():
+        assert line in state["answer"]
+
+
+def test_the_capability_summary_comes_from_the_registry_not_from_a_list():
+    """A hand-written list of what the system can do rots, and reads as correct
+    while it does. This is the same argument that made `model_digest` a hash of
+    the checkpoint rather than a string somebody bumps: derived, never declared.
+    """
+    from aoi_agent.analysis.plan import PLANNABLE_TOOLS
+
+    summary = "\n".join(capability_summary())
+
+    assert len(capability_summary()) == len(PLANNABLE_TOOLS)
+    for name in PLANNABLE_TOOLS:
+        assert name in summary
+
+
+def test_a_tool_added_to_the_registry_reaches_the_refusal(monkeypatch, stub_tools):
+    """The mutation that proves the line above is load-bearing."""
+
+    def query_solder_paste(line_id: str) -> dict:
+        """Read the paste inspection log for one line."""
+        return {}
+
+    monkeypatch.setattr(
+        plan_module, "REGISTRATIONS",
+        (*plan_module.REGISTRATIONS, plan_module.Registration(
+            query_solder_paste, identifiers=frozenset({"line_id"}))),
+    )
+    refusal = {"interpretation": "no lookup fits", "assumptions": [], "calls": []}
+    state = run(StubClient(plan=refusal))
+
+    assert "query_solder_paste" in state["answer"]
+    assert "Read the paste inspection log for one line." in state["answer"]
 
 
 def test_one_failing_branch_does_not_take_the_others_with_it(monkeypatch, stub_tools):
