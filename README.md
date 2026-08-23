@@ -339,6 +339,27 @@ Verdicts post as ordinary forms and redirect, so the station works with
 JavaScript off; number keys pick a verdict for the operators who live in it all
 shift.
 
+**An operator signs in, and the name they signed in as is what goes on the
+label.** Not because the queue is a secret — because the answer is the next
+training round's label, and a label whose author was a text box is a label
+nobody can weigh. There is no `reviewer` field on the verdict form any more:
+the name comes off a signed session, the store refuses a human decision that
+cannot name somebody, and the row records *how* the name was established
+(`signed_in` from the station, `host_account` from the CLI) so a retraining
+round can select on it. Operators live in one file:
+
+```bash
+uv run python scripts/add_operator.py mike               # prompts for a passphrase
+uv run python scripts/add_operator.py --list
+```
+
+That is the whole of user management, deliberately — a line has a fixed set of
+people and a supervisor who can run one script. What the scheme does *not*
+protect against is written down in `src/aoi_agent/station/auth.py` and
+[in the benchmarks](docs/benchmarks.md#the-scheme-and-what-it-does-not-protect-against),
+because a scheme whose limits are stated is worth more than a stronger one
+whose are not.
+
 ### Where an escalation lives between the two
 
 `interrupt()` checkpoints the run to SQLite, and a small `escalations` table
@@ -504,9 +525,14 @@ uv run python scripts/train.py                           # ~4 min on an M5 Air
 uv run python scripts/report.py                          # the operating-point table
 
 uv run python scripts/seed_store.py --split test --limit 500
+uv run python scripts/add_operator.py mike               # who may answer the queue
 uv run python -m aoi_agent board 20085294                # run a board through the flow
 uv run python -m aoi_agent corrections                   # where operators overruled the model
 ```
+
+An existing store gains new columns in place —
+`uv run python scripts/seed_store.py --migrate-only` — because the corrections
+in it are the next training round's labels and must not have to be rebuilt away.
 
 The measurements above are scripts, not screenshots — `threshold_sweep.py`,
 `retrieval_report.py`, `escape_accounting.py`, `opening_kernel_sweep.py`,
@@ -518,7 +544,7 @@ Requires [Ollama](https://ollama.com) with a tool-calling model (`gpt-oss:20b`
 by default). Everything runs locally; nothing leaves the machine, which on a
 production line is a requirement rather than a preference.
 
-**691 tests.** 683 of them run on a clean checkout in CI — they build their own
+**921 tests.** 913 of them run on a clean checkout in CI — they build their own
 store, their own Chroma collection and their own boards in a tmpdir, and stub
 the model rather than calling it. The other 8 want the 231 MB DeepPCB clone on
 disk and carry a `dataset` marker; the CI job lists them by name at the end of
@@ -542,6 +568,11 @@ all gitignored; they arrive on the two mounts, and the image holds only the
 code and its wheels. Run it with nothing mounted and you get a station that
 starts against an empty queue, which is a clearer failure than a crash on
 import.
+
+The operator file lives on the `data` mount like everything else the station
+reads, so a container gets its operators the same way it gets its store. Set
+`AOI_AGENT_SESSION_SECRET` if you want sessions to survive a restart; unset, one
+is generated per process and everybody signs in again.
 
 Two things the container is not. It has no GPU: a Linux image gets torch's CPU
 build, which is deliberate — the CUDA wheels drag in several gigabytes of
@@ -605,11 +636,25 @@ explanation step needs the container to be able to reach it.
   context tools have something real to find. See `src/aoi_agent/store/seed.py`.
 - Acceptance criteria are original documents written for this project.
   IPC-A-610 and its equivalents are copyrighted and deliberately absent.
-- **Two of this project's thirteen invariants are only partly guarded, and one
-  cannot be guarded at all.** `CLAUDE.md` states thirteen rules that must not be
+- **The sign-in makes a name attributable; it does not make it true.** A
+  passphrase two people share puts one name on both their labels, and no scheme
+  short of a badge reader changes that. The session cookie is a bearer token
+  over whatever transport the station is put behind; there is no rate limit and
+  no lockout; and anyone with shell access to the host can write the SQLite
+  store directly, which is why a CLI decision is recorded as `host_account`
+  rather than as the same word a signed-in operator gets. It is good enough to
+  weigh a training label and not good enough to hold somebody to in a dispute —
+  [stated in full](docs/benchmarks.md#the-scheme-and-what-it-does-not-protect-against).
+- **9,140 decisions predate the attribution column and say so.** They read
+  `unrecorded`, stamped by the migration rather than left `NULL`, because a
+  decision whose reviewer was never recorded must not be readable as one that
+  genuinely had none. They stay that way; a first retraining round has to state
+  how much of the store it leaves behind.
+- **Two of this project's fourteen invariants are only partly guarded, and one
+  cannot be guarded at all.** `CLAUDE.md` states fourteen rules that must not be
   quietly changed; `scripts/invariant_audit.py` reports which of them would
   actually fail a test if broken, and `tests/test_invariant_audit.py` fails when
-  one loses its guard. Ten are enforced. The fan-out rule and the
+  one loses its guard. Eleven are enforced. The fan-out rule and the
   official-split rule are each held in part and named in full; "say what is simulated" is prose discipline
   and is declared unenforceable rather than counted as passing. Every claim was
   checked by breaking the invariant and watching the suite —
@@ -617,15 +662,14 @@ explanation step needs the container to be able to reach it.
 
 ## Not yet done
 
-- **No authentication, on either page.** This was a backlog item until `/ask`
-  made it a precondition. Two costs. `reviewer` is a free-text field, so the
-  corrections that feed retraining carry no trustworthy identity — demonstrated
-  the hard way, when five regions were clicked through without domain knowledge,
-  four of them wrong, and nothing in the system could distinguish those labels
-  from an expert's; they had to be deleted by hand. And an unauthenticated
-  visitor to the queue sees the regions on one line, while the same visitor at
-  `/ask` can pull production statistics for the whole plant. This is the item
-  that should block the station running anywhere but a laptop.
+- **Authentication is in, and the things it deliberately left out are not.**
+  Both pages are behind a sign-in and a human decision cannot be written without
+  a name, which is what made this the item blocking the station from running
+  anywhere but a laptop. What is not here, and is not planned: TLS termination
+  (the cookie is a bearer token and the process speaks plain HTTP), any rate
+  limit or lockout on the login route, and any notion of who may do *what* —
+  every operator can answer every region and ask `/ask` anything. The last is a
+  deliberate reading of what a re-verification station is, not an oversight.
 - **The synthesis prose is unmeasured.** The planner is graded on plans and the
   tools are deterministic, so correct data is established. Whether the paragraph
   written over that data is correct is not, and a plausible wrong sentence next
@@ -633,9 +677,11 @@ explanation step needs the container to be able to reach it.
   time avoiding. Scoring it needs a rubric and a grader who did not write the
   prompt, on the pattern of the planner set.
 - **Retraining from operator corrections.** The decision history records them
-  (`uv run python -m aoi_agent corrections`); nothing consumes them yet, and the
-  identity gap above has to close first or the next round trains on anonymous
-  clicks.
+  (`uv run python -m aoi_agent corrections`) and every row now names who made it
+  and how that name was established, so a round can take `signed_in` labels only
+  or weight the rest below them. Nothing consumes them yet; what changed is that
+  the choice exists at all, where before every human row was one
+  undifferentiated `NULL`.
 - **Deploying the quantised model**, which is now a decision rather than a
   gap. INT8 static is measured, holds the curve, and cuts the resident
   footprint 4.8×; it is not wired into the station because this station has no

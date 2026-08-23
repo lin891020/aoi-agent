@@ -276,10 +276,11 @@ class BoardDisposition(Base):
     decided_by: Mapped[str] = mapped_column(String(64), index=True)
     """``automated``, or the reviewer whose answer settled the last region.
 
-    Free text in the second case, and no more trustworthy than
-    ``ReviewDecision.reviewer`` is -- the station still has no authentication.
-    That gap is now visible on the record it damages rather than only in a
-    backlog list."""
+    In the second case it is the operator's signed-in name, carried up from
+    the region-level decision that settled the board rather than typed
+    anywhere. What established that name is recorded one table down, in
+    ``ReviewDecision.reviewer_auth``; this row does not duplicate it, for the
+    same reason it does not duplicate the regions."""
 
     basis: Mapped[str] = mapped_column(String(512))
     """One sentence naming the regions this verdict was computed from."""
@@ -328,9 +329,15 @@ class AnalysisRun(Base):
     refused: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
     asked_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    """Free text until the station has authentication -- same gap as
-    ``ReviewDecision.reviewer``, and this page widens it, because a query
-    interface exposes plant-wide statistics where the queue exposed a queue."""
+    """The signed-in operator who asked, off the session rather than off the
+    form. It was free text until 2026-08-23, and this page is what turned that
+    from a backlog item into a precondition: a query interface exposes
+    plant-wide statistics where the queue exposed a queue.
+
+    No ``reviewer_auth`` twin here, and deliberately: nothing on this page
+    dispositions a board or writes a label, so what this field is for is
+    knowing who asked, not weighing what they produced. Rows written before
+    the sign-in existed carry whatever was typed."""
 
     asked_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 

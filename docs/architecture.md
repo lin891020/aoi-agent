@@ -162,9 +162,9 @@ Rows accumulate the way decisions do -- held on Monday, released on Tuesday
 after an operator answered, is two rows and the pair is the record. Written when
 a board reaches a settled state: the end of a board run, and the moment an
 operator answers the last region on it, which is also where "on whose
-authority" gets a name rather than "automated". That name is free text until
-the station has authentication, and the record carries it verbatim rather than
-rounding it up to "a person".
+authority" gets a name rather than "automated". Since 2026-08-23 that name is
+the operator's signed-in one, taken from the session rather than from a form
+field, and the region-level rows beside it record how it was established.
 
 Where the board's decisions do not agree on one model -- part-decided before a
 retrain and part after -- the row says `mixed`. It was not released under a
@@ -260,9 +260,13 @@ would otherwise appear to forbid:
   board is held or shipped by anything on this page. Both invariants in
   CLAUDE.md are scoped to the disposition path for that reason.
 
-`/ask` has no authentication in front of it, and neither does the queue. An
-unauthenticated visitor to the queue sees the regions on one line; the same
-visitor here can pull statistics for the whole plant.
+Both pages are behind a sign-in since 2026-08-23. `/ask` is what made that a
+precondition rather than a backlog item -- an unauthenticated visitor to the
+queue saw the regions on one line, while the same visitor here could pull
+statistics for the whole plant -- but the reason the mechanism exists is the
+queue's: an operator's answer is the next training round's label, and
+`store.boards.record_decision` refuses one that cannot name who made it. See
+`station/auth.py` for what the scheme does not protect against.
 
 ## Thresholds and where they come from
 
@@ -417,5 +421,5 @@ cannot answer this" than a plausible wrong answer they have no way to check.
 | false calls | ✓ produced by the same algorithm | |
 | lot / line / machine / shift | | ✓ generated, with one planted signal |
 | acceptance criteria | | ✓ original documents, not a real standard |
-| operator identity | | ✓ a free-text field; the station has no auth yet |
+| operator identity | ✓ a signed-in name, and how it was established | ✓ the operators themselves, on a demo store |
 | the analysis page's figures | ✓ computed from the store, by fixed queries | ✓ over the generated line metadata above |

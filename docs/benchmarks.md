@@ -934,15 +934,16 @@ the two that remain are described under the count.
 
 #### The count
 
-**10 enforced, 2 partly enforced, 1 unenforceable**, of thirteen. It was
+**11 enforced, 2 partly enforced, 1 unenforceable**, of fourteen. It was
 7 / 4 / 1 when the audit was written: two moved when their gaps were closed,
-and the thirteenth arrived enforced, because the rule and the test that holds
-it were written together.
+and the thirteenth and fourteenth both arrived enforced, because in each case
+the rule and the test that holds it were written together.
 
 - **enforced** — breaking it fails a named test that runs in CI: the LLM off the
   decision path, the escalation direction, checkpoint durability, the
   `ground_truth` boundary, class-scoped retrieval, threshold citations, the
-  train/val split, the operating-point curve, and the no-SQL rule.
+  train/val split, the operating-point curve, the no-SQL rule, and the two
+  rules about who or what a decision names.
 - **partly enforced** — a real part of the rule is held and a named part is not:
   - *The fan-out is not a latency optimisation.* The comparison the claim rests
     on is measured, stored per run and rendered, and `tools_wall` is held to
@@ -1364,3 +1365,115 @@ this run three of the four readings ended in "no". The two checked kinds cost
 nobody anything, because nothing is left to settle.
 
 What this does not establish. It is one pass over 34 answers, not a distribution, and the model is sampled rather than deterministic — a second run would produce different sentences over the identical payloads. The three judged kinds are pattern matches with a person behind them, so their counts are a floor on what a pattern can raise and not a rate. Nothing here scores whether the answer was *useful*, whether it answered the question asked, or whether the plan fetched the right data — that last is `scripts/analysis_eval.py`, which scored 55/70 on the same set. And the checker is not independent of the system; the control fixture is what stands in for independence, and it is a weaker thing.
+
+
+## 2026-08-23 · attribution
+
+### Who answered — the other half of the provenance question
+
+The provenance work made every automated decision name the weights, the
+operating point and the commit behind it. It left the human half untouched, and
+the same reviewer found the gap in the same breath: **all 9,140 decisions read
+`reviewer = NULL`**, `reviewer` was an unauthenticated free-text field, and five
+escalations stood closed with no human decision beneath them at all.
+
+That is not an access-control finding. It is a retraining finding. This
+project's whole feedback story is that operator corrections become the next
+round's labels — it is why the station refuses to show `ground_truth` — and a
+label that cannot name its author is a label nobody can weigh. This store has
+already paid for that once: five regions clicked through without the domain
+knowledge to judge them, four of the five wrong, indistinguishable by any query
+from an expert's, and the only available remedy was deleting all five by hand.
+
+#### What a human decision now carries
+
+Two columns, read together. `reviewer` is the name; `reviewer_auth` is what
+established it. `mike` typed into a text box and `mike` read off a signed
+session are the same four characters and are not the same claim, and the second
+column is what a retraining export can select on.
+
+| value | meaning |
+|---|---|
+| `signed_in` | the station authenticated the operator and read the name off the session, never off the form |
+| `host_account` | the CLI attributed the decision to the OS account running it — derived, not typed, and a weaker claim recorded as a different word |
+| `automated` | no person was involved. A positive statement, not an absence: the provenance columns answer instead |
+| `unrecorded` | the row predates the column. Stamped by the migration |
+
+`store.boards.record_decision` raises on a `human` row that is not
+attributable, which is the mirror of the rule it already enforced on a `model`
+or `agent` one, and `resume_review` raises before the graph is resumed so a
+refused answer cannot consume the interrupt and leave a region off the queue
+with no verdict anywhere — which is the exact shape of those five rows.
+
+#### The 9,140 rows that predate it
+
+`uv run python scripts/seed_store.py --migrate-only` added
+`review_decisions.reviewer_auth` in place and stamped **9,140 rows
+`unrecorded`**, leaving **0 NULLs**. The store was not rebuilt; the corrections
+in it are the next training round's labels.
+
+The stamp is what makes the distinction possible at all. Every one of those
+9,140 rows has `reviewer = NULL`, so without it `NULL` would have to mean both
+"written before anyone recorded how a reviewer was identified" and "no
+reviewer, because no person was involved" — and the second is a fact worth
+stating about a model decision. The migration stamps the first meaning,
+`record_decision` writes the second, and `NULL` is left meaning nothing at all,
+with a test that fails if one appears.
+
+#### The scheme, and what it does not protect against
+
+A file of operators, each with a salted PBKDF2-HMAC-SHA256 record carrying its
+own iteration count, exchanged at `/login` for an HMAC-signed session cookie
+that expires after one shift. `scripts/add_operator.py` is the whole of user
+management: no registration, no roles, no reset flow. A re-verification station
+serves a fixed set of people on a line, and the alternative is several hundred
+lines of surface area whose only customer is a screenshot.
+
+Both pages are behind it, by allowlist rather than by decoration, so a route
+added later is behind it too. `/ask` is why this stopped being a backlog item:
+an unauthenticated visitor to the queue saw the regions on one line, and the
+same visitor at `/ask` could pull production statistics for the whole plant.
+
+What it does not protect against, stated here and in `station/auth.py` rather
+than left for a reader to find out:
+
+- **Sharing.** A passphrase two people know produces one name on both their
+  labels. No scheme short of a badge reader fixes this.
+- **A hostile network.** The cookie is a bearer token and this process speaks
+  plain HTTP; it is marked `Secure` only when the request that set it arrived
+  over TLS. Put the station behind TLS if the network is not trusted.
+- **Anyone with the machine.** The store is a SQLite file. Shell access beats
+  every check in the module, which is why the CLI's identity is recorded as
+  `host_account` rather than pretended equal to a signed-in one.
+- **Guessing.** No rate limit and no lockout. PBKDF2 makes an offline attack on
+  the file expensive and does nothing about an online one against a weak
+  passphrase.
+- **Repudiation.** A signed-in name is a claim by this process, not a signature
+  by the operator. Good enough to weigh a training label; not good enough to
+  hold somebody to in a dispute.
+
+#### What actually fails when the rule is broken
+
+The fourteenth invariant, and the same method as the other thirteen: break it
+in the working tree, run the whole suite, read which tests noticed.
+
+| mutation applied | tests that failed |
+|---|---|
+| the `human` guard removed from `record_decision`, identity defaulted to a typed name | 7 |
+| the `reviewer` form field restored and the name read off it | 4 |
+| the middleware passing an anonymous request through as `operator` | 13 |
+| the migration's `reviewer_auth` backfill removed | 3 |
+
+What those tests hold is that a name is *established by a mechanism* rather than
+typed. They do not hold that the name is true of the person at the keyboard,
+and nothing in this design could.
+
+#### What this makes possible that was not
+
+A corrections export can now be selected by attribution:
+`uv run python -m aoi_agent corrections` groups by it, and `boards.corrections`
+returns it per row. A first retraining round can take `signed_in` labels only,
+or weight `host_account` below them, or state honestly how much of the store it
+had to leave behind. Before this, every human row was one undifferentiated
+`NULL` and the choice did not exist. Whether to act on it is a separate
+decision and is not taken here.

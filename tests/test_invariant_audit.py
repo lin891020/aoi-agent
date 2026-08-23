@@ -17,7 +17,7 @@ What that catches is drift, not correctness. Whether
 listed under is a judgement a person made once, with a mutation to back it (see
 docs/benchmarks.md, "The invariant audit"). What is caught here is the way that
 judgement rots: the test gets renamed, or skipped, or the invariant is reworded,
-or a thirteenth is added with nothing behind it -- and the document goes on
+or a fourteenth is added with nothing behind it -- and the document goes on
 promising.
 
 Same shape as test_skill_freshness.py: make the document and the code disagree
@@ -67,19 +67,20 @@ def test_every_invariant_in_the_document_is_accounted_for():
     """The count is published in docs/benchmarks.md, so it is worth having a
     test say out loud when it moves."""
     bullets = invariant_bullets()
-    assert len(bullets) == len(REGISTRY) == 13, (
+    assert len(bullets) == len(REGISTRY) == 14, (
         f"CLAUDE.md states {len(bullets)} invariants and the registry has "
-        f"{len(REGISTRY)} entries; docs/benchmarks.md publishes 12"
+        f"{len(REGISTRY)} entries; docs/benchmarks.md and both READMEs publish 14"
     )
 
 
 def test_the_published_counts_are_what_the_registry_says():
-    """9 enforced, 2 partly enforced, 1 unenforceable -- the numbers in
-    docs/benchmarks.md. Changing one means republishing the other."""
+    """11 enforced, 2 partly enforced, 1 unenforceable -- the numbers in
+    docs/benchmarks.md and in both READMEs. Changing one means republishing the
+    others."""
     counts = {status: 0 for status in (ENFORCED, PARTIAL, UNENFORCEABLE)}
     for entry in REGISTRY:
         counts[entry.status] += 1
-    assert counts == {ENFORCED: 10, PARTIAL: 2, UNENFORCEABLE: 1}, (
+    assert counts == {ENFORCED: 11, PARTIAL: 2, UNENFORCEABLE: 1}, (
         f"{counts} -- if this is an improvement, say so in docs/benchmarks.md "
         "and move the number here"
     )

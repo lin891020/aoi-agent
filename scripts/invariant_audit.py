@@ -363,6 +363,38 @@ REGISTRY: tuple[Entry, ...] = (
         ),
     ),
     Entry(
+        match="A human disposition names who made it",
+        status=ENFORCED,
+        tests=(
+            "tests/test_attribution.py::test_a_human_decision_cannot_be_written_without_an_identity",
+            "tests/test_attribution.py::test_a_name_with_nothing_behind_it_is_not_an_identity",
+            "tests/test_attribution.py::test_an_unattributable_answer_does_not_consume_the_escalation",
+            "tests/test_attribution.py::test_the_recorded_reviewer_is_the_session_and_not_the_form",
+            "tests/test_attribution.py::test_no_page_answers_a_visitor_who_has_not_signed_in",
+            "tests/test_attribution.py::test_a_verdict_from_nobody_is_refused_and_writes_nothing",
+            "tests/test_attribution.py::test_a_row_written_before_the_column_is_not_a_row_that_names_nobody",
+        ),
+        note=(
+            "Three mechanisms, each held: the store refuses a `human` row that "
+            "is not attributable, the station takes the name off the session "
+            "and ignores one posted with the form, and no page answers a "
+            "request that carries no session. The migration's stamp is held "
+            "too, so a decision written today saying `automated` cannot be "
+            "confused with one of the 9,140 that predate the column. What the "
+            "tests hold is that a name is *established by a mechanism* rather "
+            "than typed -- not that the name is true of the person at the "
+            "keyboard, which no scheme short of a badge reader gives you and "
+            "which src/aoi_agent/station/auth.py says out loud."
+        ),
+        proved_by=(
+            "Removed the guard in record_decision and defaulted the identity to "
+            "a typed name: 7 tests failed. Put the `reviewer` form field back "
+            "and read the name off it: 4 failed. Let the middleware pass an "
+            "anonymous request through as `operator`: 13 failed. Removed the "
+            "migration's `reviewer_auth` backfill: 3 failed."
+        ),
+    ),
+    Entry(
         match="Say what is simulated",
         status=UNENFORCEABLE,
         note=(

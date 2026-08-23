@@ -281,6 +281,23 @@ flow** —— 暫停的狀態就在 checkpointer 裡，讀它只是一次磁碟 
 判定是用一般的 form POST 加 redirect，所以關掉 JavaScript 也能用；數字鍵直接選判定，
 給整班都在用它的人。
 
+**作業員要先登入，而登入用的那個名字就是最後寫在 label 上的名字。** 這不是因為 queue
+是什麼機密 —— 是因為那個答案就是下一輪訓練的 label，而一個作者是文字框的 label，沒有
+人有辦法衡量它。判定表單上已經沒有 `reviewer` 欄位：名字從簽章過的 session 來，store
+會拒絕寫入一筆說不出是誰做的人工判定，而且那一列還會記下這個名字是**怎麼**建立的
+（站上是 `signed_in`，CLI 是 `host_account`），這樣下一輪 retrain 可以照它挑資料。
+作業員就是一個檔案：
+
+```bash
+uv run python scripts/add_operator.py mike               # 會問 passphrase
+uv run python scripts/add_operator.py --list
+```
+
+使用者管理就這樣，刻意的 —— 一條線上的人是固定的那幾個，加上一個會跑 script 的主管。
+這套機制**擋不住**什麼，寫在 `src/aoi_agent/station/auth.py` 跟
+[benchmarks](docs/benchmarks.md#the-scheme-and-what-it-does-not-protect-against)
+裡，因為一套講清楚自己界線的機制，比一套更強但不講的值錢。
+
 ### Escalation 在兩邊之間住在哪
 
 `interrupt()` 把 run checkpoint 到 SQLite，另外一張小的 `escalations` table 記著
@@ -424,9 +441,13 @@ uv run python scripts/train.py                           # M5 Air 上約 4 分�
 uv run python scripts/report.py                          # operating-point 表
 
 uv run python scripts/seed_store.py --split test --limit 500
+uv run python scripts/add_operator.py mike               # 誰可以回 queue
 uv run python -m aoi_agent board 20085294                # 跑一片板子過整條 flow
 uv run python -m aoi_agent corrections                   # 作業員推翻 model 的紀錄
 ```
+
+既有的 store 是原地加欄位的 —— `uv run python scripts/seed_store.py --migrate-only`
+—— 因為裡面那些更正就是下一輪訓練的 label，不可以為了加一個欄位就重建掉。
 
 上面講的那些量測都是 script，不是截圖 —— `threshold_sweep.py`、
 `retrieval_report.py`、`escape_accounting.py`、`opening_kernel_sweep.py`、
@@ -438,7 +459,7 @@ uv run python -m aoi_agent corrections                   # 作業員推翻 model
 `gpt-oss:20b`）。全部在本機跑，沒有任何東西離開這台機器 —— 在產線上這是要求，不是
 偏好。
 
-**691 個測試。** 其中 683 個在乾淨 checkout 上就能在 CI 跑完 —— 它們自己在 tmpdir
+**921 個測試。** 其中 913 個在乾淨 checkout 上就能在 CI 跑完 —— 它們自己在 tmpdir
 裡建 store、建 Chroma collection、建板子，model 是 stub 掉的。另外 8 個要磁碟上有那份
 231 MB 的 DeepPCB，帶 `dataset` marker；CI job 每次跑完都會把它們列出來，因為「測試
 數量默默變少但綠燈照亮」正是那個 job 要防的事。
@@ -458,6 +479,10 @@ image 裡沒有重的東西。資料集、patch、權重、SQLite store 跟 Chro
 些 script 建出來的，也全都 gitignore；它們從那兩個 mount 進來，image 只裝 code 跟
 wheel。什麼都不 mount 直接跑，會得到一個對著空 queue 起來的 station，那比 import 就
 炸掉清楚。
+
+作業員檔案跟 station 讀的其他東西一樣放在 `data` mount 上，所以容器拿作業員的方式跟
+拿 store 的方式一樣。想讓 session 撐過重啟就設 `AOI_AGENT_SESSION_SECRET`；不設的話
+每個 process 自己生一把，重啟之後大家重新登入。
 
 有兩件事這個容器不是。它沒有 GPU：Linux image 拿的是 torch 的 CPU build，這是刻意的
 —— CUDA 的 wheel 會為了這個專案從來沒有過的硬體拉進好幾 GB 的 runtime，所以
@@ -504,29 +529,41 @@ wheel。什麼都不 mount 直接跑，會得到一個對著空 queue 起來的 
   佔比排序分配到機台的，這會在某一台上種下一個具體、有記錄的訊號，好讓 context tool
   真的有東西可以找。見 `src/aoi_agent/store/seed.py`。
 - 允收標準是為這個專案寫的原創文件。IPC-A-610 之類的有版權，刻意不放進來。
-- **這個專案的十三條不變式裡，有兩條只守住一半，還有一條根本守不住。**
-  `CLAUDE.md` 列了十三條不能被悄悄改掉的規則；`scripts/invariant_audit.py` 會報出
+- **登入讓一個名字可以被追溯，但沒有讓它變成真的。** 兩個人共用一組 passphrase，兩
+  個人的 label 上就會是同一個名字，這件事任何不用工號卡的機制都解不掉。Session
+  cookie 是 bearer token，安全性就是你把 station 擺在什麼傳輸層後面；登入沒有速率限
+  制也沒有鎖定；而任何有 host shell 的人都可以直接寫那個 SQLite —— 這正是 CLI 的判
+  定被記成 `host_account` 而不是跟站上登入同一個字的原因。它足夠用來衡量一個訓練
+  label，不足以在爭議裡拿來壓住誰 ——
+  [完整寫在這裡](docs/benchmarks.md#the-scheme-and-what-it-does-not-protect-against)。
+- **有 9,140 筆判定早於這個歸屬欄位，而且它們自己說了。** 它們是 `unrecorded`，由
+  migration 蓋上去的，不是留成 `NULL` —— 一筆從來沒記過 reviewer 的判定，不可以被讀
+  成一筆本來就沒有 reviewer 的判定。它們就維持這樣；第一輪 retrain 必須自己講清楚它
+  放掉了多少。
+- **這個專案的十四條不變式裡，有兩條只守住一半，還有一條根本守不住。**
+  `CLAUDE.md` 列了十四條不能被悄悄改掉的規則；`scripts/invariant_audit.py` 會報出
   哪幾條真的會在被違反時讓測試失敗，而 `tests/test_invariant_audit.py` 會在某一條
-  失去守衛時掛掉。十條有守。fan-out 那條和官方 split 那條各自只守住一部分，而且逐條寫明守住的是哪一部分；「說清楚哪些是
+  失去守衛時掛掉。十一條有守。fan-out 那條和官方 split 那條各自只守住一部分，而且逐條寫明守住的是哪一部分；「說清楚哪些是
   模擬的」是散文紀律，被明確宣告為無法測試，而不是算它通過。每一格都是真的去破壞
   那條規則、跑完整套測試得出來的 ——
   [稽核結果](docs/benchmarks.md#the-invariant-audit--which-of-this-projects-own-rules-are-unguarded)。
 
 ## 還沒做的
 
-- **兩個頁面都沒有認證。** 這件事在 `/ask` 出現之前是 backlog，之後變成前提。兩種代價：
-  `reviewer` 是一個純文字欄位，所以餵進 retraining 的更正紀錄沒有可信的身分 —— 這已經
-  以難堪的方式證明過一次，有五個區域被沒有相關知識的人點過去，其中四個是錯的，而系統
-  裡沒有任何東西分得出那些 label 跟專家的差別，最後只能手動刪掉。另外一種是這個分支
-  新加的：沒認證的訪客在 queue 上看得到一條線的區域，同一個訪客在 `/ask` 可以撈整廠的
-  生產統計。這一項應該擋住這個站台跑在筆電以外的任何地方。
+- **認證做了，而它刻意沒做的那些沒有做。** 兩個頁面都在登入後面，人工判定寫不進去就
+  是寫不進去 —— 這一項本來是擋住站台跑在筆電以外任何地方的那一項。沒做、也不打算做
+  的是：TLS（cookie 是 bearer token，而這個 process 講的是明文 HTTP）、登入端點的速率
+  限制或鎖定，以及任何「誰可以做什麼」的概念 —— 每個作業員都能回每個區域、都能問
+  `/ask` 任何問題。最後這一項是對「複判站是什麼」的一個判斷，不是漏掉。
 - **合成的那段文字沒有量。** Planner 評的是 plan，tool 又是確定性的，所以「資料是對的」
   這件事有保證。但寫在那些資料上面的那段話對不對，沒有量，而「正確數字旁邊一句貌似合
   理的錯話」正是這個專案其他時間都在防的失效模式。要評它需要一份 rubric 跟一個沒寫過
   prompt 的評分者，做法照 planner 那套。
 - **從作業員更正回頭 retrain。** 判定歷史有記
-  （`uv run python -m aoi_agent corrections`），但還沒有東西去用它；而且上面那個身分
-  問題要先解決，不然下一輪就是拿匿名的點擊在訓練。
+  （`uv run python -m aoi_agent corrections`），而且每一列現在都寫得出是誰做的、那個
+  名字是怎麼建立的，所以下一輪可以只吃 `signed_in`，或者把其他的權重壓低。還沒有東西
+  去用它；改變的是這個選擇存在了 —— 在此之前每一筆人工判定都是同一個沒有分別的
+  `NULL`。
 - **把量化後的 model 真的接上去**，這現在是一個決定，不是一個缺口。INT8 static 量過
   了，守得住曲線，常駐記憶體少 4.8 倍；沒有接進站台是因為這台站台沒有記憶體問題。
   要接的話，需要在 `ReVerifier` 裡開一條 ONNX 路徑，並且針對真正要服務的那個 engine

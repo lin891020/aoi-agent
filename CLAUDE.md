@@ -32,11 +32,14 @@ src/aoi_agent/
                             CLI shares with it. /ask has its own writer in
                             analysis/service.py.
                             result_view.py is the ground_truth boundary;
-                            chart_svg.py renders a chart spec server-side
+                            chart_svg.py renders a chart spec server-side;
+                            auth.py is the sign-in, and states what the
+                            scheme does not protect against
     cli.py
 scripts/                    gate_check, build_patches, train, report, seed_store,
-                            analysis_eval, mark_unattributed_resolutions, ...
-tests/                      802 tests; dataset-dependent ones behind `-m dataset`
+                            analysis_eval, add_operator,
+                            mark_unattributed_resolutions, ...
+tests/                      921 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -51,7 +54,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 802 tests, no GPU needed, no model called
+uv run pytest                                    # 921 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
@@ -76,6 +79,7 @@ uv run python -m aoi_agent queue                 # what is waiting on a person
 uv run python -m aoi_agent explanations          # how many dispositions carry no rationale, and why
 uv run python -m aoi_agent provenance 20085294   # who decided this board, when, and under which model
 uv run python scripts/seed_store.py --migrate-only  # add missing columns to an existing store
+uv run python scripts/add_operator.py <name>        # who may answer the queue
 uv run python scripts/mark_unattributed_resolutions.py --dry-run
                                                  # queue entries closed with no human decision behind them
 
@@ -87,11 +91,12 @@ docker run --rm -p 8000:8000 \
 
 ## Invariants — do not quietly change these
 
-Twelve of them, and `scripts/invariant_audit.py` says which ones would actually
-fail a test if broken: **7 enforced, 4 partly enforced, 1 unenforceable**. Each
+Fourteen of them, and `scripts/invariant_audit.py` says which ones would
+actually fail a test if broken: **11 enforced, 2 partly enforced, 1
+unenforceable**. Each
 entry there names the tests that hold it and states what those tests do not
 cover; adding an invariant here without an entry fails
-`tests/test_invariant_audit.py`. The four that are only partly guarded are
+`tests/test_invariant_audit.py`. The two that are only partly guarded are
 named in docs/benchmarks.md rather than left for a reader to discover.
 
 Three of these are scoped to the **disposition path** -- the flow that ends in a
@@ -195,6 +200,20 @@ board is back under the unscoped reading.
   than no field, because the release it is forgotten on is the release where it
   is wrong and looks right. The three absences (`unrecorded`, `unavailable`,
   `unknown`) are three words and none of them is `NULL`.
+- **A human disposition names who made it.** An operator's answer is the next
+  training round's label, so the row carries the name *and* how that name was
+  established -- `signed_in` off the station's session, `host_account` off the
+  CLI's OS account. `store.boards.record_decision` raises on a `human` row that
+  is not attributable, which is the mirror of the rule above, and the station
+  reads the name off the session and never off the form: a field a browser can
+  fill names whoever it likes. Not an access-control rule dressed up. Five
+  regions were clicked through without the domain knowledge to judge them, four
+  of the five wrong, and nothing could tell those labels from an expert's, so
+  all five had to be deleted by hand. The absences are named here too --
+  `automated` where no person was involved, `unrecorded` where the row predates
+  the column -- and neither of them is `NULL`. What this buys is a mechanism
+  behind a name, not proof of who was at the keyboard; a shared passphrase
+  still names one operator for two people, and `station/auth.py` says so.
 - **Say what is simulated.** Production metadata is generated with one planted
   signal; acceptance criteria are original documents, not IPC-A-610 (copyrighted,
   must stay out).
@@ -222,11 +241,15 @@ board is back under the unscoped reading.
 
 ## Still open
 
-Retraining from operator corrections, deploying the quantised model, demo video.
+Retraining from operator corrections -- now selectable by who made them, which
+is what `reviewer_auth` bought -- deploying the quantised model, demo video.
 
 **Every decision the store held before 2026-08-23 reads `unrecorded`** -- 9,140
-of them, stamped by the migration rather than left `NULL`, because a decision
-whose provenance was never captured must not be readable as one that has none.
+of them, in `model_digest` and now in `reviewer_auth` too, stamped by the
+migration rather than left `NULL`, because a decision whose provenance was
+never captured must not be readable as one that has none, and because every one
+of those rows has `reviewer` NULL as well -- so without the stamp "nobody
+recorded who" and "nobody was involved" would be the same row.
 They stay that way: the digest that produced them is not recoverable and
 inventing one would be worse than the gap. Decisions written from here name the
 checkpoint's SHA-256, the thresholds that routed them and the commit that ran
@@ -289,22 +312,24 @@ On the station itself:
 - **Timestamps are stored UTC and displayed UTC**, and now labelled `UTC` on
   the board record and the CLI. On the queue and the corrections page they are
   still unlabelled, which on a quality record read at UTC+8 is an eight-hour
-  lie. Store UTC, render local, say which -- pairs with the operator-identity
-  gap below.
-- **Authentication, which `/ask` turned from a backlog item into a
-  precondition.** There is none, on either page. Two separate costs now. The
-  one that was always here: `reviewer` is a free-text field, so the corrections
-  that feed retraining carry no trustworthy identity -- demonstrated the hard
-  way, when five regions were clicked through without domain knowledge, four of
-  them wrong, and nothing in the system could tell those labels from an
-  expert's. They had to be deleted by hand -- and the five queue entries were
-  left closed behind them, so `escalations` and `review_decisions` disagreed
-  about those regions until 2026-08-23. They now read `resolved_unattributed`,
-  which is the true statement: reviewed, and attributable to nobody. The one this branch added: an
-  unauthenticated visitor to the queue sees the regions on one line, and the
-  same visitor at `/ask` can pull production statistics for the whole plant.
-  That is a change of kind, and it is the item on this list that should block
-  the station running anywhere but a laptop.
+  lie. Store UTC, render local, say which. It was the last of the two halves of
+  a quality record that named nothing an auditor could use; the other half --
+  who made the decision -- closed on 2026-08-23.
+- **Authentication is done, and what it deliberately leaves out is not.**
+  Closed on 2026-08-23. Both pages are behind a sign-in, `record_decision`
+  refuses a `human` row that names nobody, and the station reads the name off
+  the session rather than off the form. This was the item blocking the station
+  from running anywhere but a laptop, and the thing it was really blocking was
+  retraining: the five regions clicked through without domain knowledge, four
+  of them wrong, were indistinguishable from an expert's labels and had to be
+  deleted by hand -- and the five queue entries left closed behind them still
+  read `resolved_unattributed`, which is the true statement about them.
+  What is *not* here, on purpose, and should not be added without a reason
+  that is written down: TLS termination, a rate limit or lockout on `/login`,
+  and any notion of who may do *what* -- every operator can answer every region
+  and ask `/ask` anything. The scheme's limits are stated in
+  `station/auth.py`; a shared passphrase still names one operator for two
+  people, and nothing here can tell them apart.
 - **The criteria answer the wrong question for the operator.** For `open` the
   retrieved passage says any confirmed open is critical -- how to *disposition*
   one. It never says how to *confirm* one, which is what the person looking at
