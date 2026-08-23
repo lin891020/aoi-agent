@@ -44,3 +44,17 @@ markers = [
 dev = [
     "pytest>=9.1.1",
 ]
+
+# torch's linux wheels drag the whole CUDA stack in as hard dependencies --
+# cudnn, nccl, triton, the lot, several GB of it. Nothing here has ever seen a
+# GPU that is not Apple's, so linux resolves against PyTorch's CPU index
+# instead. The marker keeps macOS on PyPI, where the wheel is CPU-only anyway
+# and MPS still works.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
