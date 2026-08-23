@@ -6,7 +6,7 @@
 |---|---|---|
 | AOI simulator | flag every region that differs from the golden template | decide what a difference means |
 | Re-verifier (PyTorch) | say what one flagged region is, with a calibrated probability | decide what happens to the board |
-| MCP tools | expose the model, the production store and the criteria as callable functions | choose which of themselves to call |
+| MCP tools | expose the model, the production store and the criteria as callable functions | choose which of themselves to call, or answer about one defect class out of another's document |
 | LangGraph flow | route on confidence, gather evidence, hand over to a person | contain domain rules that belong in the work instructions |
 | Review station | show a person the evidence the agent had, and take their answer | re-run the flow to render a page, or show the ground truth |
 | Local LLM | explain to an operator why a region reached them | decide anything -- measured worse than the classifier at both the class and the hand-off |

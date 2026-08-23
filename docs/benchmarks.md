@@ -485,3 +485,62 @@ What this does not establish: the expected plans were written by an author who r
   `query_defect_history(defect_type='open') + query_defect_history(defect_type='short')` — matched: the grader's primary plan
 
 </details>
+
+### 2026-08-23 · The criteria retrieval was answering about one class out of another's rules
+
+Found by reading the queue, not by a failing test. All five escalations in the
+store told the operator the same thing: that the criteria require establishing
+whether the open is inside a pad "(critical) or outside". No document says
+that. WI-201 says any confirmed open is a critical defect and that there is no
+width or length below which an open is acceptable, because continuity is
+binary. The inside-a-pad rule is WI-206's and governs pin holes.
+
+It got there by retrieval. `search_standards` ranked passages across all six
+work instructions with nothing scoping them to the class being asked about,
+and for the disposition path's own query -- "acceptance criteria and
+disposition for open" -- WI-206's disposition section ranked *first*, ahead of
+WI-201's own classification section. The node asks for two passages. The model
+was handed the right rule and a pin-hole limit, and fused them.
+
+The project's standing defence is that the LLM only explains and the
+classifier decides. It does not cover this. The fabricated rule went to the
+people who do decide, and it pointed at releasing a critical defect.
+
+### Cross-class contamination in the criteria retrieval
+
+Six classes x 6 phrasings, top_k=2: the graph's own query, the planner's, a bare class name, two Chinese question forms from `/ask`, and the question an operator has in front of the images. A passage is counted wrong when it comes from another class's work instruction; QP-110 and WI-300 govern every class by declaration and are not counted against anything.
+
+| class | unscoped | scoped |
+|---|---|---|
+| `copper` | 4/12 (33%) | 0/12 (0%) |
+| `mousebite` | 0/12 (0%) | 0/12 (0%) |
+| `open` | 4/12 (33%) | 0/12 (0%) |
+| `pin-hole` | 1/12 (8%) | 0/12 (0%) |
+| `short` | 8/12 (67%) | 0/12 (0%) |
+| `spur` | 3/12 (25%) | 0/12 (0%) |
+| **all** | **20/72 (27.8%)** | **0/72 (0.0%)** |
+
+`short` was the worst affected and `mousebite` the only class never
+contaminated -- similarity has no notion of jurisdiction, and the classes that
+read alike in prose are the ones that borrow each other's limits. `open` is
+the one that matters: three of its four wrong passages were WI-206's
+disposition section, which is the sentence that reached the queue.
+
+What changed is the retrieval boundary, not the prompt. Each document declares
+the class it governs, the declaration rides on every passage, and a caller
+with a class in hand gets that class's work instruction plus QP-110 and
+WI-300. The scope is a parameter rather than a filter welded on, because
+`/ask` has questions that belong to no class. The disposition path always has
+a class and always passes it.
+
+What this number does not cover: it measures which document a passage came
+from, not whether the passage answers the operator's question. For `open` the
+scoped retrieval still returns "any confirmed open is critical" -- how to
+*disposition* one -- when the person looking at the images needs to know how to
+*confirm* one. That is still open, and it is a documents problem now rather
+than a retrieval one.
+
+The eight explanations already written under the old retrieval -- five
+escalation reasons, three agent rationales -- are marked in place by
+`scripts/quarantine_fabricated_criteria.py`, not deleted and not regenerated.
+

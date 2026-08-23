@@ -33,7 +33,7 @@ src/aoi_agent/
     cli.py
 scripts/                    gate_check, build_patches, train, report, seed_store,
                             analysis_eval, ...
-tests/                      569 tests; dataset-dependent ones behind `-m dataset`
+tests/                      609 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -48,11 +48,12 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 569 tests, no GPU needed, no model called
+uv run pytest                                    # 609 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
 uv run python scripts/routing_report.py          # how much never reaches the LLM
+uv run python scripts/retrieval_report.py        # can a class's criteria come back as another's?
 uv run python scripts/latency_report.py          # does the reason node fit the response budget?
 uv run python scripts/reverifier_latency.py      # what one candidate costs: MPS vs CPU, cold vs warm (~7 min)
 uv run python scripts/agent_eval.py              # does the agent layer beat the classifier? (~9 min)
@@ -129,6 +130,16 @@ board is back under the unscoped reading.
   `tools_longest_branch` in `analysis_runs`, which is where that comparison
   lives -- do not quote a figure that is not in `docs/benchmarks.md`. Nothing
   in the code, the docs or the page may present the fan-out as a speed-up.
+- **Criteria retrieved about a class come from that class's document.** Every
+  standards document declares the class it governs and `search_standards` takes
+  a `defect_class` scope; the disposition path always passes the class it is
+  reasoning about. Unscoped, WI-206's "inside a pad: reject" outranked WI-201
+  on the flow's own `open` query and the model handed operators an acceptance
+  limit for opens that no document contains -- 27.8% of retrieved passages came
+  from the wrong class's document. A prompt telling the model to ignore
+  irrelevant passages is not the fix; the passage must not reach the prompt.
+  Leaving the scope unset is for questions that genuinely span classes, which
+  is `/ask`'s case and never the queue's.
 - **Thresholds come from the sweep or the work instructions**, not from hand
   tuning against the test set. See docs/architecture.md.
 - **Use the official DeepPCB split.** Do not re-split; comparability matters.
@@ -181,4 +192,13 @@ On the station itself:
 - **The criteria answer the wrong question for the operator.** For `open` the
   retrieved passage says any confirmed open is critical -- how to *disposition*
   one. It never says how to *confirm* one, which is what the person looking at
-  the images actually needs.
+  the images actually needs. This is what is left of the item after the larger
+  half of it turned out to be a defect rather than a gap: the retrieval was
+  unscoped, WI-206's "inside a pad: reject" outranked WI-201 on the flow's own
+  `open` query, and every escalation in the store told an operator to
+  disposition an open by whether it sat inside a pad. 27.8% of retrieved
+  passages came from the wrong class's document. Fixed at the retrieval
+  boundary on 2026-08-23 -- see docs/benchmarks.md and
+  `tests/test_standards_retrieval.py`. What remains is a documents problem:
+  WI-201's re-verification notes are the closest thing to confirmation
+  guidance, and they are advice about ambiguity, not a procedure.
