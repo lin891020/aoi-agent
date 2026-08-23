@@ -86,13 +86,24 @@ def _run_one(graph, reference: str, auto_answer: str | None, to_queue: bool) -> 
 
 def _cmd_queue() -> int:
     rows = escalations.pending()
-    if not rows:
+    if rows:
+        print(f"{len(rows)} regions waiting on a person\n")
+        for row in rows:
+            print(f"  {row['reference']:<16} model {row['model_class']:<10} "
+                  f"({row['model_confidence']:.2f})  {row['reason'][:70]}")
+    else:
         print("queue is empty")
-        return 0
-    print(f"{len(rows)} regions waiting on a person\n")
-    for row in rows:
-        print(f"  {row['reference']:<16} model {row['model_class']:<10} "
-              f"({row['model_confidence']:.2f})  {row['reason'][:70]}")
+
+    # Closed entries that no human decision backs. Not part of the queue and
+    # not work for anyone; printed here because this is where a person looks at
+    # the queue's health, and a disagreement between two tables that nobody
+    # asks about is a disagreement that stays.
+    orphans = escalations.unattributed_resolutions()
+    if orphans:
+        print(f"\n  {len(orphans)} closed entries carry no human decision -- "
+              "see scripts/mark_unattributed_resolutions.py")
+        for row in orphans:
+            print(f"    {row['reference']:<16} {row['status']}")
     return 0
 
 

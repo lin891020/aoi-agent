@@ -18,6 +18,22 @@ from aoi_agent.store.boards import session_factory
 from aoi_agent.store.models import Board, CandidateRecord, Escalation
 
 
+#: The queue's two ordinary states, and the one that is a mark on the record.
+PENDING = "pending"
+RESOLVED = "resolved"
+
+#: A queue entry closed as answered whose candidate carries no human decision.
+#:
+#: Not a state the station can reach: ``resume_review`` writes the decision
+#: before it closes the entry, precisely so a crash between the two leaves the
+#: region on the queue rather than losing the verdict. Five rows in this store
+#: are in it anyway -- the residue of five operator labels deleted by hand in
+#: August 2026, which left ``escalations`` and ``review_decisions`` permanently
+#: disagreeing about what happened to those regions. Marked rather than
+#: repaired; see ``scripts/mark_unattributed_resolutions.py``.
+RESOLVED_UNATTRIBUTED = "resolved_unattributed"
+
+
 def _as_dict(escalation: Escalation, candidate: CandidateRecord, board: Board) -> dict:
     return {
         "reference": f"{board.stem}#{candidate.index_on_board}",
@@ -79,7 +95,7 @@ def raise_escalation(
             existing.reason = reason
             existing.agent_verdict = agent_verdict
             existing.explanation_status = explanation_status
-            existing.status = "pending"
+            existing.status = PENDING
             existing.resolved_at = None
         else:
             session.add(
@@ -89,7 +105,7 @@ def raise_escalation(
                     reason=reason,
                     agent_verdict=agent_verdict,
                     explanation_status=explanation_status,
-                    status="pending",
+                    status=PENDING,
                 )
             )
         session.commit()
@@ -105,7 +121,7 @@ def resolve_escalation(thread_id: str) -> bool:
         ).scalar()
         if row is None:
             return False
-        row.status = "resolved"
+        row.status = RESOLVED
         # ``func.now()``, not ``datetime.now()``. Every other timestamp in the
         # schema is stamped by the database, which for SQLite is UTC; a Python
         # local-time value here would put two columns of one row eight hours
@@ -123,7 +139,7 @@ def pending(limit: int = 200) -> list[dict]:
             select(Escalation, CandidateRecord, Board)
             .join(CandidateRecord, Escalation.candidate_id == CandidateRecord.id)
             .join(Board, CandidateRecord.board_id == Board.id)
-            .where(Escalation.status == "pending")
+            .where(Escalation.status == PENDING)
             .order_by(Escalation.raised_at.asc(), Escalation.id.asc())
             .limit(limit)
         ).all()
@@ -139,6 +155,38 @@ def get(thread_id: str) -> dict | None:
             .where(Escalation.thread_id == thread_id)
         ).first()
         return _as_dict(*row) if row else None
+
+
+def unattributed_resolutions() -> list[dict]:
+    """Queue entries closed as answered that no human decision backs.
+
+    The two tables are meant to agree: an entry is closed only after the
+    verdict that closed it is written. Where they do not, the disagreement is
+    the finding, and this is how it is asked about rather than discovered.
+    """
+    from aoi_agent.store.models import ReviewDecision
+
+    with session_factory()() as session:
+        rows = session.execute(
+            select(Escalation, CandidateRecord, Board)
+            .join(CandidateRecord, Escalation.candidate_id == CandidateRecord.id)
+            .join(Board, CandidateRecord.board_id == Board.id)
+            .where(Escalation.status.in_((RESOLVED, RESOLVED_UNATTRIBUTED)))
+            .order_by(Escalation.id)
+        ).all()
+
+        found = []
+        for escalation, candidate, board in rows:
+            human = session.execute(
+                select(func.count(ReviewDecision.id)).where(
+                    ReviewDecision.candidate_id == candidate.id,
+                    ReviewDecision.source == "human",
+                )
+            ).scalar()
+            if human:
+                continue
+            found.append(_as_dict(escalation, candidate, board))
+        return found
 
 
 def counts() -> dict[str, int]:
@@ -166,7 +214,7 @@ def explanation_counts() -> dict[str, int]:
     with session_factory()() as session:
         rows = session.execute(
             select(Escalation.explanation_status, func.count(Escalation.id))
-            .where(Escalation.status == "pending")
+            .where(Escalation.status == PENDING)
             .group_by(Escalation.explanation_status)
         ).all()
         return {status or "unknown": count for status, count in rows}

@@ -5,10 +5,12 @@ Usage::
     uv run python scripts/seed_store.py --split test --limit 200
     uv run python scripts/seed_store.py --migrate-only
 
-``--migrate-only`` brings an existing store up to the current schema without
-touching a row. A store carrying a queue and a season of operator corrections
-must not have to be rebuilt to gain a nullable column -- the corrections are the
-next training round's labels.
+``--migrate-only`` brings an existing store up to the current schema. A store
+carrying a queue and a season of operator corrections must not have to be
+rebuilt to gain a nullable column -- the corrections are the next training
+round's labels. It adds the declared columns in place and stamps the rows that
+predate them, so a value that was never recorded cannot later be read as a
+value that is missing, and it says which columns it added.
 """
 
 from __future__ import annotations
@@ -19,8 +21,20 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from aoi_agent.store.models import Base, create_all, make_engine, make_session_factory  # noqa: E402
+from aoi_agent.store.models import (  # noqa: E402
+    Base,
+    _add_missing_columns,
+    make_engine,
+    make_session_factory,
+)
 from aoi_agent.store.seed import seed  # noqa: E402
+
+
+def _add_missing_columns_reporting(url: str | None) -> list[str]:
+    """``create_all``, and what it had to change to get there."""
+    engine = make_engine(url)
+    Base.metadata.create_all(engine)
+    return _add_missing_columns(engine)
 
 
 def main() -> int:
@@ -36,9 +50,15 @@ def main() -> int:
     Path("data").mkdir(exist_ok=True)
     if args.reset:
         Base.metadata.drop_all(make_engine(args.url))
-    create_all(args.url)
+    added = _add_missing_columns_reporting(args.url)
 
     if args.migrate_only:
+        if added:
+            # Said out loud, because a migration that also *writes* to rows --
+            # stamping the ones that predate a column, so their absence cannot
+            # be read as "written without one" -- is not something to do
+            # silently on a store holding operator corrections.
+            print("added: " + ", ".join(added))
         print("schema is up to date")
         return 0
 
