@@ -95,8 +95,40 @@ prompt，負責訂正確答案。
 
 **這不代表什麼：** 題目是 LLM 作者按不同 brief 寫的，不是真的領班寫的，所以它只框住
 這些 brief 生得出來的題型。而且評的是 plan 不是文字 —— 資料對的情況下寫出來的那段
-話對不對，沒有量。
+話對不對，是下面那一節。
 → [獨立那次的 run](docs/benchmarks.md#analysis-planner-asked-by-someone-else--does-it-plan-the-right-lookups-and-refuse-the-rest)
+
+### plan 對之後，那段文字有沒有照著資料寫，也量了。
+
+*「我怎麼知道它什麼時候在唬爛？」* Tool 是 deterministic 的，所以對「數字」而言這是
+算術題：那個數字要嘛從 payload 裡的某個值算得出來，要嘛算不出來；它被掛在哪個機台、
+哪條線、哪一類上，要嘛對得起來，要嘛對不起來。分成五種錯分開報，因為「編出一個數字」
+跟「該保留卻沒保留」不是同一個 accuracy：
+
+| 種類 | 件數 | 誰判的 |
+|---|---|---|
+| payload 裡根本沒有的數字 | **0** | 比對 |
+| 數字是真的，但掛錯機台／線／類別 | **0** | 比對 |
+| 講了因果，或講了時間上的趨勢 | 3 | 人，看 flag |
+| Tool 掛了而文字沒講 | 0 | 人，看 flag |
+| 對著沒檢索到的類別講規定 | 1 | 人，看 flag |
+
+**34 份答案、265 個句子、602 個數字裡，沒有一個是編的，也沒有一個掛錯對象。** 那 4 個
+flag 一個一個判過，其中 3 個是 pattern 的問題不是 model 的問題 —— `leads to` 出現在
+引用的處置規定裡、`because the` 出現在「這個 tool 沒回東西」的正確保留裡、`limit` 出現
+在 `limited to copper` 裡（這個是 bug，已經修）。而唯一一題直接問因果的
+—— *是因為蝕刻液老化了嗎* —— model 沒有給因果。
+
+**第一次跑出 43 件，其中 41 件是 checker 自己的錯**，這才是比較有用的那一半。`M12` 被
+當成數字 12；中文答案根本沒被切句，因為 `。` 後面不接空白；`19 copper, 22 mousebite`
+被反著讀。每一個修正都讓 checker 變安靜，而那正是 checker 變瞎的方式，所以每一個修正
+兩邊都有測試 —— 現在會過的那個句型，跟同一個句型換掉一個值、它必須還是抓得到。
+
+**這不代表什麼：** 只跑了一次，而且是 sample 不是 deterministic；checker 跟被檢查的
+系統同一個作者；還有「數字全對但話講錯」—— *「M22 是最差的機台」* 而它其實是第二差
+—— 這五種一種都涵蓋不到。刻意寫錯的那份 summary 是 control，用來擋掉「這套標準根本
+沒有東西會不過」。
+→ [這次的 run](docs/benchmarks.md#the-prose-over-the-results--is-the-sentence-true-of-the-payload)
 
 ### 標準檢索把別的 defect class 的規定當成這一類的答案。
 
@@ -398,7 +430,8 @@ uv run python -m aoi_agent corrections                   # 作業員推翻 model
 
 上面講的那些量測都是 script，不是截圖 —— `threshold_sweep.py`、
 `retrieval_report.py`、`escape_accounting.py`、`opening_kernel_sweep.py`、
-`reverifier_latency.py`、`agent_eval.py`、`analysis_eval.py`。每一支都往
+`reverifier_latency.py`、`agent_eval.py`、`analysis_eval.py`、
+`synthesis_eval.py`。每一支都往
 `docs/benchmarks.md` 後面接，新的在最後面，舊的不改。
 
 需要 [Ollama](https://ollama.com) 跟一個會 tool calling 的 model（預設

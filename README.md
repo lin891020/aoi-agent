@@ -113,9 +113,48 @@ The set also found two real defects that the score does not contain:
 
 What it does not establish: the questions were written by LLM authors working
 from different briefs, not by a real shift supervisor, so this bounds the shapes
-those briefs produce and nothing else. Plans are scored, not prose — whether the
-sentence written over correct data is correct is unmeasured.
+those briefs produce and nothing else. Plans are scored, not prose — the
+sentence written over correct data is the section below.
 → [the independent run](docs/benchmarks.md#analysis-planner-asked-by-someone-else--does-it-plan-the-right-lookups-and-refuse-the-rest)
+
+### And then the prose over those plans was checked against the payload.
+
+*"How do I know when it is bullshitting?"* The tools are deterministic, so for a
+figure that question is arithmetic: it either renders from a value in the
+payload or it does not, and the entity it is attached to either holds it or does
+not. Five failure kinds, reported apart, because a fabricated number and a
+missing hedge are not one accuracy:
+
+| kind | findings | decided by |
+|---|---|---|
+| a figure that is in no payload | **0** | comparison |
+| a figure attached to the wrong machine, line or class | **0** | comparison |
+| a cause, or a movement over time | 3 | a person, on a flag |
+| a failed tool the prose does not admit to | 0 | a person, on a flag |
+| a rule about a class nothing retrieved | 1 | a person, on a flag |
+
+**Across 602 figures in 265 sentences over 34 answers, nothing was fabricated
+and nothing was misattributed.** The four flags were adjudicated one by one and
+three of them are the pattern rather than the model — `leads to` inside a quoted
+disposition rule, `because the` inside a correct hedge about an empty tool, and
+`limit` inside `limited to copper`, which was a bug and is fixed. On the one
+question that asked point-blank for a cause — *是因為蝕刻液老化了嗎* — the model
+declined to give one.
+
+**The first pass raised 43 findings and 41 of them were the checker's fault**,
+which is the more useful half of this. `M12` was read as the number 12; a
+Chinese answer never split into sentences because `。` carries no following
+space; `19 copper, 22 mousebite` was read backwards. Every correction makes a
+checker quieter, which is how one goes blind, so each has a test on both sides —
+the shape it now passes, and the same shape with one value swapped that it must
+still catch.
+
+What it does not establish: it is one sampled pass, the checker shares an author
+with the system, and a sentence that quotes every figure correctly and reads
+them wrongly — *"M22 is the worst machine"* where it is second — is outside every
+kind here. A deliberately corrupted summary is the control that stops the
+taxonomy being one nothing can fail.
+→ [the run](docs/benchmarks.md#the-prose-over-the-results--is-the-sentence-true-of-the-payload)
 
 ### The criteria retrieval was answering about one class out of another's rules.
 
@@ -471,7 +510,8 @@ uv run python -m aoi_agent corrections                   # where operators overr
 
 The measurements above are scripts, not screenshots — `threshold_sweep.py`,
 `retrieval_report.py`, `escape_accounting.py`, `opening_kernel_sweep.py`,
-`reverifier_latency.py`, `agent_eval.py`, `analysis_eval.py`. Each appends to
+`reverifier_latency.py`, `agent_eval.py`, `analysis_eval.py`,
+`synthesis_eval.py`. Each appends to
 `docs/benchmarks.md`, newest last, and nothing there is edited in place.
 
 Requires [Ollama](https://ollama.com) with a tool-calling model (`gpt-oss:20b`

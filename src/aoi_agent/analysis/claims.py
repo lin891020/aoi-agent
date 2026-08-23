@@ -132,6 +132,12 @@ NORMATIVE_WORDS = (
     "判退", "允收", "報廢", "重工",
 )
 
+#: Substrings of the words above that are not the words above. `limit` inside
+#: `limited to copper` raised a criterion finding against a sentence saying
+#: only that one class was compared -- a flag with no rule in it. Matched
+#: before the list, so a longer innocent word wins.
+NOT_NORMATIVE = ("limited", "limitation", "unlimited", "acceptable range of")
+
 #: Sentences saying the criteria are *silent* on a class. The model is
 #: supposed to write these -- "no specific threshold is listed for mousebite"
 #: names a class no passage governs and is the honest answer, not a
@@ -752,7 +758,10 @@ def _criterion_findings(prose: str, results: list[dict]) -> list[Finding]:
 
     for sentence in sentences(prose):
         low = sentence.lower()
-        if not any(word in low for word in NORMATIVE_WORDS):
+        stripped = low
+        for innocent in NOT_NORMATIVE:
+            stripped = stripped.replace(innocent, " ")
+        if not any(word in stripped for word in NORMATIVE_WORDS):
             continue
         if any(word in low for word in ABSENCE_WORDS):
             continue

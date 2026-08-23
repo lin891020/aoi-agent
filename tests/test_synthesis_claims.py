@@ -238,3 +238,26 @@ def test_a_figure_that_is_simply_not_there_is_still_caught(case):
         "L1 recorded 1,412 defects.", case["plan"], case["results"]
     )
     assert [f for f in findings if f.kind == "fabricated_figure"]
+
+
+def test_limited_to_one_class_is_not_a_rule_about_that_class(case):
+    """`limit` inside `limited to copper` raised a criterion finding against a
+    sentence that states no rule at all. It is the one false positive the
+    published run carries, and it is fixed here rather than re-run away."""
+    findings, _waved, _derived = check(
+        "No other defect class comparisons are provided, so the analysis is "
+        "limited to copper.",
+        {"calls": []},
+        [{"tool": "query_defect_history", "args": {}, "ok": True,
+          "data": {"by_class": {"copper": 3}}, "error": None}],
+    )
+    assert not [f for f in findings if f.kind == "misquoted_criterion"]
+
+
+def test_a_real_rule_about_an_unretrieved_class_still_fires(case):
+    """The other side of it: the incident this kind exists for."""
+    findings, _waved, _derived = check(
+        "A short of this size must be rejected under the criteria.",
+        case["plan"], case["results"],
+    )
+    assert [f for f in findings if f.kind == "misquoted_criterion"]

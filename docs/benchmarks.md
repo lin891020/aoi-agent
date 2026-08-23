@@ -1252,3 +1252,111 @@ Distribution of what the agent said, against the truth:
 | mousebite | 1 | 1 | 1 |
 | spur | 1 | 1 | 0 |
 | copper | 1 | 0 | 0 |
+
+## 2026-08-23 · commit d907472
+
+### The prose over the results — is the sentence true of the payload?
+
+`gpt-oss:20b`, the 70 independent questions run through the whole analysis graph, of which **34 reached the synthesis node** and have prose written over a payload to score. The other 36 terminated in `report_node` — a refusal, a plan `validate_plan` threw out, or no plan at all — which writes a fixed string over no results. Ran in 17 min. One pass per question, so this is a single point and not a distribution.
+
+**This measures fidelity to the results, not truth about the line.** A tool that returns a 9-day window labelled `"days": 14` — which `query_machine_stats` does, and docs/benchmarks.md already records — is repeated faithfully by the model and passes every check here. Correctly: that defect belongs to the tool, and a prose checker that flagged it would be scoring the wrong layer. The claim this section supports is that a supervisor reading the sentence is reading the payload, not that the payload is right.
+
+**The first pass of this checker raised 43 findings, and 41 of them were the checker's fault.** Adjudicating them against the payloads — which is what a judged flag is for — turned up five defects, every one of which made the instrument shout rather than made the model wrong. `M12` was read as the number 12, so a sentence that merely named six machines produced six swap findings; twenty-two of the thirty-seven attribution findings were nothing but that. A Chinese answer never split into sentences, because `。` is not followed by a space, so a figure was attributed to whichever entity was named last anywhere in the paragraph. `19 copper, 22 mousebite` was read backwards, shifting a whole list by one. A fleet average quoted beside a machine name was called that machine's. And a share the model divided out of two stored figures was called a fabrication. Each correction is a commit with a test either side of it — the shape it now passes, and the swap in that same shape it must still catch — because five changes that each make a checker quieter are exactly how a checker goes blind. The numbers below come from a fresh run scored by the corrected checker.
+
+**30/34 = 88% of the scored answers carry no finding of any kind**, and 34/34 = 100% carry no *checked* finding — nothing fabricated and nothing misattributed across 602 figures quoted in 265 sentences.
+
+| kind | findings | answers affected | decided by |
+|---|---|---|---|
+| `fabricated_figure` | 0 | 0 | comparison |
+| `misattributed_figure` | 0 | 0 | comparison |
+| `unsupported_claim` | 3 | 3 | a person, on a flag |
+| `unhedged_gap` | 0 | 0 | a person, on a flag |
+| `misquoted_criterion` | 1 | 1 | a person, on a flag |
+
+- `fabricated_figure` — a number in the prose that renders from no value in the payload. The reader cannot catch this: it looks like the figures beside it.
+- `misattributed_figure` — a number that is in the payload, attached to an entity that does not hold it — the right rate against the wrong machine, line or class. Worse than a fabrication in one way: every figure audits clean.
+- `unsupported_claim` — a cause, or a movement over time. No plannable tool returns a time series, so a trend claim is unsupported by the shape of the tool surface and not merely by this run's numbers.
+- `unhedged_gap` — a tool failed, errored or returned nothing, and the prose reads as complete.
+- `misquoted_criterion` — a rule asserted about a class no retrieved passage governs or mentions, or attributed to a work instruction never retrieved. This is the 2026-08-23 incident, made checkable.
+
+**Two of the five kinds carry no judgement at all.** A figure is compared against the stored payload and the comparison is reproducible from the raw file this run wrote; nothing about it is an opinion. The other three are pattern matches — a cause word, a trend word, a class name beside a normative word — and each one is a candidate a person settles. Every candidate is printed below with its sentence, so the judgement is auditable rather than asserted.
+
+**How much of this was checkable rather than judged.** Of 602 figures quoted across the scored answers, every one was compared against the payload — that is 100% of the figure claims, and figures are what a supervisor acts on. Of the 4 findings, 0 came from a comparison and 4 from a flag somebody had to settle. What is *not* covered at all: a sentence that quotes every figure correctly and characterises them wrongly — "M22 is the worst machine" over a payload where it is second — is outside every kind here, because the claim is a reading of the numbers rather than a number. That is the boundary, and it is where a person still has to look.
+
+**Two latitudes the checker grants, counted rather than assumed.** 1 figure(s) were accepted as restated from the plan and 1 as a ratio of two figures the payload holds — "18.1% of L1's defects" over a payload storing 175 and 966. The division is checked, not assumed: a value is excused only when a pair producing it exists. A derived figure is exempt from the entity check as well, and that is a real gap rather than a convenience — a quotient carries no entity, so a rate computed for the wrong machine is outside what this can see.
+
+**1 figure(s) were waved through as restated from the plan.** `SYNTHESIS_PROMPT` orders the plan's assumptions repeated in the prose, so a window the planner chose comes back in the answer having never been in a payload. Counting those as fabrications would score the synthesis node for the planner's work, which is `scripts/analysis_eval.py`'s job. They are counted here instead of being silent.
+
+**How lenient the figure check is, measured rather than argued.** Every figure that grounded was re-asked at 1.3x and 0.7x. 176/856 = 21% of those perturbed figures still grounded — but that number is carried by small integers, since the payloads are full of box coordinates and a coordinate moved 30% lands on another coordinate. Restricted to figures written with a decimal point, which is where a rate or a share lives, 25/278 = 9% survived perturbation. A rate that is wrong by 30% does not pass this checker; a small count sometimes does.
+
+**The checker and the system have the same author.** That is the sharpest limit on this number and no run removes it: the same person chose what counts as a fabrication and wrote the layer being scored, so a failure mode neither of them thought about is invisible to both. Two things mitigate it and neither closes it. The questions are the independent seventy, written by three authors who had seen none of this. And the checker is required to fail a summary corrupted on purpose — `tests/fixtures/synthesis_wrong_summary.json` carries one instance of every kind and `tests/test_synthesis_claims.py` fails if any kind stops firing, or if a faithful summary over the same results starts firing. A taxonomy nothing can fail reads exactly like a clean result, and that control is what tells the two apart.
+
+```
+ollama ps before the run
+NAME           ID              SIZE     PROCESSOR    CONTEXT    UNTIL               
+gpt-oss:20b    17052f91a42e    12 GB    100% GPU     32768      28 minutes from now
+
+busy processes before the run
+(none)
+
+ollama ps after the run
+NAME           ID              SIZE     PROCESSOR    CONTEXT    UNTIL               
+gpt-oss:20b    17052f91a42e    12 GB    100% GPU     32768      29 minutes from now
+
+busy processes after the run
+(none)
+```
+
+**The control.** A checker built by the author of the thing it checks can be lenient without anyone noticing, and a taxonomy nothing can fail reads exactly like a clean result. This fixture is the control: one run's real results, a faithful summary of them that must produce no finding, and a corrupted summary carrying one instance of every kind that must produce all five. If the corrupted half stops failing, the checker has gone blind; if the faithful half starts failing, it has gone loud.
+
+- `fabricated_figure` — 1412, which appears in no payload
+- `misattributed_figure` — 302 is L2's open count, printed under L1
+- `unsupported_claim` — a movement over time, and a cause, in one sentence
+- `unhedged_gap` — query_machine_stats failed and the prose reads as complete
+- `misquoted_criterion` — WI-206 was never retrieved, and no passage governs spur
+
+Every finding, so the judged ones can be re-adjudicated:
+
+- S14 `unsupported_claim` — a movement over time
+  results say: no plannable tool returns a time series, and this plan asked for one window
+  sentence: The data only shows these associations and does not indicate why the mousebite rate has risen.
+- S25 `misquoted_criterion` — a rule about copper
+  results say: no criteria were retrieved on this run at all
+  sentence: No other defect class comparisons are provided, so the analysis is limited to copper.
+- A10 `unsupported_claim` — a cause
+  results say: the tools carry association only
+  sentence: - Acceptance criteria state that a confirmed open leads to scrap or rework (jumper repair), while a suspected open that is continuous on electrical test is recorded as cosmetic thinning and the board is released.
+- A12 `unsupported_claim` — a cause
+  results say: the tools carry association only
+  sentence: Because the defect history query returned no data, we cannot determine whether board 20085294 has more or fewer defects than its lot peers based on the recent 7-day window.
+
+**Adjudicated, one by one. Three of the four are the pattern, not the model.**
+A flag is a candidate, and saying so is worth nothing unless the candidates get
+settled in public.
+
+- **S14 stands.** "does not indicate why the mousebite rate **has risen**" is a
+  correct refusal to give a cause wrapped around a presupposition the payload
+  cannot carry: one window cannot show a rise. Mild, and the questioner asserted
+  the rise first — but the sentence states it as fact and nothing fetched
+  supports it.
+- **A10 is the pattern.** `leads to` matched inside a quoted disposition rule —
+  "a confirmed open **leads to** scrap or rework" — which is a document saying
+  what to do, not a claim about why L2-M22 has opens. Worth noting what the
+  question was: *是因為蝕刻液老化了嗎* — is it the etchant ageing? The model was
+  asked point-blank for a cause and did not give one.
+- **A12 is the pattern.** `because the` matched a sentence explaining that a
+  tool came back empty. That is the hedge the `unhedged_gap` kind exists to
+  demand, caught by the cause detector for the shape of its first two words.
+- **S25 is a defect in the checker.** `limit` matched inside `limited to
+  copper`, raising a criterion finding against a sentence that states no rule at
+  all. Fixed after this run — `NOT_NORMATIVE`, with a test either side of it —
+  and the count above is left as the run produced it rather than re-run down to
+  a cleaner number.
+
+So the cause detector's precision on this run is 0 of 2 and the criterion
+detector's is 0 of 1. That is what a *flag* is worth, stated as a number rather
+than implied: these three kinds cost a person four sentences to read, and on
+this run three of the four readings ended in "no". The two checked kinds cost
+nobody anything, because nothing is left to settle.
+
+What this does not establish. It is one pass over 34 answers, not a distribution, and the model is sampled rather than deterministic — a second run would produce different sentences over the identical payloads. The three judged kinds are pattern matches with a person behind them, so their counts are a floor on what a pattern can raise and not a rate. Nothing here scores whether the answer was *useful*, whether it answered the question asked, or whether the plan fetched the right data — that last is `scripts/analysis_eval.py`, which scored 55/70 on the same set. And the checker is not independent of the system; the control fixture is what stands in for independence, and it is a weaker thing.

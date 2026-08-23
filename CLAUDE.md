@@ -66,6 +66,7 @@ uv run python scripts/analysis_eval.py           # does the planner plan the rig
 uv run python scripts/analysis_eval.py --plan-only  # the same score, without the tools and the prose nobody scores
 uv run python scripts/analysis_eval.py --questions tests/fixtures/analysis_questions_independent.json
                                                  # the same scorer on seventy questions whose authors never saw the prompt
+uv run python scripts/synthesis_eval.py          # is the prose true of the results it was written from? (~45 min)
 uv run python scripts/check_mcp_servers.py       # servers start and advertise tools
 uv run python scripts/invariant_audit.py         # which invariants below would fail a test if broken
 uv run python scripts/invariant_audit.py --collect  # the same, checking pytest really collects each one
