@@ -140,6 +140,29 @@ NOT_INDEPENDENT = (
     "control is what tells the two apart."
 )
 
+#: What the first pass actually measured, which was the checker. Stated in the
+#: report because a clean result whose instrument was corrected on the way to
+#: it is a different claim from a clean result taken first time.
+WHAT_ADJUDICATION_FOUND = (
+    "**The first pass of this checker raised 43 findings, and 41 of them were "
+    "the checker's fault.** Adjudicating them against the payloads — which is "
+    "what a judged flag is for — turned up five defects, every one of which "
+    "made the instrument shout rather than made the model wrong. `M12` was "
+    "read as the number 12, so a sentence that merely named six machines "
+    "produced six swap findings; twenty-two of the thirty-seven attribution "
+    "findings were nothing but that. A Chinese answer never split into "
+    "sentences, because `。` is not followed by a space, so a figure was "
+    "attributed to whichever entity was named last anywhere in the paragraph. "
+    "`19 copper, 22 mousebite` was read backwards, shifting a whole list by "
+    "one. A fleet average quoted beside a machine name was called that "
+    "machine's. And a share the model divided out of two stored figures was "
+    "called a fabrication. Each correction is a commit with a test either "
+    "side of it — the shape it now passes, and the swap in that same shape it "
+    "must still catch — because five changes that each make a checker quieter "
+    "are exactly how a checker goes blind. The numbers below come from a "
+    "fresh run scored by the corrected checker."
+)
+
 #: What the measure is *of*, stated before the number so it cannot be read
 #: wider than it is.
 FIDELITY_NOT_TRUTH = (
@@ -227,7 +250,7 @@ def main() -> int:
             print(f"  [{position:>3}/{len(questions)}] --   {item['question'][:44]}")
             continue
 
-        findings, waved = check(answer, state.get("plan"), results)
+        findings, waved, derived = check(answer, state.get("plan"), results)
         grounding = Grounding(results)
         accepted, tried, accepted_dp, tried_dp = perturbations(answer, grounding)
         figures = [
@@ -243,6 +266,7 @@ def main() -> int:
             "answer": answer,
             "findings": [f.__dict__ for f in findings],
             "restated_from_plan": waved,
+            "derived": derived,
             "figures": len(figures),
             "sentences": len(sentences(answer)),
             "gaps": gaps(results),
@@ -291,6 +315,7 @@ def render(scored, unscored, args, minutes, ps_before, ps_after,
     ]
     figures = sum(row["figures"] for row in scored)
     restated = sum(row["restated_from_plan"] for row in scored)
+    derived = sum(len(row["derived"]) for row in scored)
     accepted = sum(row["perturbation"][0] for row in scored)
     tried = sum(row["perturbation"][1] for row in scored)
     accepted_dp = sum(row["perturbation"][2] for row in scored)
@@ -310,6 +335,8 @@ def render(scored, unscored, args, minutes, ps_before, ps_after,
         f"question, so this is a single point and not a distribution.",
         "",
         FIDELITY_NOT_TRUTH,
+        "",
+        WHAT_ADJUDICATION_FOUND,
         "",
         f"**{rate(len(clean), len(scored))} of the scored answers carry no "
         f"finding of any kind**, and {rate(len(clean_checked), len(scored))} "
@@ -343,6 +370,16 @@ def render(scored, unscored, args, minutes, ps_before, ps_after,
         f"kind here, because the claim is a reading of the numbers rather than "
         f"a number. That is the boundary, and it is where a person still has "
         f"to look.",
+        "",
+        f"**Two latitudes the checker grants, counted rather than assumed.** "
+        f"{restated} figure(s) were accepted as restated from the plan and "
+        f"{derived} as a ratio of two figures the payload holds — \"18.1% of "
+        f"L1's defects\" over a payload storing 175 and 966. The division is "
+        f"checked, not assumed: a value is excused only when a pair producing "
+        f"it exists. A derived figure is exempt from the entity check as well, "
+        f"and that is a real gap rather than a convenience — a quotient "
+        f"carries no entity, so a rate computed for the wrong machine is "
+        f"outside what this can see.",
         "",
         f"**{restated} figure(s) were waved through as restated from the plan.** "
         f"`SYNTHESIS_PROMPT` orders the plan's assumptions repeated in the "

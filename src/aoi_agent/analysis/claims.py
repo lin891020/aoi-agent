@@ -140,7 +140,8 @@ NORMATIVE_WORDS = (
 ABSENCE_WORDS = (
     "no specific", "not listed", "not covered", "no rule", "no threshold",
     "silent on", "does not", "do not", "no acceptance", "none of the",
-    "were not retrieved", "no criteria", "沒有", "未提及", "未列",
+    "were not retrieved", "no criteria", "not classified", "are not",
+    "is not", "were not", "沒有", "未提及", "未列",
 )
 
 #: What counts as the prose owning up to a gap.
@@ -159,6 +160,16 @@ _WORD_NUMBERS = {
 }
 
 _NUMBER_RE = re.compile(r"\d[\d,]*(?:\.\d+)?")
+
+#: A digit run glued to a name is part of the name. `M12`, `L2-M22`,
+#: `WI-206`, `LOT-2608000`, `20085294#3` -- every one of those put a bare
+#: integer into the first run's figure list, and the entity check then found
+#: `12` "belonging to" M12 and reported a swap on a sentence that had merely
+#: named a machine. Twenty-two of the first run's thirty-seven attribution
+#: findings were this and nothing else. Applied when reading *prose* only:
+#: grounding still takes every digit out of the payload's own strings, where
+#: being generous costs nothing.
+_GLUED = re.compile(r"[A-Za-z#]$|[A-Za-z]-$")
 _WORD_RE = re.compile(r"\b(" + "|".join(_WORD_NUMBERS) + r")\b", re.IGNORECASE)
 _WI_RE = re.compile(r"\bWI[-\s]?(\d{3})\b", re.IGNORECASE)
 
@@ -167,6 +178,15 @@ _MENTION_RE = re.compile(
     r"\b(?:open|short|mousebite|spur|copper|pin[-\s]?hole|false[_\s]call)\b",
     re.IGNORECASE,
 )
+
+#: How close a *following* entity name has to be for a figure to be read as
+#: `19 copper` rather than as trailing the name before it.
+_FOLLOWS = 15
+
+#: Above this many distinct stored figures the ratio search is skipped. It is
+#: quadratic, and a payload that large is a `list_candidates` dump whose
+#: figures are coordinates rather than quantities anybody divides.
+_RATIO_CAP = 600
 
 #: How far past an entity name a figure is still read as attached to it, when
 #: no other entity intervenes. Long enough for "line L1 inspected 137 boards
@@ -209,7 +229,7 @@ def normalise(text: str) -> str:
 
 
 def numbers_in(
-    text: str, words: bool = True
+    text: str, words: bool = True, bare: bool = False
 ) -> list[tuple[Decimal, int, int, int]]:
     """Every figure in a piece of text: value, decimal places, start, end.
 
@@ -229,6 +249,8 @@ def numbers_in(
     """
     found: list[tuple[Decimal, int, int, int]] = []
     for match in _NUMBER_RE.finditer(text):
+        if bare and _GLUED.search(text[max(0, match.start() - 2):match.start()]):
+            continue
         raw = match.group().replace(",", "")
         if raw.endswith("."):
             raw = raw[:-1]
@@ -308,6 +330,14 @@ class Grounding:
         #: figure to whichever machine the sentence also names, so the
         #: attribution check has nothing to say about it.
         self.quoted: set[Decimal] = set()
+        #: Per family, the figures the payload holds at a level that names no
+        #: entity of that kind -- `fleet_average_per_board`, `defects_total`.
+        #: "M11 is below the fleet average of 0.95" names a machine and then
+        #: quotes a figure that is deliberately not any machine's, and the
+        #: first run reported that as a swap because 0.95 happened to match
+        #: M21's rate at two decimal places. A fleet figure beside a machine
+        #: name is the sentence doing its job.
+        self.family_free: dict[str, set[Decimal]] = {}
         self.passages: list[dict] = []
         for result in results:
             payload = {
@@ -324,10 +354,14 @@ class Grounding:
 
     # -- construction --------------------------------------------------
     def _add(self, value: Decimal, tokens: frozenset[str]) -> None:
+        families = {_family(token) for token in tokens}
         for form in _renderings(value):
             self.everything.add(form)
             for token in tokens:
                 self.scopes.setdefault(token, set()).add(form)
+            for family in ("machine", "line", "class", "board"):
+                if family not in families:
+                    self.family_free.setdefault(family, set()).add(form)
 
     def _walk(self, node: Any, tokens: frozenset[str]) -> None:
         if isinstance(node, dict):
@@ -396,6 +430,13 @@ class Grounding:
         shared = set.intersection(*known) if len(known) > 1 else known[0]
         return self._near(value, places, shared)
 
+    def is_fleet_level(self, value: Decimal, places: int, tokens: set[str]) -> bool:
+        """Does the payload hold this figure somewhere that names no such entity?"""
+        return any(
+            self._near(value, places, self.family_free.get(_family(token), set()))
+            for token in tokens
+        )
+
     def elsewhere(self, value: Decimal, places: int, tokens: set[str]) -> str:
         """An entity of the same kind that *does* hold this figure, if any.
 
@@ -411,6 +452,34 @@ class Grounding:
                 continue
             if self._near(value, places, pool):
                 return other
+        return ""
+
+
+    def derives(self, value: Decimal, places: int) -> str:
+        """Is this figure a ratio of two figures the payload holds?
+
+        "16.4%" over a payload holding 491 shorts out of 2992 defects is
+        arithmetic on the results, not an invention, and calling it a
+        fabrication would be the checker refusing the model permission to
+        divide. So the division is *checked* rather than assumed: a value is
+        excused only when a pair actually producing it exists.
+
+        It is excused from the attribution check too, and that is a real gap
+        rather than a convenience -- a derived rate printed under the wrong
+        machine is a failure this cannot see, because a quotient carries no
+        entity. The report says so.
+        """
+        pool = sorted(self.everything)
+        if len(pool) > _RATIO_CAP:
+            return ""
+        for numerator in pool:
+            for denominator in pool:
+                if denominator == 0:
+                    continue
+                for form in (numerator / denominator,
+                             numerator * 100 / denominator):
+                    if abs(value - form) <= _tolerance(places):
+                        return f"{numerator}/{denominator}"
         return ""
 
 
@@ -436,7 +505,12 @@ def sentences(prose: str) -> list[str]:
     bullet about M22 followed by a bullet about M11 is two claims however the
     first one is punctuated.
     """
-    parts = re.split(r"(?<=[.!?。！？])\s+|\n+", normalise(prose))
+    # `。` is not followed by a space, so a rule that needs whitespace never
+    # split a Chinese answer at all -- the whole paragraph became one unit and
+    # a figure was attributed to whichever entity happened to be named last
+    # before it, five sentences earlier. That produced the first run's
+    # `491 attributed to spur` on a sentence that says `short`.
+    parts = re.split(r"(?<=[.!?])\s+|(?<=[。！？；])|\n+", normalise(prose))
     return [part.strip() for part in parts if part.strip()]
 
 
@@ -486,20 +560,25 @@ def figure_findings(
 ) -> tuple[list[Finding], int]:
     """The two kinds decided by arithmetic: fabricated, and misattributed.
 
-    Returns the findings and how many figures were waved through as restated
-    from the plan, because a latitude nobody counts is a latitude nobody can
-    argue with.
+    Returns the findings, how many figures were waved through as restated from
+    the plan, and every figure excused as a ratio of two stored ones -- because
+    a latitude nobody counts is a latitude nobody can argue with.
     """
     restated = restated or set()
     findings: list[Finding] = []
+    derived: list[str] = []
     waved = 0
     for sentence in sentences(prose):
         mentions = _mentions(sentence)
-        for value, places, start, _end in numbers_in(sentence, words=False):
+        for value, places, start, end in numbers_in(sentence, words=False, bare=True):
             if not grounding.holds(value, places):
                 if any(abs(value - stated) <= _tolerance(places)
                        for stated in restated):
                     waved += 1
+                    continue
+                pair = grounding.derives(value, places)
+                if pair:
+                    derived.append(f"{value} = {pair}")
                     continue
                 findings.append(Finding(
                     "fabricated_figure", str(value),
@@ -508,8 +587,10 @@ def figure_findings(
                 continue
             if value in grounding.quoted:
                 continue
-            tokens = _attached_to(mentions, start)
+            tokens = _attached_to(mentions, start, end, sentence)
             if not tokens or grounding.holds_for(value, places, tokens):
+                continue
+            if grounding.is_fleet_level(value, places, tokens):
                 continue
             other = grounding.elsewhere(value, places, tokens)
             if other:
@@ -518,7 +599,7 @@ def figure_findings(
                     f"{value} attributed to {'/'.join(sorted(tokens))}",
                     f"that figure is {other}'s in the results", sentence,
                 ))
-    return findings, waved
+    return findings, waved, derived
 
 
 def _tolerance(places: int) -> Decimal:
@@ -526,7 +607,10 @@ def _tolerance(places: int) -> Decimal:
 
 
 def _attached_to(
-    mentions: list[tuple[set[str], int, int]], position: int
+    mentions: list[tuple[set[str], int, int]],
+    position: int,
+    ends: int,
+    sentence: str = "",
 ) -> set[str]:
     """Which entities a figure at this offset is being said about.
 
@@ -536,13 +620,34 @@ def _attached_to(
     printed under L1's heading -- which is precisely the swap this kind is for.
     """
     attached: set[str] = set()
-    nearest = None
+    before = after = None
     for tokens, start, end in mentions:
         if end <= position:
-            nearest = (tokens, end)
-        else:
-            break
-    if nearest is None or position - nearest[1] > ATTRIBUTION_SPAN:
+            before = (tokens, position - end)
+        elif after is None and start >= ends:
+            # Measured from where the figure ends, not where it starts: from
+            # its start the figure's own digits count against the name that
+            # follows it, and `188 mousebite` loses to the `copper` two
+            # characters behind.
+            after = (tokens, start - ends, sentence[ends:start])
+    # Either order occurs and both are ordinary English: `copper 138` and
+    # `19 copper` mean the same thing. Reading only backwards attached each
+    # count to the class named before it, so a whole list came out shifted by
+    # one and every entry read as a swap -- four findings on one sentence in
+    # the first run, none of them the model's fault.
+    # Only a bare space joins a count to the noun it counts. `M21(1.933/板,
+    # 25%)` puts a share after a name and closes a bracket in between, and
+    # reading that as `25% of the next machine` shifted a whole ranked list --
+    # the same defect as reading only backwards, in the other direction.
+    nearest = before
+    if (
+        after
+        and after[1] <= _FOLLOWS
+        and after[2].strip(" \u00a0") == ""
+        and (before is None or after[1] < before[1])
+    ):
+        nearest = (after[0], after[1])
+    if nearest is None or nearest[1] > ATTRIBUTION_SPAN:
         return attached
     attached |= nearest[0]
     families = {_family(token) for token in attached}
@@ -588,10 +693,22 @@ def claim_findings(prose: str, plan: dict, results: list[dict]) -> list[Finding]
     tools_asked_twice = len({tool for tool, _ in windows}) < len(windows)
     normalised = normalise(prose)
     lowered = normalised.lower()
+    # A passage that says "record for trend analysis" is a document's word,
+    # and the model repeating it is doing what it was asked. The first run
+    # flagged exactly that as a claim about a movement over time.
+    corpus = " ".join(
+        str((result.get("data") or {}).get("passages", ""))
+        for result in results
+    ).lower()
 
     for sentence in sentences(normalised):
         low = sentence.lower()
-        if not tools_asked_twice and any(word in low for word in TREND_WORDS):
+        quoted = any(
+            word in corpus for word in TREND_WORDS if word in low
+        )
+        if not tools_asked_twice and not quoted and any(
+            word in low for word in TREND_WORDS
+        ):
             findings.append(Finding(
                 "unsupported_claim", "a movement over time",
                 "no plannable tool returns a time series, and this plan asked "
@@ -658,15 +775,17 @@ def _criterion_findings(prose: str, results: list[dict]) -> list[Finding]:
 
 def check(
     prose: str, plan: dict | None, results: list[dict]
-) -> tuple[list[Finding], int]:
+) -> tuple[list[Finding], int, list[str]]:
     """Every finding against one answer, checked kinds first.
 
-    Second element is the count of figures accepted because the plan had
-    already stated them.
+    Also the count of figures accepted because the plan had already stated
+    them, and every figure excused as arithmetic over two stored ones.
     """
     grounding = Grounding(results)
-    figures, waved = figure_findings(prose, grounding, plan_figures(plan))
-    return figures + claim_findings(prose, plan or {}, results), waved
+    figures, waved, derived = figure_findings(
+        prose, grounding, plan_figures(plan)
+    )
+    return figures + claim_findings(prose, plan or {}, results), waved, derived
 
 
 def perturbations(
@@ -689,7 +808,7 @@ def perturbations(
     """
     accepted = tried = accepted_decimal = tried_decimal = 0
     for sentence in sentences(prose):
-        for value, places, _start, _end in numbers_in(sentence, words=False):
+        for value, places, _start, _end in numbers_in(sentence, words=False, bare=True):
             if not grounding.holds(value, places) or value == 0:
                 continue
             for factor in (Decimal("1.3"), Decimal("0.7")):
