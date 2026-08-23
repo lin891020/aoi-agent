@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from reverifier_latency import (
     claim_verdict,
+    crossover_note,
     competing_processes,
     edge_implication,
     format_ms,
@@ -193,8 +194,11 @@ def results_fixture() -> dict:
         "pipeline_batch_bucket": 16,
         "soak_s": 90.0,
         "peak_rss_mb": 812.0,
+        "thread_sweep": {1: {8: 2.04, 16: 8.10}, 2: {8: 1.29, 16: 8.08},
+                         4: {8: 1.00, 16: 8.05}, 8: {8: 1.02, 16: 8.10}},
         "patch_build_p50": 0.05,
         "verdict": claim_verdict(6.0),
+        "crossover": "crossover placeholder",
         "implication": edge_implication(6.0, 666.0, 42.7),
     }
 
@@ -297,3 +301,58 @@ def test_render_records_both_contention_checks():
     assert "bench_tv.py" in text
     # And the reader is told why one check is not enough.
     assert "reports Ollama's own resident models and nothing else" in text
+
+
+def test_render_shows_the_cpu_cliff_against_thread_count():
+    text = "\n".join(render(results_fixture()))
+    assert "#### Does the CPU cliff move with the core count?" in text
+    # Every thread count measured gets a row.
+    for threads in (1, 2, 4, 8):
+        assert f"| {threads} | " in text
+    assert "batch at 8 on any CPU box" in text
+
+
+def devices_for_crossover(mps_single, cpu_single, mps_batch16, cpu_batch16):
+    def device(name, single, b16):
+        return {
+            "name": name,
+            "single": {"p50": single},
+            "batches": {
+                1: {"per_candidate_ms": single},
+                16: {"per_candidate_ms": b16},
+            },
+        }
+
+    return [device("mps", mps_single, mps_batch16),
+            device("cpu", cpu_single, cpu_batch16)]
+
+
+def test_crossover_note_says_the_gpu_loses_at_one_candidate():
+    # The measured shape: MPS ~3x slower single-shot, far faster batched.
+    note = crossover_note(devices_for_crossover(7.34, 2.50, 0.21, 4.18))
+    assert "At one candidate the GPU is the slower device" in note
+    assert "2.9x slower" in note
+    assert "overtakes at batch 16" in note
+
+
+def test_crossover_note_reports_a_gpu_that_never_overtakes():
+    note = crossover_note(devices_for_crossover(7.34, 2.50, 9.0, 4.18))
+    assert "CPU stayed ahead" in note
+
+
+def test_crossover_note_reports_a_gpu_that_wins_outright():
+    note = crossover_note(devices_for_crossover(1.0, 2.50, 0.21, 4.18))
+    assert "faster than CPU even at one candidate" in note
+
+
+def test_crossover_note_is_silent_without_both_devices():
+    only_cpu = [{"name": "cpu", "single": {"p50": 2.5}, "batches": {}}]
+    assert crossover_note(only_cpu) == ""
+
+
+def test_render_carries_the_crossover_finding():
+    results = results_fixture()
+    results["crossover"] = crossover_note(
+        devices_for_crossover(7.34, 2.50, 0.21, 4.18))
+    text = "\n".join(render(results))
+    assert "At one candidate the GPU is the slower device" in text

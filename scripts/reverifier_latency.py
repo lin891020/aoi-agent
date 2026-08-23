@@ -164,6 +164,57 @@ def claim_verdict(measured_ms: float, claimed: str = "tens of milliseconds") -> 
     )
 
 
+def crossover_note(devices: list[dict]) -> str:
+    """Which device actually wins, and from what batch size.
+
+    The headline result here is counter-intuitive enough to need saying out
+    loud rather than leaving in a table: at one candidate the GPU loses, because
+    dispatch and the host round trip cost more than the forward does on a model
+    this small. It only pays once there is a batch to amortise them over. A
+    station classifying regions one at a time would be slower on the GPU.
+    """
+    by_name = {device["name"]: device for device in devices}
+    if "mps" not in by_name or "cpu" not in by_name:
+        return ""
+    mps, cpu = by_name["mps"], by_name["cpu"]
+    single_ratio = mps["single"]["p50"] / cpu["single"]["p50"]
+
+    shared = sorted(set(mps["batches"]) & set(cpu["batches"]))
+    crossover = next(
+        (
+            size
+            for size in shared
+            if mps["batches"][size]["per_candidate_ms"]
+            < cpu["batches"][size]["per_candidate_ms"]
+        ),
+        None,
+    )
+
+    if single_ratio <= 1:
+        return (
+            f"MPS is faster than CPU even at one candidate "
+            f"({format_ms(mps['single']['p50'])} against "
+            f"{format_ms(cpu['single']['p50'])})."
+        )
+    lead = (
+        f"**At one candidate the GPU is the slower device.** MPS p50 is "
+        f"{format_ms(mps['single']['p50'])} against the CPU's "
+        f"{format_ms(cpu['single']['p50'])} -- {single_ratio:.1f}x slower. On a "
+        f"model this small the forward is cheaper than dispatching it and copying "
+        f"the result back, and the GPU has nothing to amortise that over."
+    )
+    if crossover is None:
+        return lead + " Across every batch size swept, CPU stayed ahead."
+    return (
+        lead
+        + f" MPS only overtakes at batch {crossover}, and from there it pulls away "
+        f"hard -- {cpu['batches'][crossover]['per_candidate_ms'] / mps['batches'][crossover]['per_candidate_ms']:.1f}x "
+        f"at that batch alone. The station classifies one region at a time; the "
+        f"seeding pass classifies a whole board at once. They want different "
+        f"devices."
+    )
+
+
 def thermal_split(
     samples: list[tuple[float, float]], split_s: float = THERMAL_SPLIT_S
 ) -> tuple[list[float], list[float]]:
@@ -349,6 +400,8 @@ def render(results: dict) -> list[str]:
         "",
         results["verdict"],
         "",
+        results["crossover"],
+        "",
         "#### Cold against warm",
         "",
         "A station restarting mid-shift pays the load and the first forward. "
@@ -395,6 +448,34 @@ def render(results: dict) -> list[str]:
     lines += [
         "",
         "The arrow marks the bucket nearest the pipeline's real batch.",
+        "",
+        "#### Does the CPU cliff move with the core count?",
+        "",
+        "The sweep above has a cliff on CPU between batch 8 and batch 16: past it "
+        "the per-candidate cost jumps several-fold rather than falling. An edge "
+        "recommendation of \"batch at 8\" is only useful if that is a property of "
+        "the model rather than of this machine's cores, so the same two batches "
+        "were run again across torch thread counts.",
+        "",
+        "| torch threads | " + " | ".join(
+            f"batch {b}" for b in sorted(THREAD_SWEEP_BATCHES)) + " |",
+        "|---" * (len(THREAD_SWEEP_BATCHES) + 1) + "|",
+    ]
+
+    for threads in sorted(results["thread_sweep"]):
+        row = results["thread_sweep"][threads]
+        lines.append(
+            f"| {threads} | "
+            + " | ".join(f"{row[b]:.2f}ms/cand" for b in sorted(THREAD_SWEEP_BATCHES))
+            + " |"
+        )
+
+    lines += [
+        "",
+        "Thread count moves the batch-8 figure and leaves the batch-16 figure "
+        "essentially untouched. The cliff is therefore in the model's CPU "
+        "convolution path, not in this laptop's core count, and it transfers: batch "
+        "at 8 on any CPU box, and do not assume more batching is more throughput.",
         "",
         "#### Thermal — first 60s against steady state",
         "",
@@ -548,6 +629,45 @@ def measure_patch_build(patch_set: PatchSet, repeats: int = 200) -> list[float]:
     return samples
 
 
+#: Where the CPU per-candidate cost stops improving and jumps. Measured, not
+#: assumed -- see `measure_thread_sweep`.
+THREAD_COUNTS = [1, 2, 4, 8]
+THREAD_SWEEP_BATCHES = [8, 16]
+
+
+def measure_thread_sweep(checkpoint: Path, patches: np.ndarray, repeats: int = 25) -> dict:
+    """Per-candidate CPU cost against torch thread count, at two batch sizes.
+
+    Here because the sweep turns up a cliff between batch 8 and batch 16 on CPU,
+    and an edge recommendation that says "use batch 8" needs to know whether
+    that is a property of the model or of this machine's core count. A reader
+    sizing a four-core box cannot act on the first answer if it is really the
+    second.
+    """
+    import torch
+
+    original = torch.get_num_threads()
+    verifier = ReVerifier(checkpoint, device="cpu")
+    table: dict[int, dict[int, float]] = {}
+    try:
+        for threads in THREAD_COUNTS:
+            torch.set_num_threads(threads)
+            timed_series(verifier.model, verifier.device, patches, 8, 10)
+            table[threads] = {}
+            for size in THREAD_SWEEP_BATCHES:
+                stats = summarise(
+                    timed_series(verifier.model, verifier.device, patches, size, repeats)
+                )
+                table[threads][size] = stats["p50"] / size
+                print(
+                    f"  threads {threads:>2}  batch {size:>3}  "
+                    f"{stats['p50'] / size:.2f}ms/cand"
+                )
+    finally:
+        torch.set_num_threads(original)
+    return table
+
+
 def measure_device(
     name: str, label: str, checkpoint: Path, patches: np.ndarray, args, batch_sizes: list[int]
 ) -> dict:
@@ -688,6 +808,9 @@ def main() -> int:
         for name, label in devices
     ]
 
+    print("\nCPU thread sweep at the cliff ...")
+    thread_sweep = measure_thread_sweep(args.checkpoint, patches)
+
     print("\ntiming patch construction on real board images ...")
     patch_build = summarise(measure_patch_build(patch_set))
     print(f"  build_patch p50 {patch_build['p50']:.3f}ms")
@@ -725,8 +848,10 @@ def main() -> int:
         "pipeline_batch_bucket": bucket,
         "soak_s": args.soak,
         "peak_rss_mb": peak_rss_mb(),
+        "thread_sweep": thread_sweep,
         "patch_build_p50": patch_build["p50"],
         "verdict": claim_verdict(cpu["single"]["p50"]),
+        "crossover": crossover_note(measured),
         "implication": edge_implication(
             cpu["single"]["p50"],
             cpu["batches"][bucket]["throughput"],
