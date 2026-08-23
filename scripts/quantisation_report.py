@@ -421,26 +421,26 @@ def render(results: dict) -> list[str]:
         "",
         "#### Footprint",
         "",
-        "| engine | on disk | of FP32 | RSS added by loading it |",
+        "| engine | on disk | of FP32 | peak RSS, serving it alone |",
         "|---|---|---|---|",
     ]
     for engine in engines:
         lines.append(
             f"| {engine['label']} | {engine['size_mb']:.1f}MB | "
             f"{engine['size_mb'] / by_key[baseline]['size_mb']:.0%} | "
-            f"{engine['rss_added_mb']:.0f}MB |"
+            f"{engine['alone_rss_mb']:.0f}MB |"
         )
 
     lines += [
         "",
-        f"Peak RSS across the whole process was "
-        f"**{results['peak_rss_mb']:.0f}MB**, but that figure covers four engines "
-        f"held at once and describes no station. The column above is the live "
-        f"resident set before and after each engine was loaded, which is the "
-        f"number a box gets sized on. It is charged to the engine, not to the "
-        f"process: the arena an allocator has already grown does not shrink "
-        f"between engines, so these are a floor rather than an isolated "
-        f"measurement, and they are stated rather than corrected for.",
+        f"The memory column is measured in a **fresh process per engine**, each "
+        f"one loading only that engine and classifying one board's worth of "
+        f"candidates. Taken in the process that produced everything above it, "
+        f"the figure was {results['peak_rss_mb']:.0f}MB for all four alike -- four "
+        f"sets of weights and an allocator arena that never shrank, describing "
+        f"no station anyone would build. This column is what a box serving one "
+        f"engine actually holds, and it is the reason the FP32 row is so much "
+        f"larger than its checkpoint: torch itself is most of it.",
         "",
         results["line_rate"],
         "",
@@ -450,8 +450,21 @@ def render(results: dict) -> list[str]:
     return lines
 
 
-def conclusion(recommended: str | None, saved_mb: float, baseline_mb: float) -> str:
-    """What the project should actually do with this, in one paragraph."""
+def conclusion(
+    recommended: str | None,
+    saved_mb: float,
+    baseline_mb: float,
+    baseline_rss_mb: float = 0.0,
+    recommended_rss_mb: float = 0.0,
+) -> str:
+    """What the project should actually do with this, in one paragraph.
+
+    Named in memory rather than in milliseconds, because memory is what the
+    conversion actually buys. The disk figure is the one everybody quotes about
+    quantisation and it is the smaller half of the story: what a box has to
+    hold is the process, and most of the FP32 process is torch rather than the
+    weights.
+    """
     if recommended is None:
         return (
             "**What this changes: nothing, and that is the result.** No INT8 "
@@ -464,16 +477,24 @@ def conclusion(recommended: str | None, saved_mb: float, baseline_mb: float) -> 
             f"{baseline_mb:.0f}MB, the trade is one already priced rather than "
             "one to be discovered under deadline."
         )
+    rss_ratio = (
+        baseline_rss_mb / recommended_rss_mb if recommended_rss_mb else float("nan")
+    )
     return (
         f"**What this changes.** {recommended} is the conversion that survives "
-        f"the curve, and it takes the model off the disk from "
-        f"{baseline_mb:.1f}MB to {baseline_mb - saved_mb:.1f}MB. It is not "
-        f"deployed here, because this station is a laptop with a 43MB checkpoint "
-        f"and no memory problem; it is measured so that a box which does have "
-        f"one can be given a number rather than a hope. The deployed threshold "
-        f"stays with the float32 model it was swept for -- an engine change is a "
-        f"model change, and `DEFAULT_DISMISS_THRESHOLD` follows the model that "
-        f"produced it."
+        f"the curve. It takes the model off the disk from {baseline_mb:.1f}MB to "
+        f"{baseline_mb - saved_mb:.1f}MB, and -- the figure that matters more -- "
+        f"it takes a station's resident memory from {baseline_rss_mb:.0f}MB to "
+        f"{recommended_rss_mb:.0f}MB, {rss_ratio:.1f}x smaller, because most of "
+        f"the float32 process is the torch runtime rather than the weights. "
+        f"That is the honest case for quantising this model: not the "
+        f"milliseconds, which nothing was waiting on, but a box that can be "
+        f"sized in tens of megabytes instead of hundreds. It is not deployed "
+        f"here, because this station is a laptop with no memory problem; it is "
+        f"measured so that a box which does have one can be given a number "
+        f"rather than a hope. The deployed threshold stays with the float32 "
+        f"model it was swept for -- an engine change is a model change, and "
+        f"`DEFAULT_DISMISS_THRESHOLD` follows the model that produced it."
     )
 
 
@@ -538,25 +559,62 @@ def onnx_soak(runner, patches: np.ndarray, batch: int, seconds: float) -> list[t
     return samples
 
 
-def current_rss_mb() -> float:
-    """This process's resident set *right now*, in MB.
+#: The child that answers "how much memory does a station serving *this* engine
+#: hold?". A number taken in the parent cannot answer it: by the time the third
+#: engine loads, the process is holding four sets of weights and an allocator
+#: arena that never shrank, and the figure describes no station anyone would
+#: build. So each engine is loaded in a process of its own, made to classify one
+#: board's worth of candidates, and asked for its resident set. That is the
+#: number an edge box is sized on.
+FOOTPRINT_CHILD = """
+import json, os, resource, sys, time
+sys.path.insert(0, {src!r})
+import numpy as np
 
-    `resource.getrusage` only reports the high-water mark, which is the same
-    number for every engine once four sets of weights have been loaded in one
-    process -- true, and useless to anyone sizing a box for one of them. This
-    reads the live figure so each engine can be charged for what loading it
-    actually added.
-    """
+kind, path, threads = sys.argv[1], sys.argv[2], int(sys.argv[3])
+patches = np.zeros((8, 3, {size}, {size}), dtype=np.uint8)
+
+began = time.perf_counter()
+if kind == "torch":
+    import torch
+    torch.set_num_threads(threads)
+    from aoi_agent.vision.inference import ReVerifier
+    verifier = ReVerifier(path, device="cpu")
+    load_ms = (time.perf_counter() - began) * 1000
+    with torch.no_grad():
+        batch = torch.from_numpy(patches).float().div_(255.0)
+        torch.softmax(verifier.model(batch), dim=1).numpy()
+else:
+    from aoi_agent.vision.quantise import OnnxReVerifier
+    runner = OnnxReVerifier(path, threads=threads)
+    load_ms = (time.perf_counter() - began) * 1000
+    runner.probabilities(patches)
+
+print(json.dumps({{
+    "rss_mb": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / (1024 * 1024),
+    "load_ms": load_ms,
+}}))
+"""
+
+
+def footprint_in_a_fresh_process(kind: str, path: Path, threads: int) -> dict:
+    """One engine, one process, one board's worth of candidates, then RSS."""
     import subprocess
 
-    try:
-        output = subprocess.run(
-            ["ps", "-o", "rss=", "-p", str(os.getpid())],
-            capture_output=True, text=True, timeout=10,
-        ).stdout.strip()
-        return int(output) / 1024
-    except (OSError, ValueError, subprocess.SubprocessError):
-        return float("nan")
+    source = FOOTPRINT_CHILD.format(
+        src=str(Path(__file__).resolve().parents[1] / "src"), size=PATCH_SIZE
+    )
+    finished = subprocess.run(
+        [sys.executable, "-c", source, kind, str(path), str(threads)],
+        capture_output=True, text=True, timeout=300,
+    )
+    if finished.returncode != 0:
+        raise RuntimeError(
+            f"footprint child failed for {kind} {path}: {finished.stderr[-800:]}"
+        )
+    import json
+
+    return json.loads(finished.stdout.strip().splitlines()[-1])
 
 
 def score_split(runner, patches: np.ndarray, chunk: int = 64) -> np.ndarray:
@@ -721,7 +779,6 @@ def main() -> int:
         print(f"\n=== {labels_for[key]} ===")
         # A fresh load, timed, because a station restarting mid-shift pays it
         # -- and because reusing the runner scored above would time nothing.
-        before_rss = current_rss_mb()
         began = time.perf_counter()
         if key == "fp32_torch":
             cold_verifier = ReVerifier(args.checkpoint, device="cpu")
@@ -733,7 +790,6 @@ def main() -> int:
                 threads=torch.get_num_threads(),
             )
         load_ms = (time.perf_counter() - began) * 1000
-        rss_added = current_rss_mb() - before_rss
         began = time.perf_counter()
         cold_runner.probabilities(np.ascontiguousarray(patches[:1]))
         cold_ms = (time.perf_counter() - began) * 1000
@@ -774,8 +830,23 @@ def main() -> int:
             "soak_early": summarise(early) if early else None,
             "soak_late": summarise(late) if late else None,
             "throttle": throttle_verdict(early, late),
-            "rss_added_mb": rss_added,
         })
+
+    print("\nfootprint, one engine per fresh process ...")
+    engine_paths = {
+        "fp32_torch": ("torch", args.checkpoint),
+        "fp32_onnx": ("onnx", fp32_onnx),
+        "int8_dynamic": ("onnx", int8_dynamic),
+        "int8_static": ("onnx", int8_static),
+    }
+    footprints = {}
+    for key, (kind, path) in engine_paths.items():
+        footprints[key] = footprint_in_a_fresh_process(
+            kind, path, torch.get_num_threads()
+        )
+        print(f"  {labels_for[key]:<13} {footprints[key]['rss_mb']:.0f}MB resident")
+    for entry in engines:
+        entry["alone_rss_mb"] = footprints[entry["key"]]["rss_mb"]
 
     ps_after = ollama_ps()
     busy_after = competing_processes(process_table(), own)
@@ -849,6 +920,8 @@ def main() -> int:
             (by_key["fp32_torch"]["size_mb"] - by_key[recommended]["size_mb"])
             if recommended else 0.0,
             by_key["fp32_torch"]["size_mb"],
+            by_key["fp32_torch"]["alone_rss_mb"],
+            by_key[recommended]["alone_rss_mb"] if recommended else 0.0,
         ),
     }
 

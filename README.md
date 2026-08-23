@@ -422,6 +422,36 @@ This section used to read "tens of milliseconds" with no run behind it. It was
 wrong by more than an order of magnitude, in the pessimistic direction.
 → [the run](docs/benchmarks.md#re-verifier-latency--what-one-candidate-costs-and-on-what-hardware)
 
+### Quantising it, priced at the escape budget
+
+The model was exported to ONNX and quantised to INT8 two ways — dynamic, and
+static calibrated on 512 patches drawn from the **training** split. Both were
+then scored on the whole official test split and read the only way this project
+reads a model: **manual review removed at an escape budget**.
+
+| at the ≤0.5% escape budget | review removed | on disk | resident | p50 |
+|---|---|---|---|---|
+| FP32 torch | **56.2%** | 42.7 MB | 389 MB | 2.52 ms |
+| INT8 dynamic | 54.9% | 10.7 MB | 74 MB | 2.01 ms |
+| INT8 static | **56.0%** | 10.8 MB | 81 MB | 0.72 ms |
+
+**INT8 dynamic is refused.** It gives up 1.3 points of review reduction —
+roughly eighty regions a shift back in front of an operator — to buy a smaller
+file. Being 1.25× faster does not purchase that back, because nothing was
+waiting on the milliseconds.
+
+**INT8 static holds the curve**, at 0.2 points, and is the one worth having.
+What it buys is not latency: at 16.3 candidates on the average board, FP32
+re-verification is 41 ms of a board's cycle, so inference was never the
+constraint and quantising it saves 29 ms of a ten-second budget. What it buys
+is **memory** — 389 MB resident down to 81 MB, 4.8× — because most of the
+float32 process is the torch runtime rather than the weights, and an edge box is
+sized on what it has to hold. It is measured, not deployed: this station is a
+laptop with no memory problem, and the deployed threshold stays with the float32
+model it was swept for.
+
+→ [the run](docs/benchmarks.md#quantisation--what-int8-costs-at-the-escape-budget)
+
 ## Running it
 
 ```bash
@@ -557,11 +587,11 @@ explanation step needs the container to be able to reach it.
   (`uv run python -m aoi_agent corrections`); nothing consumes them yet, and the
   identity gap above has to close first or the next round trains on anonymous
   clicks.
-- **Quantisation and edge inference** — INT8, ONNX, and the size/latency
-  trade-off. Not started. The measurement above scopes it: at 2.5 ms per
-  candidate on CPU there is no latency problem to solve, so this is about
-  memory and portability on a box beside a conveyor, and it should be reported
-  as such rather than as a speed-up.
+- **Deploying the quantised model**, which is now a decision rather than a
+  gap. INT8 static is measured, holds the curve, and cuts the resident
+  footprint 4.8×; it is not wired into the station because this station has no
+  memory problem. Wiring it in means an ONNX path in `ReVerifier` and a
+  threshold re-swept against the engine that will serve it.
 - **A model comparison** across `gpt-oss:20b`, `qwen3:14b` and `qwen2.5:14b`.
   The reason node's latency is now measured on one model; whether a smaller one
   fits WI-300's budget and still writes a usable rationale is not.

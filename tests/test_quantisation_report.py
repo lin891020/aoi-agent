@@ -166,11 +166,22 @@ def test_the_conclusion_can_say_nothing_changed():
 
 
 def test_the_conclusion_names_the_survivor_when_there_is_one():
-    text = conclusion("INT8 static", 31.9, 42.7)
+    text = conclusion("INT8 static", 31.9, 42.7, 389.0, 81.0)
     assert "INT8 static" in text
     assert "10.8MB" in text
     # Even a survivor does not silently move the deployed threshold.
     assert "DEFAULT_DISMISS_THRESHOLD" in text
+
+
+def test_the_conclusion_leads_on_memory_not_on_the_disk_figure():
+    # The disk number is what everybody quotes about quantisation and it is the
+    # smaller half: what a box has to hold is the process, and most of the FP32
+    # process is torch rather than the weights.
+    text = conclusion("INT8 static", 31.9, 42.7, 389.0, 81.0)
+    assert "389MB to 81MB" in text
+    assert "4.8x smaller" in text
+    assert "the figure that matters more" in text
+    assert "not the\nmilliseconds" in text or "not the milliseconds" in text
 
 
 def test_the_latency_note_says_slower_when_it_is_slower():
@@ -214,7 +225,7 @@ def engine(key: str, label: str, p50: float, size_mb: float) -> dict:
         "soak_early": summarise([p50] * 10),
         "soak_late": summarise([p50 * 1.05] * 10),
         "throttle": throttle_verdict([p50] * 10, [p50 * 1.05] * 10),
-        "rss_added_mb": 96.0,
+        "alone_rss_mb": 268.0,
     }
 
 
@@ -267,7 +278,7 @@ def results_fixture() -> dict:
         ],
         "latency_note": latency_note(ENGINES, "fp32_torch"),
         "line_rate": line_rate_implication(16.3, 499, 2.50, 1.20),
-        "conclusion": conclusion("INT8 static", 31.9, 42.7),
+        "conclusion": conclusion("INT8 static", 31.9, 42.7, 389.0, 81.0),
     }
 
 
@@ -336,13 +347,13 @@ def test_render_tables_have_a_separator_matching_their_columns():
         assert line.count("|") == following.count("|"), line
 
 
-def test_render_charges_memory_to_the_engine_not_to_the_process():
-    # Peak RSS over a process holding four engines describes no station. The
-    # column has to be what loading one of them added.
+def test_render_charges_memory_to_a_station_not_to_the_benchmark():
+    # Peak RSS over a process holding four engines describes no station, so the
+    # column has to come from a process serving one of them.
     text = "\n".join(render(results_fixture()))
-    assert "RSS added by loading it" in text
-    assert "96MB" in text
-    # And the whole-process figure is still stated, with its caveat attached.
+    assert "peak RSS, serving it alone" in text
+    assert "268MB" in text
+    assert "fresh process per engine" in text
+    # And the misleading figure is stated with the reason it is misleading.
     assert "1046MB" in text
-    assert "describes no station" in text
-    assert "a floor rather than an isolated measurement" in text
+    assert "describing\nno station" in text or "describing no station" in text

@@ -15,7 +15,8 @@ src/aoi_agent/
     data/deeppcb.py         dataset access, official splits
     aoi/simulator.py        template differencing -- the "AOI"
     aoi/matching.py         label candidates against ground truth
-    vision/                 patches, dataset, ResNet-18, inference, operating point
+    vision/                 patches, dataset, ResNet-18, inference, operating
+                            point, ONNX export and INT8 quantisation
     store/                  SQLAlchemy models, seeding, standards retrieval,
                             the analysis_runs log
     mcp_servers/            three MCP servers (classify, production, standards)
@@ -33,7 +34,7 @@ src/aoi_agent/
     cli.py
 scripts/                    gate_check, build_patches, train, report, seed_store,
                             analysis_eval, ...
-tests/                      717 tests; dataset-dependent ones behind `-m dataset`
+tests/                      767 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -48,7 +49,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 717 tests, no GPU needed, no model called
+uv run pytest                                    # 767 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
@@ -57,6 +58,7 @@ uv run python scripts/retrieval_report.py        # can a class's criteria come b
 uv run python scripts/threshold_sweep.py         # what each graph threshold costs and buys
 uv run python scripts/latency_report.py          # does the reason node fit the response budget?
 uv run python scripts/reverifier_latency.py      # what one candidate costs: MPS vs CPU, cold vs warm (~7 min)
+uv run python scripts/quantisation_report.py     # what INT8 costs at the escape budget (~20 min)
 uv run python scripts/agent_eval.py              # does the agent layer beat the classifier? (~9 min)
 uv run python scripts/analysis_eval.py           # does the planner plan the right lookups, and refuse the rest?
 uv run python scripts/analysis_eval.py --plan-only  # the same score, without the tools and the prose nobody scores
@@ -199,15 +201,26 @@ board is back under the unscoped reading.
 
 ## Still open
 
-Retraining from operator corrections, INT8/ONNX quantisation, demo video.
+Retraining from operator corrections, deploying the quantised model, demo video.
 
-INT8/ONNX is now scoped by a measurement rather than by intuition: the
-re-verifier costs **2.5ms per candidate on CPU** (p50, single-shot) and the
-43MB checkpoint fits anywhere, so quantisation buys memory and portability, not
-latency. A re-verification station does not need a GPU -- and at a batch of one
-the GPU is 2.9x *slower* than the CPU, because dispatch costs more than the
-forward on a model this small. MPS only overtakes at batch 8. See
-docs/benchmarks.md.
+INT8/ONNX is measured, and the answer was not a speed-up. **INT8 static holds
+the operating point** -- 56.0% review removed at the ≤0.5% escape budget
+against FP32's 56.2%, calibrated on 512 trainval patches, never test -- and
+what it buys is **memory: 389MB resident down to 81MB, 4.8x**, because most of
+the float32 process is the torch runtime rather than the weights. **INT8
+dynamic is refused**: it gives up 1.3 points of review reduction, which is
+around eighty regions a shift back in front of an operator, and being faster
+does not buy that back. Latency was never the problem -- 41ms of a board's
+cycle before, 12ms after, on a budget of ten seconds. Nothing is deployed on
+it; the station keeps the float32 checkpoint and its swept threshold. See
+docs/benchmarks.md, and `scripts/quantisation_report.py` rebuilds every
+artefact.
+
+The re-verifier costs **2.5ms per candidate on CPU** (p50, single-shot) and the
+43MB checkpoint fits anywhere. A re-verification station does not need a GPU --
+and at a batch of one the GPU is 2.9x *slower* than the CPU, because dispatch
+costs more than the forward on a model this small. MPS only overtakes at batch
+8. See docs/benchmarks.md.
 
 Two things that run counter to intuition and are easy to undo by accident:
 sustained CPU inference throttles about 20% past the first 60 seconds on this

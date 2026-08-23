@@ -354,6 +354,31 @@ CPU 就 batch 8。
 悲觀的方向。
 → [這次的 run](docs/benchmarks.md#re-verifier-latency--what-one-candidate-costs-and-on-what-hardware)
 
+### 量化它，並且用 escape budget 的價格來算
+
+Model 匯出成 ONNX 之後量化成 INT8，兩種做法：dynamic，以及用 **training** split
+抽出來的 512 個 patch 做校正的 static。兩個都在完整的官方 test split 上重跑，然後用
+這個專案唯一的讀法來讀：**在某個 escape budget 下，砍掉多少人工複判**。
+
+| ≤0.5% escape budget | 砍掉的複判 | 硬碟 | 常駐記憶體 | p50 |
+|---|---|---|---|---|
+| FP32 torch | **56.2%** | 42.7 MB | 389 MB | 2.52 ms |
+| INT8 dynamic | 54.9% | 10.7 MB | 74 MB | 2.01 ms |
+| INT8 static | **56.0%** | 10.8 MB | 81 MB | 0.72 ms |
+
+**INT8 dynamic 不收。** 它拿 1.3 個百分點的複判減量去換一個比較小的檔案 —— 那大約
+是一個班別裡八十個區域重新回到作業員面前。快 1.25 倍買不回這件事，因為本來就沒有人
+在等那幾毫秒。
+
+**INT8 static 守住了曲線**，只差 0.2 個百分點，是值得留下的那一個。它買到的不是延遲：
+平均一片板子 16.3 個 candidate，FP32 複判是一片板子 41 ms，推論從來就不是瓶頸，量化
+它只是在十秒的預算裡省下 29 ms。它買到的是**記憶體** —— 常駐從 389 MB 降到 81 MB，
+4.8 倍 —— 因為 float32 那個 process 大部分是 torch runtime 而不是權重，而 edge 機器
+是照它要裝下多少東西去挑的。這是量出來的，不是上線的：這台站台是一台沒有記憶體問題
+的筆電，而已部署的 threshold 留在當初掃它出來的那個 float32 model 上。
+
+→ [這次的 run](docs/benchmarks.md#quantisation--what-int8-costs-at-the-escape-budget)
+
 ## 怎麼跑
 
 ```bash
@@ -461,9 +486,10 @@ wheel。什麼都不 mount 直接跑，會得到一個對著空 queue 起來的 
 - **從作業員更正回頭 retrain。** 判定歷史有記
   （`uv run python -m aoi_agent corrections`），但還沒有東西去用它；而且上面那個身分
   問題要先解決，不然下一輪就是拿匿名的點擊在訓練。
-- **量化與 edge 推論** —— INT8、ONNX、以及大小/延遲的取捨。還沒開始。上面的量測把它的
-  範圍界定好了：CPU 上每個 candidate 2.5 ms，這裡沒有延遲問題要解，所以這件事是關於
-  輸送帶旁邊那台機器的記憶體跟可攜性，報告的時候也要這樣講，不要講成加速。
+- **把量化後的 model 真的接上去**，這現在是一個決定，不是一個缺口。INT8 static 量過
+  了，守得住曲線，常駐記憶體少 4.8 倍；沒有接進站台是因為這台站台沒有記憶體問題。
+  要接的話，需要在 `ReVerifier` 裡開一條 ONNX 路徑，並且針對真正要服務的那個 engine
+  重掃一次 threshold。
 - **跨 model 比較**：`gpt-oss:20b`、`qwen3:14b`、`qwen2.5:14b`。reason node 的延遲現在
   只在一個 model 上量過；更小的 model 進不進得了 WI-300 的預算、還寫不寫得出堪用的理
   由，沒有量。
