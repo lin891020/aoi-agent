@@ -68,6 +68,7 @@ from aoi_agent.provenance import UNAVAILABLE, UNRECORDED, ReviewerIdentity
 from aoi_agent.llm.ollama import OllamaClient
 from aoi_agent.station import auth, images, service
 from aoi_agent.station.chart_svg import render_svg
+from aoi_agent.station.prose import blocks as prose_blocks
 from aoi_agent.station.result_view import clip, error_text, readable_rows, shown_count
 from aoi_agent.store import analysis as analysis_store
 from aoi_agent.store import dispositions, escalations
@@ -518,6 +519,12 @@ def _analysis_context(run: dict | None) -> dict:
         # How many of the rows are fields the tool returned. The overflow
         # note is a row but not an item, and the summary counted it.
         "shown_count": shown_count,
+        # The answer's Markdown, as blocks of spans. A callable for the same
+        # reason as `readable_data`: the parsing is the boundary and it lives in
+        # Python. What comes back is structure with no field a tag could travel
+        # in, which is why the template renders it with no `|safe` -- see
+        # `station/prose.py`.
+        "prose_blocks": prose_blocks,
         "waiting": len(escalations.pending()),
     }
 

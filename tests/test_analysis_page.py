@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import pathlib
+import re
 import time
 from dataclasses import dataclass, field
 
@@ -150,6 +152,95 @@ def test_a_stored_run_renders_again_without_the_model(client, monkeypatch):
 
     assert "<svg" in page
     assert "sits above the fleet" in page
+
+
+def _run_answering(client, monkeypatch, answer: str) -> str:
+    """Store one run whose synthesised answer is exactly `answer`."""
+    from aoi_agent.store import analysis as analysis_store
+
+    return str(analysis_store.save_run(
+        question="what does the line look like",
+        plan={"interpretation": "i", "assumptions": [], "calls": []},
+        results=[], chart=None, answer=answer, timings={}, refused=False,
+        asked_by="tester",
+    ))
+
+
+def test_the_answers_markdown_is_rendered_as_elements_not_printed_as_characters(
+    client, monkeypatch
+):
+    """The model writes a report: bold labels, bullet lists, a comparison
+    table. All of it used to reach the page inside one `<p>`, so a supervisor
+    read `**Assumptions**` and a row of pipes and dashes."""
+    run_id = _run_answering(client, monkeypatch, (
+        "**Defect composition**\n\n"
+        "| Line | Total |\n|---|---|\n| L1 | 966 |\n| L2 | 1,049 |\n\n"
+        "- Any confirmed `open` is **critical**.\n"
+    ))
+    page = client.get(f"/ask/{run_id}").text
+
+    assert "<strong>Defect composition</strong>" in page
+    assert "<code>open</code>" in page
+    assert "<li>" in page and "<td>1,049</td>" in page
+    assert "**" not in page.split('class="prose"')[1].split("</div>")[0]
+
+
+def test_a_table_in_the_answer_scrolls_inside_itself(client, monkeypatch):
+    """A nine-column comparison must not make the page scroll sideways."""
+    run_id = _run_answering(
+        client, monkeypatch, "| a | b |\n|---|---|\n| 1 | 2 |\n")
+
+    assert 'class="prose-table"' in client.get(f"/ask/{run_id}").text
+    assert "overflow-x: auto" in client.get("/static/style.css").text
+
+
+def test_markup_in_an_answer_reaches_the_page_as_text(client, monkeypatch):
+    """The answer is written by a model from tool payloads, and neither is a
+    trusted author. `prose_blocks` cannot produce a tag and the template adds
+    no `|safe`, so this is two independent reasons rather than one."""
+    run_id = _run_answering(
+        client, monkeypatch,
+        'Here is <script>alert(1)</script> and <img src=x onerror="go()">.')
+    page = client.get(f"/ask/{run_id}").text
+
+    # The characters may appear -- they are what the model wrote. What must
+    # not appear is a tag: every `<` in the answer arrives as `&lt;`, so the
+    # browser has no element to parse and no attribute to fire.
+    assert "<script>alert(1)</script>" not in page
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in page
+    assert "<img src=x" not in page
+    assert "&lt;img src=x onerror=" in page
+
+
+def test_the_answer_is_never_marked_safe_in_the_template():
+    """The one line that would undo the boundary, asserted against the source.
+
+    `prose.py` returning structure is what makes the escaping automatic; a
+    `|safe` on the answer would move the boundary from one function to every
+    use site, which is the shape `result_view.py` spent five review rounds
+    getting out of.
+    """
+    template = (
+        pathlib.Path(station_app.__file__).parent / "templates" / "analysis.html"
+    ).read_text()
+
+    # The macro and the block that calls it, both. Scanning only from
+    # `class="prose"` missed the macro above it -- which is where every span
+    # is actually written, and so where a `|safe` would do its damage. Checked
+    # by putting one there: the escaping test caught it and this one did not.
+    macro = template.split("{% macro spans(")[1].split("{%- endmacro %}")[0]
+    body = template.split('class="prose"')[1].split("最近問過的")[0]
+
+    for region in (macro, body):
+        assert "|safe" not in region and "| safe" not in region
+
+    # And `chart_svg` is the one thing on this page that is marked safe, which
+    # is only sound because `station/chart_svg.py` builds it and escapes every
+    # value on the way in. Named here so the exception stays deliberate.
+    # `|safe }}` -- the applied filter, not the two mentions of it in the
+    # comment that says never to add another.
+    applied = re.findall(r"\{\{[^}]*\|\s*safe[^}]*\}\}", template)
+    assert applied == ["{{ chart_svg|safe }}"]
 
 
 def test_a_rejected_plan_is_shown_with_its_errors_and_no_chart(client, monkeypatch):

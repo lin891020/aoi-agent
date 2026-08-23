@@ -1,5 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Ask &middot; production data{% endblock %}
+{% macro spans(items) -%}
+{#- One run of text. `strong` and `code` are elements; everything else is the
+    model's characters, escaped by Jinja like any other variable. -#}
+{%- for span in items -%}
+{%- if span.kind == 'strong' %}<strong>{{ span.text }}</strong>
+{%- elif span.kind == 'code' %}<code>{{ span.text }}</code>
+{%- else %}{{ span.text }}{% endif -%}
+{%- endfor -%}
+{%- endmacro %}
 {% block content %}
 <section class="panel">
   <h1>問一個關於產線的問題</h1>
@@ -148,7 +157,42 @@
 
     <div class="answer-block">
       <h2>5 &middot; 回答</h2>
-      <p>{{ run.answer }}</p>
+      {# Not `{{ run.answer }}` in one `<p>`, which printed the model's
+         asterisks and pipe rows on screen as asterisks and pipe rows. Not
+         `|safe` either, now or ever: this text is written by a model from tool
+         payloads and neither is a trusted author. `prose_blocks` returns
+         structure -- blocks of spans, each span a kind and a string -- so
+         every character below goes through Jinja's escaping and there is no
+         field a tag could arrive in. The boundary is `station/prose.py`; a
+         `|safe` here would move it from one function to every use site. #}
+      <div class="prose">
+      {%- for block in prose_blocks(run.answer) %}
+        {%- if block.kind == 'heading' %}
+          <h{{ block.level }}>{{ spans(block.spans) }}</h{{ block.level }}>
+        {%- elif block.kind == 'list' %}
+          <{{ 'ol' if block.ordered else 'ul' }}>
+            {%- for item in block['items'] %}<li>{{ spans(item) }}</li>{% endfor %}
+          </{{ 'ol' if block.ordered else 'ul' }}>
+        {%- elif block.kind == 'table' %}
+          {# Its own scroll container: a nine-column comparison must not make
+             the page scroll sideways. #}
+          <div class="prose-table">
+            <table class="queue">
+              <thead><tr>
+                {%- for cell in block.head %}<th>{{ spans(cell) }}</th>{% endfor %}
+              </tr></thead>
+              <tbody>
+                {%- for row in block.rows %}
+                <tr>{% for cell in row %}<td>{{ spans(cell) }}</td>{% endfor %}</tr>
+                {%- endfor %}
+              </tbody>
+            </table>
+          </div>
+        {%- else %}
+          <p>{{ spans(block.spans) }}</p>
+        {%- endif %}
+      {%- endfor %}
+      </div>
     </div>
   {% endif %}
 

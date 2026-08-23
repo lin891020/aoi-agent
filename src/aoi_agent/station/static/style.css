@@ -316,3 +316,21 @@ table.kv td { padding: 0.15rem 0; vertical-align: top; }
 .signin-form button { justify-content: center; cursor: pointer; }
 .signin-error { margin: 0; color: var(--danger); font-size: 0.85rem; }
 .signin-note { font-size: 0.82rem; line-height: 1.6; margin-top: 1.25rem; }
+
+/* The synthesised answer, rendered from `station/prose.py`'s blocks. A model
+   writes bold labels where a report would have subheadings, so a paragraph
+   that is nothing but one bold run is spaced like the heading it is standing
+   in for -- a presentation rule, not a rewrite of what the model wrote. */
+.prose > :first-child { margin-top: 0; }
+.prose > :last-child { margin-bottom: 0; }
+.prose p { margin: 0.6rem 0; line-height: 1.75; }
+.prose h3, .prose h4, .prose h5, .prose h6 {
+  margin: 1.1rem 0 0.4rem; font-size: 0.95rem; }
+.prose ul, .prose ol { margin: 0.5rem 0; padding-left: 1.4rem; }
+.prose li { margin: 0.25rem 0; line-height: 1.7; }
+.prose code { font-family: var(--mono); font-size: 0.88em;
+              background: #1c1c22; padding: 0.05rem 0.3rem; border-radius: 3px; }
+.prose-table { overflow-x: auto; margin: 0.7rem 0; }
+.prose-table table { min-width: 100%; }
+.prose-table td, .prose-table th { white-space: nowrap; }
+.prose-table td { font-variant-numeric: tabular-nums; }
