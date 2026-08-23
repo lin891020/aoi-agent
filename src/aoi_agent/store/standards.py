@@ -29,13 +29,38 @@ all.
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-import chromadb
-from chromadb.config import Settings
+# Chroma's default embedding function is ONNX MiniLM, so importing chromadb is
+# how onnxruntime enters this process -- this module is the only door to either.
+# onnxruntime has Microsoft's 1DS "OneCollector" telemetry client statically
+# linked into its wheel -- the macOS one this is developed on and the manylinux
+# one CI installs, both -- and constructs it at import: two threads, one of them
+# an HTTP uploader posting to mobile.events.data.microsoft.com. Nothing joins
+# that uploader at exit. If a response lands while the C++ static destructors are
+# running, its `DebugEventSource` locks a recursive_mutex that has already been
+# destroyed, throws `system_error` on a thread with no handler, and the process
+# aborts -- after every test has passed. It cost this suite a 60% abort rate
+# (6 of 10 full runs) and exit 134 on a green CI job.
+#
+# This is the only lever that removes the thread rather than quieting it. The
+# Python API, `onnxruntime.disable_telemetry_events()`, runs after import and so
+# after the uploader already exists; measured, it took the abort rate to 20%,
+# not to zero. The variable is read while onnxruntime builds its Env, which is
+# why it is set here, above the import that triggers it, and not in a fixture --
+# the station is a long-running process and has the same race.
+#
+# `setdefault`, so an operator who has already made this choice keeps theirs.
+# It sits beside Chroma's own `anonymized_telemetry=False` below: this project
+# does not phone home, and now neither does the library underneath it.
+os.environ.setdefault("ORT_DISABLE_TELEMETRY", "1")
+
+import chromadb  # noqa: E402  -- must follow ORT_DISABLE_TELEMETRY above
+from chromadb.config import Settings  # noqa: E402
 
 from aoi_agent.data.deeppcb import CLASS_NAMES, FALSE_CALL
 
