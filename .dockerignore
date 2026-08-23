@@ -1,0 +1,19 @@
+# The build context should be the source, not the artefacts. Unignored, the
+# dataset alone is 231 MB and the patches are larger; none of it belongs in an
+# image that is meant to be handed the data at run time.
+data/
+models/
+eval/
+.venv/
+.git/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# Nothing in the image reads these.
+docs/
+tests/
+.claude/
+.superpowers/
+.github/
