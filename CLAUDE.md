@@ -33,7 +33,7 @@ src/aoi_agent/
     cli.py
 scripts/                    gate_check, build_patches, train, report, seed_store,
                             analysis_eval, ...
-tests/                      659 tests; dataset-dependent ones behind `-m dataset`
+tests/                      717 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -48,7 +48,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 659 tests, no GPU needed, no model called
+uv run pytest                                    # 717 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
@@ -63,6 +63,8 @@ uv run python scripts/analysis_eval.py --plan-only  # the same score, without th
 uv run python scripts/analysis_eval.py --questions tests/fixtures/analysis_questions_independent.json
                                                  # the same scorer on seventy questions whose authors never saw the prompt
 uv run python scripts/check_mcp_servers.py       # servers start and advertise tools
+uv run python scripts/invariant_audit.py         # which invariants below would fail a test if broken
+uv run python scripts/invariant_audit.py --collect  # the same, checking pytest really collects each one
 uv run python -m aoi_agent board 20085294 --queue  # run a board, queue what it cannot settle
 uv run python -m aoi_agent station               # review station on :8000 -- the queue, and /ask
 uv run python -m aoi_agent queue                 # what is waiting on a person
@@ -74,6 +76,13 @@ docker run --rm -p 8000:8000 \
 ```
 
 ## Invariants — do not quietly change these
+
+Twelve of them, and `scripts/invariant_audit.py` says which ones would actually
+fail a test if broken: **7 enforced, 4 partly enforced, 1 unenforceable**. Each
+entry there names the tests that hold it and states what those tests do not
+cover; adding an invariant here without an entry fails
+`tests/test_invariant_audit.py`. The four that are only partly guarded are
+named in docs/benchmarks.md rather than left for a reader to discover.
 
 Three of these are scoped to the **disposition path** -- the flow that ends in a
 board being dismissed, confirmed or held. That scope is not a loophole, it is

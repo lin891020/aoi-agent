@@ -853,3 +853,121 @@ What the sweep does support is naming the condition. Revisit this if the line's 
 Every one goes to zero. A blob survives an NxN opening only where it contains a fully-enclosed NxN square, and the widest of these is 1.37 px from its own edge at the thickest point -- under the 1.5 px a 3x3 square needs. They are **thin, not small**: the difference blobs run 24-133 pixels, which is well clear of `min_area`. Nothing downstream ever gets the chance to reject them; the mask is already empty.
 
 They are spread over 7 boards, one each, so this is a property of the detector rather than of a bad scan. `DetectorConfig.open_shape` was added for this sweep and defaults to `rect`, which is what shipped and what still ships.
+
+## 2026-08-23 · commit 1842d55
+
+### The invariant audit — which of this project's own rules are unguarded
+
+CLAUDE.md states twelve invariants. They are the part of this repository a
+reader is asked to trust and an agent is asked not to undo, and until yesterday
+nothing checked that breaking one broke anything. An outside audit found that
+**five of the twelve** would have failed a test. The worst of them was the
+durability rule: it names `InMemorySaver` as the thing the checkpointer must
+never be, and it was verified by a suite in which every single test passed an
+`InMemorySaver`.
+
+That audit was a scratch file. It was stale inside a day, which is the same
+failure one level up, so it is `scripts/invariant_audit.py` now and
+`tests/test_invariant_audit.py` runs it.
+
+#### Method, and what it cannot do
+
+"Is this invariant enforced?" is not decidable by reading source. Nothing in a
+test's name, its assertions or its imports says which English sentence it holds
+up, and a test can assert loudly about the wrong thing. So the script does not
+infer anything. Each invariant has a declared entry naming the tests that
+enforce it and stating what those tests do *not* cover, and the script holds
+that declaration to the code:
+
+- an invariant in CLAUDE.md with no entry, or an entry whose rule was reworded away
+- a named test whose file is gone, or that has been renamed or deleted
+- a named test wearing `@pytest.mark.skip`
+- a named test pytest does not collect (`--collect`)
+- an entry declared `enforced` every test of which is `@pytest.mark.dataset`,
+  and so never runs in CI, which runs `-m "not dataset"`
+
+Each entry's claim was checked once, by hand, the only way it can be: break the
+invariant in the working tree, run the whole suite, and read which tests
+noticed. Every row below is a real mutation against the real suite, and the
+mutation is recorded in the registry beside the claim it supports.
+
+#### What actually fails when each invariant is broken
+
+| invariant | mutation applied | tests that failed |
+|---|---|---|
+| The LLM explains; it does not decide | `decide_node` reads `agent_verdict` | 1 |
+| " | `route_after_reason` reads `agent_confident` | 5 |
+| Every failure escalates to a human | `route_after_reason` returns `decide` unconditionally | 23 |
+| An escalation must outlive the process | `make_checkpointer` returns `InMemorySaver` | 3 |
+| The station never shows `ground_truth` | `ground_truth` added to `store.boards._as_dict` | 1 |
+| Criteria come from that class's document | `defect_class` dropped from the flow's `search_standards` call | 2 |
+| Thresholds cite something a reader can open | `ESCALATE_BELOW` set to 0.80 | 3 |
+| Split train/val by image, never by patch | `split_by_image` shuffles patch indices | **0 → 5** |
+| Report an operating-point curve | `BUDGETS = []` in `scripts/report.py` | **0** |
+| No free-form text-to-SQL | `run_query(sql: str)` added to `PLANNABLE_TOOLS` | **0** |
+| The fan-out is not a latency optimisation | the graph's docstring rewritten to call it a speed-up | **0** |
+| Use the official DeepPCB split | `load_split` reads `trainval.txt` for both splits | 3, all dataset-marked |
+
+The bold rows are the ones with nothing behind them. `0 → 5` is the one this
+branch closed.
+
+#### The count
+
+**7 enforced, 4 partly enforced, 1 unenforceable.**
+
+- **enforced** — breaking it fails a named test that runs in CI: the LLM off the
+  decision path, the escalation direction, checkpoint durability, the
+  `ground_truth` boundary, class-scoped retrieval, threshold citations, and the
+  train/val split as of this branch.
+- **partly enforced** — a real part of the rule is held and a named part is not:
+  - *Report an operating-point curve.* The sweep, the escape budget and the
+    two-stage compounding all fail when the arithmetic moves. Nothing imports
+    `scripts/report.py`, so emptying its budget list -- publishing one accuracy
+    and no curve -- leaves the suite green.
+  - *No free-form text-to-SQL.* The validator is held hard against the registry
+    that exists: unknown tool, unknown argument, out-of-domain value all refused
+    before anything runs. Nothing pins the registry's own parameter surface, so
+    `run_query(sql: str)` passes all of it -- `sql` is a known argument of a
+    known tool, and the value has no domain to be outside of.
+  - *The fan-out is not a latency optimisation.* The comparison the claim rests
+    on is measured, stored per run and rendered, and `tools_wall` is held to
+    cover the scheduling rather than only the slowest branch. The prohibition
+    itself is on prose, and no test reads prose.
+  - *Use the official DeepPCB split.* The only test that would catch a re-split
+    is dataset-marked, so CI never runs it -- and it checks a count, so a
+    size-preserving reshuffle of the same 1,500 boards passes.
+- **unenforceable** — *Say what is simulated.* Prose discipline. No assertion
+  distinguishes an honest sentence from a missing one. It is declared
+  unenforceable with a reason rather than counted as passing, which is the whole
+  point of having the category.
+
+#### The gap this branch closed
+
+`split_by_image` is the highest-value one on that list and it had no test at
+all. Every published number in this project -- the operating point, the escape
+rate, the review reduction, the class table -- is read off that split. Patches
+are crops from a board and one image yields tens of them, sharing its lighting,
+its registration error and often the same defect seen from two candidate boxes.
+Split at patch level and validation is held out from nothing: for most val
+patches a near-duplicate sat in the training batch.
+
+Replacing the function body with the obvious simplification -- shuffle the rows,
+cut -- left all 691 tests green. `tests/test_train_split.py` now fails five ways
+on that mutation, naming the boards that straddle the split. One of its tests
+runs the same assertion against a deliberately leaking split, so a guard that
+has quietly stopped being able to fire fails rather than passes.
+
+#### What this method does not establish
+
+The script cannot tell you an entry's claim is *true*. It can tell you the claim
+has stopped being checkable, which is how this document actually rots: a test
+gets renamed, or skipped, or the rule is reworded, or a thirteenth invariant is
+added with nothing behind it. Whether
+`test_the_ground_truth_never_leaves_the_store` really enforces the sentence it
+is filed under is a judgement, made once, with a mutation behind it and written
+down where the next person can disagree with it.
+
+The mutations are also single-point. Each shows the named tests fail on *one*
+way of breaking the rule, not on every way. `test_the_agent_branch_cannot_dismiss`
+fires on both mutations of the LLM's role, which is some evidence it is holding
+the rule rather than a spelling of it; nothing here proves that in general.
