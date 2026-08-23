@@ -1,0 +1,41 @@
+# The suite is meant to run on a clean checkout, and almost all of it does: the
+# tests build their own store, their own Chroma collection and their own boards
+# in a tmpdir, and stub the model rather than calling it. Seven tests want the
+# real DeepPCB on disk -- 231 MB of board scans -- and carry the `dataset`
+# marker for exactly this reason. This job runs everything else and then prints
+# the seven it skipped, because a green tick over a silently shrinking suite is
+# the failure this file exists to prevent.
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.12.3"
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      # `--locked` fails if uv.lock has drifted from pyproject.toml. That is a
+      # real failure here rather than a formality: the lock is what holds torch
+      # to the CPU index on linux, and a silent re-resolve would pull several
+      # gigabytes of CUDA onto a runner that has no GPU.
+      - name: Install
+        run: uv sync --locked
+
+      - name: Tests
+        run: uv run pytest -m "not dataset"
+
+      - name: What this job did not run
+        if: always()
+        run: |
+          echo "Gated behind the DeepPCB clone; run these locally with -m dataset:"
+          uv run pytest -m dataset --collect-only -q
