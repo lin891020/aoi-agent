@@ -36,6 +36,7 @@ import pytest
 from aoi_agent.aoi.matching import FRAGMENT_GAP_PX, IOU_THRESHOLD
 from aoi_agent.graph.flow import CONFIDENT, ESCALATE_BELOW, RESPONSE_BUDGET_S
 from aoi_agent.llm.ollama import EXPLANATION_DEADLINE_S
+from aoi_agent.vision.inference import DEFAULT_DISMISS_THRESHOLD
 from aoi_agent.vision.inference import DEFAULT_DISMISS_THRESHOLD, LOW_CONFIDENCE
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -263,4 +264,66 @@ def test_the_sweep_still_agrees_with_the_shipped_values():
     assert at_floor == shipped, (
         "CONFIDENT changed a disposition, so it is not the cost gate "
         "docs/architecture.md says it is"
+    )
+
+
+def test_the_shipped_threshold_meets_the_budget_it_cites():
+    """The constant's own docstring is a claim, and nothing checked it.
+
+    `DEFAULT_DISMISS_THRESHOLD` is cited to "keeping the re-verification escape
+    rate under 0.5%". The sweep's answer is 0.9154344201087952 and the shipped
+    value was 0.915 -- the nearest round number, which is one *below* it, and at
+    which the split escapes 15 defects rather than 14. 15/2997 is 0.5005%. The
+    citation had been false since the constant was written, by one defect and by
+    five ten-thousandths of a percent.
+
+    The other sweep test here re-derives the *graph* constants. This one
+    re-derives the dismissal threshold itself, which is the only one that spends
+    the escape budget.
+    """
+    import numpy as np
+
+    predictions = Path(__file__).resolve().parents[1] / "models/test_predictions.npz"
+    if not predictions.exists():
+        pytest.skip("no stored predictions; run scripts/train.py")
+
+    data = np.load(predictions, allow_pickle=False)
+    names = [str(n) for n in data["label_names"]]
+    false_call = names.index("false_call")
+    p_false_call = data["probabilities"][:, false_call]
+    is_defect = data["labels"] != false_call
+
+    dismissed = p_false_call >= DEFAULT_DISMISS_THRESHOLD
+    escape_rate = float((dismissed & is_defect).sum()) / int(is_defect.sum())
+
+    assert escape_rate <= 0.005, (
+        f"DEFAULT_DISMISS_THRESHOLD={DEFAULT_DISMISS_THRESHOLD} escapes "
+        f"{escape_rate:.4%} of defects, over the 0.5% its docstring cites. "
+        f"Round it up, not to the nearest: higher dismisses less."
+    )
+
+
+def test_rounding_the_threshold_down_would_break_the_budget():
+    """The mutation, kept as a test: the value this replaced.
+
+    Without it somebody tidies 0.916 to 0.915 and the suite stays green while
+    the constant stops meeting its citation -- which is exactly what happened.
+    """
+    import numpy as np
+
+    predictions = Path(__file__).resolve().parents[1] / "models/test_predictions.npz"
+    if not predictions.exists():
+        pytest.skip("no stored predictions; run scripts/train.py")
+
+    data = np.load(predictions, allow_pickle=False)
+    names = [str(n) for n in data["label_names"]]
+    false_call = names.index("false_call")
+    p_false_call = data["probabilities"][:, false_call]
+    is_defect = data["labels"] != false_call
+
+    at_915 = float(((p_false_call >= 0.915) & is_defect).sum()) / int(is_defect.sum())
+
+    assert at_915 > 0.005, (
+        "0.915 no longer breaks the budget, so the model has changed and this "
+        "threshold wants re-sweeping rather than re-rounding"
     )

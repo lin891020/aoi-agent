@@ -429,6 +429,35 @@ REGISTRY: tuple[Entry, ...] = (
         ),
     ),
     Entry(
+        match="The escape budget is one number over six classes",
+        status=ENFORCED,
+        tests=(
+            "tests/test_class_escape.py::test_the_critical_class_escapes_worse_than_the_budget_it_is_averaged_into",
+            "tests/test_class_escape.py::test_the_escaped_opens_are_confident_errors_not_uncertain_ones",
+            "tests/test_class_escape.py::test_a_veto_low_enough_to_bite_costs_more_review_than_it_recovers",
+            "tests/test_class_escape.py::test_every_defect_class_names_the_document_that_governs_it",
+        ),
+        note=(
+            "Both halves are held, and the second is the one that rots "
+            "quietest: that `open` exceeds the aggregate it is averaged into, "
+            "and that the class-aware veto which looks like the fix has no "
+            "signal to act on. A checkpoint that changed either would fail "
+            "here rather than leave the report standing over a system it no "
+            "longer describes."
+        ),
+        gap=(
+            "Nothing holds the *conclusion* -- that electrical test covers the "
+            "class. That is a claim about a customer's process, not about this "
+            "repository, and there is no line here to check it against."
+        ),
+        proved_by=(
+            "Raised the veto until it bit (0.01): the recovery test fails. "
+            "Removed `open` from the governance table: the coverage test "
+            "fails. Both figures re-derived from the stored predictions, not "
+            "from the published table."
+        ),
+    ),
+    Entry(
         match="A human disposition names who made it",
         status=ENFORCED,
         tests=(

@@ -327,8 +327,8 @@ table.
 
 | constant | value | source |
 |---|---|---|
-| `DEFAULT_DISMISS_THRESHOLD` | 0.915 | the operating-point sweep at the ≤0.5% escape budget -- `scripts/report.py` |
-| `ESCALATE_BELOW` | 0.915 | `= DEFAULT_DISMISS_THRESHOLD`, which empties the only band in which the agent branch could dismiss -- `scripts/threshold_sweep.py` |
+| `DEFAULT_DISMISS_THRESHOLD` | 0.916 | the operating-point sweep at the ≤0.5% escape budget, **rounded up** -- `scripts/report.py`. The sweep's own answer is 0.9154344201087952; it was rounded to the nearest until 2026-08-24, and at 0.915 the split escapes 15 defects rather than 14 -- 0.5005%, over the budget this row cites. Higher dismisses less, so up is the safe direction and nearest is a coin. |
+| `ESCALATE_BELOW` | 0.916 | `= DEFAULT_DISMISS_THRESHOLD`, which empties the only band in which the agent branch could dismiss -- `scripts/threshold_sweep.py` |
 | `CONFIDENT` | 0.95 | a cost gate: changes no disposition at or above `ESCALATE_BELOW`, and must not drop below it -- `scripts/threshold_sweep.py` |
 | `LOW_CONFIDENCE` | 0.70 | WI-300 escalation triggers, stated there as a floor -- `data/standards/reverification-procedure.md` |
 | `RESPONSE_BUDGET_S` | 10.0 | WI-300 response budget, derived from QP-110 -- `data/standards/reverification-procedure.md` |

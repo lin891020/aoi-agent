@@ -98,8 +98,8 @@ docker run --rm -p 8000:8000 \
 
 ## Invariants — do not quietly change these
 
-Sixteen of them, and `scripts/invariant_audit.py` says which ones would
-actually fail a test if broken: **13 enforced, 2 partly enforced, 1
+Seventeen of them, and `scripts/invariant_audit.py` says which ones would
+actually fail a test if broken: **14 enforced, 2 partly enforced, 1
 unenforceable**. Each
 entry there names the tests that hold it and states what those tests do not
 cover; adding an invariant here without an entry fails
@@ -203,6 +203,18 @@ board is back under the unscoped reading.
   again -- it fails on a value that drifts from its source, and on a threshold
   that reaches the code with no row in the table at all. See
   docs/architecture.md.
+- **The escape budget is one number over six classes the work instructions do
+  not treat alike.** WI-201 and WI-202 admit no acceptable open or short; the
+  other four are conditional on a measurement. At the shipped threshold the
+  aggregate meets QP-110 at 0.47% and **`open` escapes at 1.35%, 2.9x that** --
+  the class that may never ship is the one exceeding the budget it is averaged
+  into. A class-aware veto is the obvious fix and **it does not exist**: on the
+  opens this model dismisses, `P(open)` is 0.00000-0.01672, and on the ones it
+  keeps the median is 0.999. They are confident errors, not uncertain ones, so
+  no cut on the model's own output separates them. What closes them is a second
+  measurement that does not share the failure -- electrical test, which WI-201
+  already names. Do not present the aggregate figure without this split.
+  `scripts/class_escape_report.py`, held by `tests/test_class_escape.py`.
 - **Say what the prevalence is, and what it costs.** The split is **36.8%
   genuine defects** (2,997 of 8,143 candidates); no line is, and an AOI tuned
   for recall over-calls by one to two orders of magnitude. Measured rather than

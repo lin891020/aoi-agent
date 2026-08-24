@@ -19,7 +19,20 @@ DEFAULT_CHECKPOINT = Path("models/reverifier.pt")
 #: Dismissal threshold from the operating-point sweep on the held-out test
 #: split: the highest review reduction available while keeping the
 #: re-verification escape rate under 0.5%. See docs/benchmarks.md.
-DEFAULT_DISMISS_THRESHOLD = 0.915
+#:
+#: The sweep's own answer is 0.9154344201087952. A constant nobody can read is
+#: worse than one that is rounded, so this is rounded -- **upwards**, and that
+#: direction is the whole of the note. It was 0.915 until 2026-08-24, which is
+#: the sweep's value rounded to the nearest, and at 0.915 the split escapes 15
+#: defects rather than 14: **0.5005%, over the budget the constant is cited to
+#: satisfy**. One defect, and the citation above was false the whole time.
+#:
+#: Higher dismisses less, so rounding up is the safe direction and rounding to
+#: the nearest is a coin. What the correction costs is 0.07 points of review
+#: reduction, 56.22% to 56.15%. `test_the_shipped_threshold_meets_the_budget_it
+#: _cites` re-derives this from the stored predictions rather than trusting
+#: either number.
+DEFAULT_DISMISS_THRESHOLD = 0.916
 
 #: Below this the model is not confident enough about *any* class for the
 #: verdict to stand on its own, and the case is worth escalating.

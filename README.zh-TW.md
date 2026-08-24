@@ -540,10 +540,10 @@ wheel。什麼都不 mount 直接跑，會得到一個對著空 queue 起來的 
   migration 蓋上去的，不是留成 `NULL` —— 一筆從來沒記過 reviewer 的判定，不可以被讀
   成一筆本來就沒有 reviewer 的判定。它們就維持這樣；第一輪 retrain 必須自己講清楚它
   放掉了多少。
-- **這個專案的十六條不變式裡，有兩條只守住一半，還有一條根本守不住。**
-  `CLAUDE.md` 列了十六條不能被悄悄改掉的規則；`scripts/invariant_audit.py` 會報出
+- **這個專案的十七條不變式裡，有兩條只守住一半，還有一條根本守不住。**
+  `CLAUDE.md` 列了十七條不能被悄悄改掉的規則；`scripts/invariant_audit.py` 會報出
   哪幾條真的會在被違反時讓測試失敗，而 `tests/test_invariant_audit.py` 會在某一條
-  失去守衛時掛掉。十三條有守。fan-out 那條和官方 split 那條各自只守住一部分，而且逐條寫明守住的是哪一部分；「說清楚哪些是
+  失去守衛時掛掉。十四條有守。fan-out 那條和官方 split 那條各自只守住一部分，而且逐條寫明守住的是哪一部分；「說清楚哪些是
   模擬的」是散文紀律，被明確宣告為無法測試，而不是算它通過。每一格都是真的去破壞
   那條規則、跑完整套測試得出來的 ——
   [稽核結果](docs/benchmarks.md#the-invariant-audit--which-of-this-projects-own-rules-are-unguarded)。

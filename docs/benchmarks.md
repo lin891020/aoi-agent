@@ -934,7 +934,7 @@ the two that remain are described under the count.
 
 #### The count
 
-**13 enforced, 2 partly enforced, 1 unenforceable**, of sixteen. It was
+**14 enforced, 2 partly enforced, 1 unenforceable**, of seventeen. It was
 7 / 4 / 1 when the audit was written: two moved when their gaps were closed,
 and the thirteenth, fourteenth and fifteenth all arrived enforced, because in
 each case the rule and the test that holds it were written together.
@@ -1655,4 +1655,42 @@ A 0.47% escape rate over 2,997 defects is a measurement. The same rate over the 
 **A pilot that sees a hundred defects cannot confirm this budget, and one that sees thirty cannot say anything at all.** The threshold carries over; the evidence for it does not, and it has to be rebuilt on the line at the line's own rate. On a line producing 30 defects a month, distinguishing 0.47% from 1% takes over a year of shadow running — which is an argument for shadow mode starting early, not for waiting.
 
 **What this does not establish.** Label shift is an assumption, not a finding: it says the model's scores on a defect are drawn from the same distribution here and on a line, and the binarised, pre-registered, partly-augmented character of this dataset is exactly the reason to doubt it. What the section buys is the separation — prevalence alone moves one of the three quantities, and it is not the threshold. Everything else that differs between a dataset and a line is untouched and unmeasured.
+
+
+### Per-class escape — one budget over six classes that are not alike
+
+QP-110 is a single number: ≤0.5% of defects may escape. The work instructions are not written that way. WI-201 and WI-202 say **any** confirmed open or short is critical with no acceptable size; the other four are conditional on a measurement. Averaging those together lets the classes nobody may ship subsidise the ones that can be dispositioned. At the shipped threshold `0.916` it does. `scripts/class_escape_report.py`, commit `16a62fa`.
+
+| class | governed by | defects | escaped | escape rate | the document says |
+|---|---|---|---|---|---|
+| **open** | WI-201 | 594 | 8 | **1.35%** | critical — any confirmed instance |
+| **short** | WI-202 | 451 | 2 | **0.44%** | critical — any confirmed instance |
+| mousebite | WI-203 | 550 | 1 | 0.18% | conditional — ≥80% remaining width |
+| spur | WI-204 | 474 | 0 | 0.00% | conditional — ≥50% remaining clearance |
+| copper | WI-205 | 464 | 2 | 0.43% | conditional — full clearance, off footprints |
+| pin-hole | WI-206 | 464 | 1 | 0.22% | conditional — <25% of conductor width |
+| *aggregate* | QP-110 | 2997 | 14 | *0.47%* | ≤0.5% |
+
+**`open` escapes at 1.35%, 2.9× the aggregate**, and it is one of the two classes whose work instruction admits no acceptable instance. The single budget is met and the class that matters most is the one exceeding it.
+
+#### A class-aware rule would be the obvious fix, and it does not work
+
+The classifier emits a full distribution, so a candidate about to be dismissed still carries a `P(open)`. Refusing to dismiss when that is high trades review reduction for escapes recovered — which is what a per-class budget would be built on.
+
+| veto when P(open) > | escapes | opens escaped | open rate | review removed | cost |
+|---|---|---|---|---|---|
+| *(none)* | 14 | 8 | 1.35% | 56.15% | — |
+| 0.30 | 14 | 8 | 1.35% | 56.15% | 0.00% |
+| 0.10 | 14 | 8 | 1.35% | 56.15% | 0.00% |
+| 0.05 | 14 | 8 | 1.35% | 55.93% | 0.22% |
+| 0.02 | 14 | 8 | 1.35% | 54.89% | 1.25% |
+| 0.01 | 11 | 5 | 0.84% | 53.60% | 2.54% |
+
+**Nothing moves until the veto is absurd, and then it costs more than it buys.** The reason is in the distribution, not in the threshold: on the 8 opens this model dismisses, `P(open)` runs from 0.00000 to 0.01672. On the 586 it keeps, the median is 0.999.
+
+**There is no middle ground to threshold.** These are not candidates the model was unsure about — every one of them has `false_call` as its argmax with a probability above 0.94, and two of them put `P(open)` below 0.0001. They are cases it was confidently wrong about, and no veto on its own output can separate them, because its own output does not know.
+
+**Which moves the question off the operating point.** A per-class budget cannot be met by re-tuning this curve; the information a class-aware rule would need is absent from the only signal available to it. What helps when a model is confidently wrong is not a better threshold on that model — it is a second measurement that does not share its failure. WI-201 already names one, in a clause written for a different situation: *"Suspected open that measures continuous on electrical test."* An open is precisely the class a downstream ICT or flying-probe stage catches independently. **On a line that has one, these eight are already covered and the aggregate budget is the right shape after all. On a line that does not, no threshold in this project closes them.** Which line it is, is a question about the customer's process and not about this model.
+
+**What this does not establish.** Six classes on one split, and the per-class counts are small enough that the intervals in the prevalence section apply here with more force, not less — 8 escapes in 594 opens has a 95% interval of 0.68% to 2.63%. The negative result about the veto is about *this* checkpoint: a model trained with a loss that penalised confident errors on critical classes might well carry the signal this one does not, and nothing here tries that.
 
