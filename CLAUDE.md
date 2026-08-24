@@ -304,6 +304,27 @@ board is back under the unscoped reading.
 Retraining from operator corrections -- now selectable by who made them, which
 is what `reviewer_auth` bought -- deploying the quantised model, demo video.
 
+**Shadow mode is refused, not forgotten.** Running the model beside the existing
+process and recording what it *would* have decided is the right way to rebuild
+the escape evidence on a line -- `scripts/prevalence_report.py` ends by arguing
+for it, since a pilot seeing 100 defects cannot confirm a 0.5% budget and one
+seeing 30 says nothing at all. The store already supports it: decisions
+accumulate rather than overwrite, so a model row and a human row on one
+candidate are already the pair a shadow report would read, and provenance
+already says which weights and which thresholds produced the first.
+
+What is missing is a line. Built here, `--shadow` would run against DeepPCB,
+where "the operator" is the ground-truth annotation -- which is the
+operating-point sweep that already exists, reached by a longer route -- and the
+comparison report would read a store whose human decisions are seeded demo data
+plus five real ones, four of which were deleted as unreliable. That is the shape
+the detector project was killed for: a mechanism with nothing to run it on.
+
+What would make it buildable, in order: a line, or a second dataset with a
+different prevalence and its own registration problem. HRIPCB is the obvious
+candidate and is blocked twice -- it needs a Kaggle account, and it requires the
+registration stage this project does not have (see the invariant above).
+
 **Every decision the store held before 2026-08-23 reads `unrecorded`** -- 9,140
 of them, in `model_digest` and now in `reviewer_auth` too, stamped by the
 migration rather than left `NULL`, because a decision whose provenance was
