@@ -67,20 +67,20 @@ def test_every_invariant_in_the_document_is_accounted_for():
     """The count is published in docs/benchmarks.md, so it is worth having a
     test say out loud when it moves."""
     bullets = invariant_bullets()
-    assert len(bullets) == len(REGISTRY) == 17, (
+    assert len(bullets) == len(REGISTRY) == 18, (
         f"CLAUDE.md states {len(bullets)} invariants and the registry has "
-        f"{len(REGISTRY)} entries; docs/benchmarks.md and both READMEs publish 17"
+        f"{len(REGISTRY)} entries; docs/benchmarks.md and both READMEs publish 18"
     )
 
 
 def test_the_published_counts_are_what_the_registry_says():
-    """14 enforced, 2 partly enforced, 1 unenforceable -- the numbers in
+    """15 enforced, 2 partly enforced, 1 unenforceable -- the numbers in
     docs/benchmarks.md and in both READMEs. Changing one means republishing the
     others."""
     counts = {status: 0 for status in (ENFORCED, PARTIAL, UNENFORCEABLE)}
     for entry in REGISTRY:
         counts[entry.status] += 1
-    assert counts == {ENFORCED: 14, PARTIAL: 2, UNENFORCEABLE: 1}, (
+    assert counts == {ENFORCED: 15, PARTIAL: 2, UNENFORCEABLE: 1}, (
         f"{counts} -- if this is an improvement, say so in docs/benchmarks.md "
         "and move the number here"
     )

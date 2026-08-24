@@ -458,6 +458,35 @@ REGISTRY: tuple[Entry, ...] = (
         ),
     ),
     Entry(
+        match="There is no registration stage",
+        status=ENFORCED,
+        tests=(
+            "tests/test_registration.py::test_the_pipeline_still_has_no_registration_stage",
+            "tests/test_registration.py::test_the_benchmarks_section_states_the_missing_stage",
+            "tests/test_registration.py::test_recall_falls_with_misregistration_and_the_queue_grows",
+        ),
+        note=(
+            "An absence held as a fact about the source rather than as a wish: "
+            "exactly one image-alignment call, in the function that adds "
+            "misalignment. Adding registration fails the test, which is the "
+            "point -- the failure is the prompt to rewrite the section, and "
+            "what must not happen is a stage arriving while the report says "
+            "there is none."
+        ),
+        gap=(
+            "The sweep is a pure translation on images that are already "
+            "binarised, so it is a lower bound on the disturbance and an upper "
+            "bound on the recall. Rotation, scale and illumination are the rest "
+            "of real misregistration and none of them is here. The curve test "
+            "is `-m dataset` and does not run in CI."
+        ),
+        proved_by=(
+            "Added a second `warpAffine`: the source test fails. Deleted the "
+            "benchmarks heading: the section test fails. The curve itself is "
+            "re-measured rather than asserted from the published table."
+        ),
+    ),
+    Entry(
         match="A human disposition names who made it",
         status=ENFORCED,
         tests=(

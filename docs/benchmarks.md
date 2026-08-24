@@ -934,7 +934,7 @@ the two that remain are described under the count.
 
 #### The count
 
-**14 enforced, 2 partly enforced, 1 unenforceable**, of seventeen. It was
+**15 enforced, 2 partly enforced, 1 unenforceable**, of eighteen. It was
 7 / 4 / 1 when the audit was written: two moved when their gaps were closed,
 and the thirteenth, fourteenth and fifteenth all arrived enforced, because in
 each case the rule and the test that holds it were written together.
@@ -1693,4 +1693,27 @@ The classifier emits a full distribution, so a candidate about to be dismissed s
 **Which moves the question off the operating point.** A per-class budget cannot be met by re-tuning this curve; the information a class-aware rule would need is absent from the only signal available to it. What helps when a model is confidently wrong is not a better threshold on that model — it is a second measurement that does not share its failure. WI-201 already names one, in a clause written for a different situation: *"Suspected open that measures continuous on electrical test."* An open is precisely the class a downstream ICT or flying-probe stage catches independently. **On a line that has one, these eight are already covered and the aggregate budget is the right shape after all. On a line that does not, no threshold in this project closes them.** Which line it is, is a question about the customer's process and not about this model.
 
 **What this does not establish.** Six classes on one split, and the per-class counts are small enough that the intervals in the prevalence section apply here with more force, not less — 8 escapes in 594 opens has a 95% interval of 0.68% to 2.63%. The negative result about the veto is about *this* checkpoint: a model trained with a loss that penalised confident errors on critical classes might well carry the signal this one does not, and nothing here tries that.
+
+
+### Registration — the stage this pipeline does not have
+
+The only `warpAffine` in this project is in `simulator.apply_perturbation`, and it *introduces* misalignment. **Nothing here aligns an unaligned pair**, because DeepPCB never handed it one — its README says the registration and thresholding were done before shipping. The headline figure is therefore measured on a pipeline that begins after the hardest stage of real AOI, and that had not been written down anywhere. Swept over 500 test pairs in 10 s, `scripts/registration_report.py`, commit `51ef676`.
+
+DeepPCB scans at about 48 px/mm, so the largest shift below is roughly 83 microns. These are not extreme values for a stage and a conveyor.
+
+| shift | recall of annotations | candidates / board | vs 0 px | boards with no false call |
+|---|---|---|---|---|
+| 0 px | 95.0% | 18.1 | 1.0× | 209/500 |
+| 1 px | 94.8% | 25.5 | 1.4× | 118/500 |
+| 2 px | 94.6% | 42.8 | 2.4× | 56/500 |
+| 3 px | 92.9% | 57.7 | 3.2× | 29/500 |
+| 4 px | 90.4% | 58.8 | 3.2× | 22/500 |
+
+**The queue grows, and that is the half the design already answers.** Candidates per board go 18.1 → 58.8, 3.2×. It lands on the re-verifier, which is the layer that exists to absorb it, and at 2.5 ms a candidate on CPU the arithmetic still works. What it does move is every published *review reduction* figure, whose denominator grows with it — the operating point was swept at 0 px and nothing has been re-swept here.
+
+**Recall is the half nothing answers, and it is the serious one.** 95.0% at perfect alignment down to 90.4% at 4 px — **4.6% of annotations the AOI stops emitting at all.** A defect that never becomes a candidate is not inside the escape budget, it is *before* it: no threshold reaches it, no re-verifier recovers it, and it does not appear in any escape figure this project publishes, because those are computed over candidates. Against a budget of 0.5%, losing 4.6% upstream is not a rounding error — it is an order of magnitude more defect than the entire re-verification stage is allowed to miss.
+
+The 3×3 opening is the mechanism on both sides: it erases the one- and two-pixel slivers misalignment leaves along every trace edge, which is what keeps the queue from exploding further, and it erases small real defects along with them. `scripts/opening_kernel_sweep.py` swept that trade at 0 px. **This table is the same trade at a shift the sweep never considered**, and it moves against the defects.
+
+**What this does not establish.** It sweeps a pure translation on images that are already binarised. A real misregistration is a translation, a rotation and a scale, on grey images under a lamp that ages — and binarisation is the other thing DeepPCB removed. So this is a lower bound on the disturbance and an upper bound on the recall, and it says nothing about which shift a line actually runs at: that is a property of a stage and a camera, neither of which is in this repository. What it gives a line that knows its own repeatability is a curve to read its own number off.
 

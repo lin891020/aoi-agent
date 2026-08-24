@@ -98,8 +98,8 @@ docker run --rm -p 8000:8000 \
 
 ## Invariants — do not quietly change these
 
-Seventeen of them, and `scripts/invariant_audit.py` says which ones would
-actually fail a test if broken: **14 enforced, 2 partly enforced, 1
+Eighteen of them, and `scripts/invariant_audit.py` says which ones would
+actually fail a test if broken: **15 enforced, 2 partly enforced, 1
 unenforceable**. Each
 entry there names the tests that hold it and states what those tests do not
 cover; adding an invariant here without an entry fails
@@ -203,6 +203,18 @@ board is back under the unscoped reading.
   again -- it fails on a value that drifts from its source, and on a threshold
   that reaches the code with no row in the table at all. See
   docs/architecture.md.
+- **There is no registration stage, and every figure here starts after one.**
+  The single `warpAffine` in the project is in `simulator.apply_perturbation`
+  and it *introduces* misalignment: nothing aligns an unaligned pair, because
+  DeepPCB never handed it one -- its authors registered and binarised before
+  shipping. Swept: at a 4 px shift (about 83 microns at 48 px/mm) candidates go
+  18.1 -> 58.8 per board, which the re-verifier is built to absorb, and **AOI
+  recall falls 95.0% -> 90.4%**, which nothing absorbs. A defect the AOI never
+  emits is not inside the escape budget, it is before it -- no threshold
+  reaches it, no re-verifier recovers it, and it appears in no escape figure
+  here because those are computed over candidates. **4.6 points upstream against
+  0.5% downstream.** `tests/test_registration.py` asserts the stage is still
+  absent, so it cannot arrive while the report says it has not.
 - **The escape budget is one number over six classes the work instructions do
   not treat alike.** WI-201 and WI-202 admit no acceptable open or short; the
   other four are conditional on a measurement. At the shipped threshold the
