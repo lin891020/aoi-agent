@@ -471,6 +471,13 @@ def station_page(request: Request, stem: str, index: int):
                 (escalation or {}).get("explanation_status") or ""
             ),
             "options": service.VERDICT_OPTIONS,
+            # The triptych's gap, as a fraction of its width. Derived from the
+            # constants that render it rather than written down twice: the
+            # ruler refuses a segment that crosses the gap, and a stale copy of
+            # this number would make it refuse the wrong ones.
+            "gap_fraction": images.PANEL_GAP / (
+                images.CONTEXT_SIZE * images.SCALE * 3 + images.PANEL_GAP * 2
+            ),
             "waiting": len(escalations.pending()),
             "next_reference": _next_pending(after=reference),
         },
@@ -483,6 +490,7 @@ def submit_verdict(
     stem: str,
     index: int,
     verdict: str = Form(...),
+    measurement: str = Form(""),
 ):
     """Hand the operator's answer back to the suspended run.
 
@@ -503,7 +511,14 @@ def submit_verdict(
         # one region and silently corrupt the training set.
         return RedirectResponse("/next", status_code=303)
 
-    service.resume_review(graph(), reference, verdict, operator_of(request))
+    # The reading, if the operator took one. Unlike `verdict` this is not
+    # validated against a vocabulary -- it is free text describing what was
+    # measured -- so it is length-capped at the column and never parsed back
+    # into a decision. Nothing routes on it; it is evidence beside the answer.
+    service.resume_review(
+        graph(), reference, verdict, operator_of(request),
+        measurement=(measurement or "").strip()[:256] or None,
+    )
     return RedirectResponse(f"/next/{stem}/{index}", status_code=303)
 
 

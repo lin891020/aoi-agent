@@ -359,3 +359,65 @@ def test_raised_and_resolved_are_stamped_by_the_same_clock(store, graph):
 
     assert row.resolved_at is not None
     assert row.resolved_at >= row.raised_at
+
+
+# ---------------------------------------------------------------------------
+# The acceptance ruler
+# ---------------------------------------------------------------------------
+
+def _last_human_measurement():
+    """The reading on the most recent operator decision, through the store's
+    own session factory -- the fixture redirects that, so this follows it."""
+    from sqlalchemy import select
+
+    from aoi_agent.store.boards import session_factory
+    from aoi_agent.store.models import ReviewDecision
+
+    with session_factory()() as session:
+        return session.execute(
+            select(ReviewDecision.measurement)
+            .where(ReviewDecision.source == "human")
+            .order_by(ReviewDecision.id.desc())
+            .limit(1)
+        ).scalar()
+
+
+def test_the_ruler_is_offered_only_where_a_ratio_decides(client, graph):
+    """`open` and `short` admit no acceptable instance under WI-201 and WI-202.
+    A ruler under one of those implies a limit that no document contains, which
+    is the same failure as quoting the wrong class's criteria -- one surface
+    over."""
+    service.start_review(graph, REFERENCE)
+    page = client.get(f"/c/{STEM}/0").text
+
+    assert 'id="ruler"' in page, "the panel is templated for every class"
+    assert "measure.js" in page, "and the geometry is vendored, not inlined"
+    # ...and the script returns before showing it when the class has no
+    # criterion, which is `measure.js`'s decision and is tested under node.
+    assert "criterionFor" in page
+
+
+def test_a_measurement_reaches_the_record_with_the_verdict(client, graph):
+    """A measurement nobody stores is a measurement that never happened --
+    WI-300's argument about corrections, one level down. The next reviewer of
+    this region has to be able to tell a measured judgement from a guess."""
+    service.start_review(graph, REFERENCE)
+    reading = "nominal conductor width -> remaining width = 84.2% (>=80%, within)"
+    client.post(f"/c/{STEM}/0/verdict",
+                data={"verdict": "mousebite", "measurement": reading},
+                follow_redirects=False)
+
+    assert _last_human_measurement() == reading
+
+
+def test_answering_without_measuring_stores_nothing_rather_than_something(
+    client, graph
+):
+    """`NULL` here means what it says and is allowed to. Unlike provenance this
+    is not two absences wearing one value: nobody measured, and that is a fact
+    about the decision worth keeping."""
+    service.start_review(graph, REFERENCE)
+    client.post(f"/c/{STEM}/0/verdict", data={"verdict": "open"},
+                follow_redirects=False)
+
+    assert _last_human_measurement() is None

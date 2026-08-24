@@ -92,7 +92,11 @@ def start_review(graph, reference: str) -> dict[str, Any]:
 
 
 def resume_review(
-    graph, reference: str, verdict: str, identity: ReviewerIdentity
+    graph,
+    reference: str,
+    verdict: str,
+    identity: ReviewerIdentity,
+    measurement: str | None = None,
 ) -> dict[str, Any]:
     """Hand an operator's verdict back to the suspended run.
 
@@ -135,6 +139,11 @@ def resume_review(
         # disk today. A run raised before provenance existed carries none, and
         # the row says ``unavailable`` rather than refusing the answer.
         provenance=DecisionProvenance.from_dict(state.get("provenance")),
+        # What the operator measured, if they measured. `None` means nobody
+        # did, and that is a true statement about the decision rather than a
+        # missing field -- `open` has nothing to measure, and a `mousebite`
+        # answered by eye was answered by eye.
+        measurement=measurement,
     )
     escalations.resolve_escalation(thread_for(reference))
     # Whoever answered the last outstanding region on this board is the

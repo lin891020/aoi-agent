@@ -142,6 +142,21 @@ class ReviewDecision(Base):
 
     rationale: Mapped[str | None] = mapped_column(String(2048), nullable=True)
 
+    measurement: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    """What the operator measured on screen, and against which rule.
+
+    Three classes are accepted on a ratio and WI-203 says of its own
+    "escalate for measurement" -- to the operator, who is the last stop. The
+    ruler on the region page is what that instruction now reaches, and this is
+    where its reading lands: a measurement nobody stores is a measurement that
+    never happened, which is WI-300's argument about corrections one level down.
+
+    ``NULL`` here means what it says and is allowed to: nobody measured. Unlike
+    provenance, that is not two different absences wearing one value -- a
+    decision on `open` has nothing to measure, and one on `mousebite` where the
+    operator judged by eye is a decision made by eye. The next reviewer can
+    tell those from a measured one, which is the whole point."""
+
     explanation_status: Mapped[str | None] = mapped_column(
         String(16), nullable=True, index=True
     )
@@ -390,6 +405,7 @@ ADDED_COLUMNS: dict[str, dict[str, str]] = {
         "thresholds_json": "VARCHAR(256)",
         "code_version": "VARCHAR(64)",
         "reviewer_auth": "VARCHAR(16)",
+        "measurement": "VARCHAR(256)",
     },
     "escalations": {"explanation_status": "VARCHAR(16)"},
     "analysis_runs": {"asked_lang": "VARCHAR(16)", "answers_json": "TEXT"},

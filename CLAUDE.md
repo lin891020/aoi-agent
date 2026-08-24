@@ -379,6 +379,17 @@ On the station itself:
   and ask `/ask` anything. The scheme's limits are stated in
   `station/auth.py`; a shared passphrase still names one operator for two
   people, and nothing here can tell them apart.
+- **Three classes are judged by a ratio, and the ruler now exists.** WI-203's
+  own "escalate for measurement" pointed at the operator, who is the last stop,
+  so it had nowhere to go. `station/static/measure.js` measures a *ratio* --
+  DeepPCB carries no mm-per-pixel and a ruler reporting millimetres would be
+  inventing the only number that mattered, while all three criteria are already
+  written as ratios and so need no calibration. It refuses what it cannot mean:
+  a segment across the panel gap, and two segments taken on different panels
+  (arithmetically fine, and a ratio of the template to the board under test).
+  The reading is stored on the decision -- a measurement nobody records is a
+  measurement that never happened -- and `NULL` there means nobody measured,
+  which is a true statement about the decision rather than a missing field.
 - **The criteria answer the wrong question for the operator.** For `open` the
   retrieved passage says any confirmed open is critical -- how to *disposition*
   one. It never says how to *confirm* one, which is what the person looking at

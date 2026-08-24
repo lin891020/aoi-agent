@@ -125,6 +125,7 @@ def record_decision(
     rationale: str | None = None,
     explanation_status: str | None = None,
     provenance: DecisionProvenance | None = None,
+    measurement: str | None = None,
 ) -> bool:
     """Append a verdict to a candidate's decision history.
 
@@ -222,6 +223,7 @@ def record_decision(
                 source=source,
                 rationale=rationale,
                 explanation_status=explanation_status,
+                measurement=measurement,
                 **identity.columns(),
                 **provenance.columns(),
             )

@@ -117,6 +117,13 @@ STRINGS: dict[str, dict[str, str]] = {
         "region.criteria_none": '此區域沒有檢索到標準',
         "region.criteria_simulated": '本專案自撰文件，不是 IPC-A-610',
         "region.your_verdict": '你的判定',
+        "region.measure_reset": "重新量測",
+        "region.measure.ask_reference": "點兩下，量出基準：",
+        "region.measure.ask_measured": "再點兩下，量出實際值：",
+        "region.measure.within": "{ratio}% — 在允收範圍內（需 ≥{limit}%）",
+        "region.measure.outside": "{ratio}% — 超出允收範圍（需 ≥{limit}%）",
+        "region.measure.incomparable":
+            "兩段量在不同格：那是拿樣板的長度去比待測板的長度，不能相除。",
         "region.verdict_note":
             "你的答案會喚醒暫停中的執行，並以你的名義記為人工判定。"
             "它會成為下一輪訓練的標註——這也是這一頁不顯示 ground truth 的原因。",
@@ -325,6 +332,14 @@ STRINGS: dict[str, dict[str, str]] = {
         "region.criteria_simulated":
             'original documents written for this project, not IPC-A-610',
         "region.your_verdict": 'Your verdict',
+        "region.measure_reset": "Measure again",
+        "region.measure.ask_reference": "Click twice for the reference:",
+        "region.measure.ask_measured": "Now click twice for the measurement:",
+        "region.measure.within": "{ratio}% — within limits (needs ≥{limit}%)",
+        "region.measure.outside": "{ratio}% — outside limits (needs ≥{limit}%)",
+        "region.measure.incomparable":
+            "The two segments are in different panels: that divides a length on "
+            "the template by a length on the board under test.",
         "region.verdict_note":
             "Your answer resumes the suspended run and is recorded as a human "
             "decision under your name. It becomes a label in the next training "

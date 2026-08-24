@@ -40,11 +40,30 @@
   {% endif %}
 
   <figure class="triptych">
-    <img src="/c/{{ stem }}/{{ index }}/triptych.png" alt="{{ t('region.triptych_alt') }}">
+    <div class="measurable" id="measurable">
+      <img id="triptych" src="/c/{{ stem }}/{{ index }}/triptych.png"
+           alt="{{ t('region.triptych_alt') }}">
+      {# The overlay is created by the script, not templated: with scripting off
+         there is no ruler and the page is exactly what it was. #}
+    </div>
     <figcaption>
       <span>{{ t('region.template') }}</span><span>{{ t('region.under_test') }}</span><span>{{ t('region.difference') }}</span>
     </figcaption>
   </figure>
+
+  {# The ruler, for the three classes accepted on a ratio. WI-203 tells the
+     operator to "escalate for measurement" and the operator is the last stop,
+     so until this existed that instruction had nowhere to go. Hidden unless the
+     class is one of the three -- `open` and `short` admit no acceptable
+     instance and a ruler under them would imply one. #}
+  <div class="ruler" id="ruler" hidden>
+    <p class="ruler-ask">
+      <span class="label" id="ruler-step"></span>
+      <span class="dim" id="ruler-hint"></span>
+    </p>
+    <p class="ruler-out" id="ruler-out" role="status" aria-live="polite"></p>
+    <button type="button" class="ruler-reset" id="ruler-reset">{{ t('region.measure_reset') }}</button>
+  </div>
 
   <div class="columns">
 
@@ -138,6 +157,13 @@
       <span class="reviewer">{{ t('region.answering_as') }}
         <b class="mono">{{ request.state.operator }}</b></span>
     </div>
+    {# The reading goes on the record with the answer. A measurement nobody
+       stores is a measurement that never happened -- WI-300's own argument
+       about corrections, one level down -- and the next reviewer of this
+       region cannot otherwise tell a measured judgement from a guess. Filled
+       by the script; empty when nobody measured, which is a true statement
+       about the decision rather than a missing field. #}
+    <input type="hidden" name="measurement" id="measurement" value="">
     <div class="options">
       {% for option in options %}
       <button type="submit" name="verdict" value="{{ option }}"
@@ -179,6 +205,111 @@
 {% endblock %}
 
 {% block script %}
+<script src="/static/measure.js"></script>
+<script type="application/json" id="ruler-strings">{{ strings_for('region.measure') }}</script>
+<script>
+  // The ruler's page half: it draws and it listens, `measure.js` decides.
+  // Every write is `.textContent` or `setAttribute`; the overlay is built with
+  // `createElementNS`, which is the same rule the flow view is held to.
+  (function () {
+    var host = document.getElementById('measurable');
+    var panel = document.getElementById('ruler');
+    var image = document.getElementById('triptych');
+    if (!host || !panel || !image) return;
+
+    var criterion = AoiMeasure.criterionFor({{ candidate.predicted_class|tojson }});
+    if (!criterion) return;   // a class with no acceptable instance has nothing to measure
+
+    var say = JSON.parse(document.getElementById('ruler-strings').textContent);
+    function t(key, args) {
+      var text = say['region.measure.' + key] === undefined
+        ? key : say['region.measure.' + key];
+      return Object.keys(args || {}).reduce(function (out, name) {
+        return out.split('{' + name + '}').join(args[name]);
+      }, text);
+    }
+
+    var NS = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('class', 'overlay');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.setAttribute('viewBox', '0 0 1000 1000');
+    host.appendChild(svg);
+
+    var GAP = {{ gap_fraction }};
+    var step = 0;            // 0-1 reference, 2-3 measured
+    var points = [];
+    var pending = null;
+
+    function clear() {
+      while (svg.firstChild) svg.removeChild(svg.firstChild);
+      step = 0; points = []; pending = null;
+      document.getElementById('measurement').value = '';
+      paint();
+    }
+
+    function line(a, b, cls) {
+      var el = document.createElementNS(NS, 'line');
+      el.setAttribute('x1', a.x * 1000); el.setAttribute('y1', a.y * 1000);
+      el.setAttribute('x2', b.x * 1000); el.setAttribute('y2', b.y * 1000);
+      el.setAttribute('class', cls);
+      svg.appendChild(el);
+    }
+
+    function paint() {
+      var asked = step < 2 ? criterion.reference : criterion.measured;
+      document.getElementById('ruler-step').textContent =
+        t(step < 2 ? 'ask_reference' : 'ask_measured');
+      document.getElementById('ruler-hint').textContent = asked;
+
+      var out = document.getElementById('ruler-out');
+      var reading = null;
+      if (points.length === 4) {
+        var box = image.getBoundingClientRect();
+        var a = AoiMeasure.segment(points[0], points[1], box.width, box.height, GAP);
+        var b = AoiMeasure.segment(points[2], points[3], box.width, box.height, GAP);
+        reading = AoiMeasure.reading(a, b, criterion);
+      }
+      if (!reading) { out.textContent = ''; return; }
+      if (reading.verdict === 'incomparable') {
+        out.textContent = t('incomparable');
+        out.className = 'ruler-out is-refused';
+        return;
+      }
+      var percent = (reading.ratio * 100).toFixed(1);
+      var limit = (criterion.limit * 100).toFixed(0);
+      out.textContent = t(reading.verdict === 'within' ? 'within' : 'outside',
+                          { ratio: percent, limit: limit });
+      out.className = 'ruler-out is-' + reading.verdict;
+      // What goes on the record: the reading and the rule it was read against.
+      document.getElementById('measurement').value =
+        criterion.reference + ' -> ' + criterion.measured + ' = ' + percent +
+        '% (' + (criterion.atLeast ? '>=' : '<') + limit + '%, ' +
+        reading.verdict + ')';
+    }
+
+    host.addEventListener('click', function (event) {
+      var box = image.getBoundingClientRect();
+      var point = { x: (event.clientX - box.left) / box.width,
+                    y: (event.clientY - box.top) / box.height };
+      if (point.x < 0 || point.x > 1 || point.y < 0 || point.y > 1) return;
+      if (AoiMeasure.panelOf(point.x, box.width, GAP) === -1) return;
+
+      if (points.length >= 4) clear();
+      points.push(point);
+      if (points.length % 2 === 0) {
+        line(points[points.length - 2], points[points.length - 1],
+             points.length === 2 ? 'is-reference' : 'is-measured');
+        step = points.length;
+      }
+      paint();
+    });
+
+    document.getElementById('ruler-reset').addEventListener('click', clear);
+    panel.hidden = false;
+    paint();
+  }());
+</script>
 <script>
   // Number keys pick a verdict. A review station is a throughput problem:
   // the operator's hand should not have to find the mouse for every region.
