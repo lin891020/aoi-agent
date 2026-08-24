@@ -396,6 +396,39 @@ REGISTRY: tuple[Entry, ...] = (
         ),
     ),
     Entry(
+        match="Say what the prevalence is, and what it costs",
+        status=ENFORCED,
+        tests=(
+            "tests/test_prevalence.py::test_the_escape_rate_is_exactly_invariant_under_reweighting",
+            "tests/test_prevalence.py::test_review_reduction_rises_as_the_line_gets_cleaner",
+            "tests/test_prevalence.py::test_the_reweighting_agrees_with_the_measurement_at_its_own_prevalence",
+            "tests/test_prevalence.py::test_the_projects_own_escape_figure_does_not_exclude_exceeding_its_budget",
+        ),
+        note=(
+            "The three claims are held separately: that the escape rate cannot "
+            "move with prevalence, that review reduction must, and that the "
+            "published escape figure's interval crosses its own budget. The "
+            "re-weighting is also checked against the swept figure at the "
+            "dataset's own prevalence, which is what stops it drifting into a "
+            "different quantity."
+        ),
+        gap=(
+            "Everything here assumes label shift -- that the score "
+            "distributions within each group are what a line would produce. "
+            "The dataset is binarised, pre-registered and partly augmented, "
+            "which is precisely the reason to doubt that, and no test can "
+            "check it without a second dataset. What is enforced is the "
+            "separation, not the transfer."
+        ),
+        proved_by=(
+            "Divided the escape rate by the candidate total instead of the "
+            "defect total: 1 test failed. Made the re-weighting ignore its "
+            "prevalence argument: 1 failed -- and did not, until the ordering "
+            "assertion was tightened from `== sorted(...)`, which a constant "
+            "list satisfies."
+        ),
+    ),
+    Entry(
         match="A human disposition names who made it",
         status=ENFORCED,
         tests=(

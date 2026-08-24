@@ -650,11 +650,11 @@ explanation step needs the container to be able to reach it.
   decision whose reviewer was never recorded must not be readable as one that
   genuinely had none. They stay that way; a first retraining round has to state
   how much of the store it leaves behind.
-- **Two of this project's fifteen invariants are only partly guarded, and one
-  cannot be guarded at all.** `CLAUDE.md` states fifteen rules that must not be
+- **Two of this project's sixteen invariants are only partly guarded, and one
+  cannot be guarded at all.** `CLAUDE.md` states sixteen rules that must not be
   quietly changed; `scripts/invariant_audit.py` reports which of them would
   actually fail a test if broken, and `tests/test_invariant_audit.py` fails when
-  one loses its guard. Twelve are enforced. The fan-out rule and the
+  one loses its guard. Thirteen are enforced. The fan-out rule and the
   official-split rule are each held in part and named in full; "say what is simulated" is prose discipline
   and is declared unenforceable rather than counted as passing. Every claim was
   checked by breaking the invariant and watching the suite —

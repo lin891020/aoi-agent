@@ -98,8 +98,8 @@ docker run --rm -p 8000:8000 \
 
 ## Invariants — do not quietly change these
 
-Fifteen of them, and `scripts/invariant_audit.py` says which ones would
-actually fail a test if broken: **12 enforced, 2 partly enforced, 1
+Sixteen of them, and `scripts/invariant_audit.py` says which ones would
+actually fail a test if broken: **13 enforced, 2 partly enforced, 1
 unenforceable**. Each
 entry there names the tests that hold it and states what those tests do not
 cover; adding an invariant here without an entry fails
@@ -119,7 +119,12 @@ board is back under the unscoped reading.
 
 - **Report an operating-point curve, never bare accuracy.** An escape ships a
   bad board; a false call costs seconds. Headline is "review removed at an
-  escape budget".
+  escape budget" -- and since 2026-08-24 that headline carries an interval.
+  14 escapes in 2,997 defects is 0.47% on this split exactly; read as the rate
+  on unseen defects, which is the only reading that justifies deploying a
+  threshold, the 95% interval runs to 0.78% and **does not exclude exceeding
+  QP-110's budget**. Every escape figure published before that date was a point
+  estimate with nothing beside it. `scripts/prevalence_report.py`.
 - **The LLM explains; it does not decide.** Measured, its verdict was worse
   than the classifier's (12 overrides, 1 right) and its `confident` flag was
   worse at selecting who needs a person than a plain threshold on the
@@ -198,6 +203,15 @@ board is back under the unscoped reading.
   again -- it fails on a value that drifts from its source, and on a threshold
   that reaches the code with no row in the table at all. See
   docs/architecture.md.
+- **Say what the prevalence is, and what it costs.** The split is **36.8%
+  genuine defects** (2,997 of 8,143 candidates); no line is, and an AOI tuned
+  for recall over-calls by one to two orders of magnitude. Measured rather than
+  hedged: the escape rate is prevalence-*invariant* (it divides by
+  `defects_total`, so re-weighting cancels), review reduction *rises* on a
+  cleaner line (56.2% is a floor, not a ceiling -- 88.2% at 0.5% prevalence),
+  and what does not transfer is the **verification**: a pilot seeing 100
+  defects cannot confirm a 0.5% budget and one seeing 30 says nothing at all.
+  Do not quote a review-reduction figure without the prevalence it assumes.
 - **Use the official DeepPCB split.** Do not re-split; comparability matters.
 - Split train/val **by image**, never by patch -- patches from one board leak.
 - **An automated disposition names what produced it.** A `model` or `agent`
