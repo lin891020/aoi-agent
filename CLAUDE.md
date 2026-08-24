@@ -13,6 +13,7 @@ the engineering has to hold up to an interviewer's questions, not just run.
 ```
 src/aoi_agent/
     data/deeppcb.py         dataset access, official splits
+    aoi/registration.py     phase correlation, and the three things it refuses
     aoi/simulator.py        template differencing -- the "AOI"
     aoi/matching.py         label candidates against ground truth
     vision/                 patches, dataset, ResNet-18, inference, operating
@@ -203,18 +204,22 @@ board is back under the unscoped reading.
   again -- it fails on a value that drifts from its source, and on a threshold
   that reaches the code with no row in the table at all. See
   docs/architecture.md.
-- **There is no registration stage, and every figure here starts after one.**
-  The single `warpAffine` in the project is in `simulator.apply_perturbation`
-  and it *introduces* misalignment: nothing aligns an unaligned pair, because
-  DeepPCB never handed it one -- its authors registered and binarised before
-  shipping. Swept: at a 4 px shift (about 83 microns at 48 px/mm) candidates go
-  18.1 -> 58.8 per board, which the re-verifier is built to absorb, and **AOI
-  recall falls 95.0% -> 90.4%**, which nothing absorbs. A defect the AOI never
-  emits is not inside the escape budget, it is before it -- no threshold
-  reaches it, no re-verifier recovers it, and it appears in no escape figure
-  here because those are computed over candidates. **4.6 points upstream against
-  0.5% downstream.** `tests/test_registration.py` asserts the stage is still
-  absent, so it cannot arrive while the report says it has not.
+- **Registration recovers a translation and nothing else, and it must be able
+  to refuse.** There was no registration stage at all until 2026-08-24 -- the
+  detector inherited pre-registered pairs from DeepPCB, and misalignment cost
+  4.6 points of AOI recall (95.0% -> 90.4% at 4 px), which is a loss *before*
+  the escape budget where no threshold reaches it. `aoi/registration.py` is
+  phase correlation and it takes a 4 px shift back to 20.7 candidates a board
+  from 58.1, recall 90.8% -> 97.6%. **It does not recover rotation** -- at 1.0
+  degrees the queue stays at roughly twice an aligned pair's -- and it is not
+  allowed to pretend otherwise. Three refusals, each measured rather than
+  assumed: a sub-pixel correction is declined, because warping a binarised
+  image writes grey along every edge and registering already-aligned pairs made
+  17 of 60 *worse*; an estimate over 5% of the frame is declined, because four
+  of those 60 produced 240-355 px estimates on a 640 px frame; and a low peak is
+  declined. **Confidence alone is not the guard** -- two of those four came back
+  at 0.134 and 0.076, and the first draft's docstring claiming it sufficient was
+  wrong. Held by `tests/test_registration_stage.py`.
 - **The escape budget is one number over six classes the work instructions do
   not treat alike.** WI-201 and WI-202 admit no acceptable open or short; the
   other four are conditional on a measurement. At the shipped threshold the

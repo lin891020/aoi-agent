@@ -48,13 +48,30 @@ class Perturbation:
     """
 
     max_shift_px: int = 0
+    max_rotation_deg: float = 0.0
+    """A board placed slightly crooked, which is the disturbance a translation
+    cannot describe.
+
+    Added 2026-08-24, when `aoi/registration.py` needed something it could not
+    already invert: phase correlation recovers a pure translation exactly, so a
+    registration stage measured only against `max_shift_px` measures the
+    arithmetic that produced the shift. HRIPCB's authors rotated half their
+    images for the same reason -- a board is not misplaced along one axis, it is
+    misplaced.
+    """
+
     noise_sigma: float = 0.0
     gain: float = 1.0
     seed: int | None = None
 
     @property
     def enabled(self) -> bool:
-        return self.max_shift_px > 0 or self.noise_sigma > 0 or self.gain != 1.0
+        return (
+            self.max_shift_px > 0
+            or self.max_rotation_deg > 0
+            or self.noise_sigma > 0
+            or self.gain != 1.0
+        )
 
 
 @dataclass
@@ -139,11 +156,26 @@ def apply_perturbation(
     rng = np.random.default_rng(perturbation.seed)
     out = template.astype(np.float32)
 
-    if perturbation.max_shift_px > 0:
-        dx, dy = rng.integers(
-            -perturbation.max_shift_px, perturbation.max_shift_px + 1, size=2
+    if perturbation.max_shift_px > 0 or perturbation.max_rotation_deg > 0:
+        dx, dy = (
+            rng.integers(
+                -perturbation.max_shift_px, perturbation.max_shift_px + 1, size=2
+            )
+            if perturbation.max_shift_px > 0
+            else (0, 0)
         )
-        matrix = np.float32([[1, 0, dx], [0, 1, dy]])
+        angle = (
+            float(rng.uniform(-perturbation.max_rotation_deg,
+                              perturbation.max_rotation_deg))
+            if perturbation.max_rotation_deg > 0
+            else 0.0
+        )
+        # One warp for both, about the image centre: two warps would interpolate
+        # twice and blur a board that a line only ever placed once.
+        centre = (out.shape[1] / 2.0, out.shape[0] / 2.0)
+        matrix = cv2.getRotationMatrix2D(centre, angle, 1.0)
+        matrix[0, 2] += dx
+        matrix[1, 2] += dy
         out = cv2.warpAffine(
             out,
             matrix,

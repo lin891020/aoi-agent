@@ -1697,6 +1697,12 @@ The classifier emits a full distribution, so a candidate about to be dismissed s
 
 ### Registration — the stage this pipeline does not have
 
+**Superseded the same day: it has one now.** `aoi/registration.py` was written
+against this measurement and the section after it reports what the stage
+recovers. This one stays because it is the cost that justified building it, and
+because the recall figure below is what "no registration" is worth on this
+split. The heading is left as it was written.
+
 The only `warpAffine` in this project is in `simulator.apply_perturbation`, and it *introduces* misalignment. **Nothing here aligns an unaligned pair**, because DeepPCB never handed it one — its README says the registration and thresholding were done before shipping. The headline figure is therefore measured on a pipeline that begins after the hardest stage of real AOI, and that had not been written down anywhere. Swept over 500 test pairs in 10 s, `scripts/registration_report.py`, commit `51ef676`.
 
 DeepPCB scans at about 48 px/mm, so the largest shift below is roughly 83 microns. These are not extreme values for a stage and a conveyor.
@@ -1716,4 +1722,39 @@ DeepPCB scans at about 48 px/mm, so the largest shift below is roughly 83 micron
 The 3×3 opening is the mechanism on both sides: it erases the one- and two-pixel slivers misalignment leaves along every trace edge, which is what keeps the queue from exploding further, and it erases small real defects along with them. `scripts/opening_kernel_sweep.py` swept that trade at 0 px. **This table is the same trade at a shift the sweep never considered**, and it moves against the defects.
 
 **What this does not establish.** It sweeps a pure translation on images that are already binarised. A real misregistration is a translation, a rotation and a scale, on grey images under a lamp that ages — and binarisation is the other thing DeepPCB removed. So this is a lower bound on the disturbance and an upper bound on the recall, and it says nothing about which shift a line actually runs at: that is a property of a stage and a camera, neither of which is in this repository. What it gives a line that knows its own repeatability is a curve to read its own number off.
+
+
+### Registration — what a translation-only stage buys, and where it stops
+
+The closed loop for the gap named above: disturb by a known amount, register without being told it, measure what came back. It runs entirely on DeepPCB — the disturbance is synthesised here, so the truth is known exactly — which is why **no second dataset was needed to build this stage**. One is needed to ask whether it survives a misalignment nobody synthesised. 500 test pairs in 22 s, `scripts/registration_recovery.py`, commit `17468ca`.
+
+Phase correlation, not feature matching: a binarised board is a repeating field of copper with no texture to key on, and the corners that survive look like every other corner. Correlation in the Fourier domain uses all of the image instead of trusting a few points of it.
+
+| disturbance | candidates before → after | recall before → after | median confidence | boards made worse |
+|---|---|---|---|---|
+| aligned | 18.1 → **16.1** | 95.0% → **95.6%** | 0.76 | 39/500 |
+| shift 2 px | 43.9 → **19.3** | 94.6% → **97.4%** | 0.76 | 51/500 |
+| shift 4 px | 58.1 → **20.7** | 90.8% → **97.6%** | 0.76 | 27/500 |
+| rotate 0.5° | 39.8 → **37.1** | 97.3% → **97.5%** | 0.71 | 47/500 |
+| rotate 1.0° | 53.4 → **50.4** | 96.9% → **96.9%** | 0.61 | 74/500 |
+| shift 4 px + rotate 1.0° | 60.9 → **50.5** | 91.2% → **97.4%** | 0.63 | 172/500 |
+
+**Translation comes back, and that row is the least interesting one.** A 4 px shift takes candidates to 58.1 a board and registration returns them to 20.7, against 18.1 for an undisturbed pair; recall goes 90.8% → 97.6%. Phase correlation inverts a pure translation, so measuring only this measures the arithmetic that produced the shift.
+
+**Rotation does not come back, and the queue is where it shows.** At 1.0° candidates go 53.4 → 50.4 — still around twice the 16.1 an aligned pair produces — while recall holds at 96.9%. A stage that shifts cannot unrotate, and 1.0° across a 640 px frame is about 5 px at the corners. The residual does not vanish; it stays in the review queue, which is the layer built to absorb it.
+
+**Under both, the translation is recovered and the rotation is not.** Candidates 60.9 → 50.5, recall 91.2% → 97.4%. The half that costs defects comes back; the half that costs queue stays.
+
+**Two things the table says that the paragraphs above do not.** Recall after registration (97.6%) is *higher* than the undisturbed baseline (95.0%), because **DeepPCB is not perfectly registered either** — the median estimated shift on an untouched pair is 0.48 px and the 90th percentile is 4.30 px. The stage improves the dataset it was built against, which is a small result and an honest one: 'pre-registered' was never 'aligned'.
+
+And under both disturbances the stage leaves 172 of 500 boards with *more* candidates than not registering would have — correcting a rotated board's translation moves the residual rather than removing it. **That trade is taken deliberately and it is the right way round for this system**: those boards cost an operator seconds each, and the same correction takes recall 91.2% → 97.4%. An escape ships a board; a false call costs seconds. Anything that buys recall with queue is buying in the right direction, and this is the same asymmetry the operating point is swept on.
+
+**Two guards, and the first draft had neither — which is the part of this worth reading.** Written with only a confidence floor, the stage made 17 of 60 *already-aligned* pairs worse. Two reasons, both measured:
+
+- On an aligned pair the median estimated shift is 0.48 px. These images are binarised, so warping by half a pixel writes grey along every edge and the detector reads it as difference. `MIN_SHIFT_PX` declines a sub-pixel correction, and that alone takes 17 boards to 3.
+- Four of those 60 produced estimates between 240 and 355 px on a 640 px frame — correlation failures, not boards. **Confidence caught two of them.** The other two came back at 0.134 and 0.076, above any floor low enough to admit the real cases. `MAX_SHIFT_FRACTION` is the guard that catches those, and it exists because the first version's docstring claimed confidence was sufficient and the measurement said otherwise.
+
+Confidence is kept, and it is reported, because it *is* the signal for the case it was wrong about: it degrades under rotation, where the peak genuinely smears. It does not degrade when the peak is simply in the wrong place.
+
+**What this does not establish.** The floor `MIN_CONFIDENCE` is not swept — there is no labelled set of mis-sorted panels here to sweep it against — so it is a value chosen to be obviously safe rather than an operating point. The disturbances are synthetic and this is still a binarised, pre-registered dataset underneath: illumination drift, scale and a board that flexes are all absent. And nothing here says which of these a line runs at. What the table supports is narrow and worth having: **translation is recoverable cheaply, rotation is not recoverable by this method at all, and the combination is where a half-working stage does damage.**
 

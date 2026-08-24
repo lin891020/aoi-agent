@@ -1,52 +1,23 @@
-"""The stage this pipeline does not have.
+"""What misalignment costs, measured before there was a stage to answer it.
 
-The only `warpAffine` in the project *introduces* misalignment. Nothing aligns
-an unaligned pair, because DeepPCB never handed it one -- its authors did the
-registration and the binarisation before shipping. So every published figure
-here is measured on a pipeline that begins after the hardest stage of real AOI,
-and what these tests hold is that the fact stays stated and the curve stays
-measured.
+`test_the_pipeline_still_has_no_registration_stage` lived here and asserted the
+absence -- exactly one image-alignment call, in the function that *adds*
+misalignment. It failed the day `aoi/registration.py` was written, which is what
+it was for: the failure is the prompt to rewrite the section it guarded, not a
+regression. Retired rather than relaxed.
+
+What stays is the cost curve, which is still true and is what justified building
+the stage. What the stage recovers is `tests/test_registration_stage.py`.
 """
 
 from __future__ import annotations
 
-import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE = ROOT / "src" / "aoi_agent"
-
-
-def test_the_pipeline_still_has_no_registration_stage():
-    """Not a wish -- a fact about the source, asserted so it cannot stop being
-    true quietly.
-
-    If somebody adds registration, this fails, and the right response is to
-    delete this test and rewrite the benchmarks section it guards. What must not
-    happen is a registration stage arriving while the report still says there is
-    none, or the report being deleted while there still is none.
-    """
-    # `--include=*.py`: a compiled `.pyc` carries the same call and matching it
-    # made this depend on whether anything had been imported yet.
-    aligners = subprocess.run(
-        ["grep", "-rn", "-E", "--include=*.py",
-         r"warpAffine|findHomography|estimateAffine|"
-         r"matchTemplate|phaseCorrelate", str(SOURCE)],
-        capture_output=True, text=True,
-    ).stdout.strip().splitlines()
-
-    assert len(aligners) == 1, (
-        "the project gained or lost an image-alignment call:\n  "
-        + "\n  ".join(aligners)
-    )
-    assert "simulator.py" in aligners[0]
-    # And it is the one that *adds* misalignment, not one that removes it.
-    source = (SOURCE / "aoi" / "simulator.py").read_text()
-    assert "def apply_perturbation" in source
-    assert source.index("def apply_perturbation") < source.index("cv2.warpAffine")
 
 
 @pytest.mark.dataset

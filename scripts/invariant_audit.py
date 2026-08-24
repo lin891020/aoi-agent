@@ -458,32 +458,37 @@ REGISTRY: tuple[Entry, ...] = (
         ),
     ),
     Entry(
-        match="There is no registration stage",
+        match="Registration recovers a translation and nothing else",
         status=ENFORCED,
         tests=(
-            "tests/test_registration.py::test_the_pipeline_still_has_no_registration_stage",
-            "tests/test_registration.py::test_the_benchmarks_section_states_the_missing_stage",
-            "tests/test_registration.py::test_recall_falls_with_misregistration_and_the_queue_grows",
+            "tests/test_registration_stage.py::test_it_finds_a_shift_it_was_not_told_about",
+            "tests/test_registration_stage.py::test_the_test_image_moves_and_the_template_never_does",
+            "tests/test_registration_stage.py::test_a_sub_pixel_correction_is_declined",
+            "tests/test_registration_stage.py::test_an_implausible_shift_is_declined",
+            "tests/test_registration_stage.py::test_confidence_alone_would_not_have_caught_it",
         ),
         note=(
-            "An absence held as a fact about the source rather than as a wish: "
-            "exactly one image-alignment call, in the function that adds "
-            "misalignment. Adding registration fails the test, which is the "
-            "point -- the failure is the prompt to rewrite the section, and "
-            "what must not happen is a stage arriving while the report says "
-            "there is none."
+            "The three refusals are held individually, and so is the rule that "
+            "the *test* image moves rather than the template -- warping the "
+            "template would carry the ground-truth boxes along with it and make "
+            "every measurement look better by construction. This entry replaced "
+            "one asserting the stage did not exist, which failed the day it did: "
+            "the failure was the prompt to rewrite, which is what an absence "
+            "held as a fact is for."
         ),
         gap=(
-            "The sweep is a pure translation on images that are already "
-            "binarised, so it is a lower bound on the disturbance and an upper "
-            "bound on the recall. Rotation, scale and illumination are the rest "
-            "of real misregistration and none of them is here. The curve test "
-            "is `-m dataset` and does not run in CI."
+            "Nothing holds the recovery *curve* -- that it takes a 4 px shift "
+            "back to baseline -- outside the dataset-marked test, which CI does "
+            "not run. And nothing holds the claim that rotation is unrecoverable "
+            "beyond the benchmark table: a log-polar or ECC step would change it "
+            "and no test would notice."
         ),
         proved_by=(
-            "Added a second `warpAffine`: the source test fails. Deleted the "
-            "benchmarks heading: the section test fails. The curve itself is "
-            "re-measured rather than asserted from the published table."
+            "Set MIN_SHIFT_PX to 0: 1 test failed. Set MAX_SHIFT_FRACTION to 1: "
+            "2 failed. Warped the template instead of the test: 1 failed -- and "
+            "did not, until the fixture's mark was moved to a region blank in "
+            "*both* images and the assertion stopped being satisfied by a trace "
+            "that was already there."
         ),
     ),
     Entry(
