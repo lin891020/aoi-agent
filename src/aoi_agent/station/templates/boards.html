@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}{{ t('boards.title') }}{% endblock %}
+{% block content %}
+<section class="panel">
+  <h1>{{ t('boards.title') }}</h1>
+  <p class="sub">{{ t('boards.sub') }}</p>
+
+  {# The two counts are the point of the page: the queue shows only what the
+     agent could not settle, so without a released count beside the held one a
+     reader has no denominator and takes the failures for the system. #}
+  <p class="sub">
+    <a href="/boards"{% if not status %} class="on"{% endif %}>{{ t('boards.all', count=counts.total) }}</a>
+    &middot;
+    <a href="/boards?status=held"{% if status == 'held' %} class="on"{% endif %}>{{ t('boards.held', count=counts.held) }}</a>
+    &middot;
+    <a href="/boards?status=released"{% if status == 'released' %} class="on"{% endif %}>{{ t('boards.released', count=counts.released) }}</a>
+  </p>
+
+  {% if not_shown %}
+  <p class="sub warn-line">
+    {{ t('boards.truncated', shown=rows|length, total=total, hidden=not_shown) }}
+  </p>
+  {% endif %}
+
+  {% if not rows %}
+    <p class="empty">
+      {{ t('boards.empty') }}<br>
+      {{ t('boards.empty_hint') }}
+      <code>uv run python -m aoi_agent board &lt;stem&gt; --queue</code>
+    </p>
+  {% else %}
+  <table class="queue">
+    <thead>
+      <tr>
+        <th>{{ t('boards.board') }}</th>
+        <th>{{ t('boards.disposition') }}</th>
+        <th class="num">{{ t('boards.regions') }}</th>
+        <th class="num">{{ t('boards.confirmed') }}</th>
+        <th class="num">{{ t('boards.still_waiting') }}</th>
+        <th>{{ t('board.authority') }}</th>
+        {# UTC, and said so -- the same rule the queue's own ordering column
+           had to learn. This table is ordered by this column. #}
+        <th>{{ t('common.when_utc') }}</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td class="mono">{{ row.board_stem }}</td>
+        <td>
+          <span class="chip {{ 'warn' if row.disposition == 'held' else 'done' }}">
+            {{ row.disposition }}
+          </span>
+        </td>
+        <td class="num">{{ row.candidate_count }}</td>
+        <td class="num">{{ row.confirmed_count }}</td>
+        <td class="num">{{ row.pending_count }}</td>
+        <td>{{ row.decided_by }}</td>
+        <td class="dim mono">{{ (row.decided_at or '')[:19]|replace('T', ' ') }}</td>
+        <td><a href="/board/{{ row.board_stem }}">{{ t('boards.open') }}</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endblock %}

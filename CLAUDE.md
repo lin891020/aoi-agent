@@ -45,7 +45,7 @@ src/aoi_agent/
 scripts/                    gate_check, build_patches, train, report, seed_store,
                             analysis_eval, add_operator,
                             mark_unattributed_resolutions, ...
-tests/                      1,150 tests; dataset-dependent ones behind `-m dataset`
+tests/                      1,171 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -60,7 +60,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 1,150 tests, no GPU needed, no model called
+uv run pytest                                    # 1,171 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
@@ -82,7 +82,7 @@ uv run python scripts/check_mcp_servers.py       # servers start and advertise t
 uv run python scripts/invariant_audit.py         # which invariants below would fail a test if broken
 uv run python scripts/invariant_audit.py --collect  # the same, checking pytest really collects each one
 uv run python -m aoi_agent board 20085294 --queue  # run a board, queue what it cannot settle
-uv run python -m aoi_agent station               # review station on :8110 -- the queue, and /ask
+uv run python -m aoi_agent station               # review station on :8110 -- the queue, /boards and /ask
 uv run python -m aoi_agent queue                 # what is waiting on a person
 uv run python -m aoi_agent explanations          # how many dispositions carry no rationale, and why
 uv run python -m aoi_agent provenance 20085294   # who decided this board, when, and under which model
@@ -392,11 +392,25 @@ again.
 
 On the station itself:
 
-- Board browser, so the 82% the agent settled is visible and not just the
-  queue. Half-built: `/board/<stem>` renders one board's record -- its
-  disposition and every region's, with the weights, thresholds and code behind
-  each -- but there is no index of boards to reach it from except a link on a
-  queued region.
+- **The board browser is whole, and what it fixed was a reading of the whole
+  system.** Closed 2026-08-25. `/board/<stem>` had rendered one board's record
+  -- its disposition and every region's, with the weights, thresholds and code
+  behind each -- since 2026-08-23, and the only route to it was a link on a
+  *queued* region. So everything reachable from the front door was a region the
+  agent could not settle: the 82% it did settle had no page, and a reviewer
+  opening this station read the failures and took them for the system.
+  `/boards` is the index, and it carries the denominator the queue cannot --
+  held and released as `COUNT(*)` over the standing rows, never the length of
+  the page, which is the queue badge's own defect written down.
+  **"This board's disposition" is a rule, not a column** -- rows accumulate, so
+  a board held on Monday and released on Tuesday is two rows -- and the rule
+  lives once, in `dispositions._standing_ids`, because two expressions of it
+  would both return a real row and disagree only on the boards dispositioned
+  twice, which are the boards an auditor asks about.
+  `tests/test_board_index.py` holds `recent()` against `latest()` rather than
+  the two being merged. An unknown `?status=` is refused rather than ignored:
+  a filter that silently matches everything answers a typed URL with a
+  plausible page. No `ground_truth` here either, at the same dict boundary.
 - **Timestamps are stored UTC and displayed UTC**, and labelled `UTC` on the
   board record, the CLI, the corrections page, and -- closed 2026-08-25 -- the
   queue, which until then showed no clock at all: the ordering rule ("whoever

@@ -663,6 +663,46 @@ def patch_png(stem: str, index: int):
     return Response(png, media_type="image/png")
 
 
+@app.get("/boards", response_class=HTMLResponse)
+def boards_page(request: Request, status: str | None = None, limit: int = 50):
+    """Every board this system has dispositioned, and which way.
+
+    The station showed the queue -- the regions the agent could *not* settle --
+    and one board page reachable only by a link from a queued region. So the
+    82% it did settle had no route into the UI at all, and a reviewer opening
+    the station read the failures and took them for the system. This is the
+    index that page was always missing.
+
+    Read-only, like the page it links to. Nothing here dispositions anything.
+
+    ``status`` is refused rather than ignored when it is not a disposition this
+    store writes: a filter that silently matches everything returns a plausible
+    page for a typed URL, and the count above it would then be a true number
+    answering a question nobody asked.
+    """
+    if status is not None and status not in (dispositions.HELD, dispositions.RELEASED):
+        raise HTTPException(
+            400,
+            f"unknown disposition {status!r}; "
+            f"expected {dispositions.HELD} or {dispositions.RELEASED}",
+        )
+    counts = dispositions.board_counts()
+    rows = dispositions.recent(limit=limit, status=status)
+    total = counts[status] if status else counts["total"]
+    return templates.TemplateResponse(
+        request,
+        "boards.html",
+        {
+            "rows": rows,
+            "counts": counts,
+            "status": status,
+            "total": total,
+            "not_shown": max(total - len(rows), 0),
+            "waiting": escalations.pending_count(),
+        },
+    )
+
+
 @app.get("/board/{stem}", response_class=HTMLResponse)
 def board_page(request: Request, stem: str):
     """What was decided about one board, and under what.

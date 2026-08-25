@@ -104,6 +104,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "deferred.empty": '目前沒有被退回的區域。',
         "deferred.declines": '幾個人退回',
         "deferred.no_routing_note": '這一頁只是清單，不是派工。這個站台沒有資深/一般的分別 —— 每個作業員都能回答每一區 —— 所以沒有東西會把這些指派給誰。',
+        "nav.boards": '板',
         "nav.deferred": '無法判斷',
         "queue.deferred_link": '另外有 {count} 區沒有人能判斷 →',
         "queue.empty": '沒有待處理項目。',
@@ -162,6 +163,25 @@ STRINGS: dict[str, dict[str, str]] = {
         "region.back_to_queue": '回到佇列 →',
         "region.path": '路徑',
         "region.timings": '耗時',
+        "boards.title": '這個系統判過的板',
+        "boards.sub":
+            "佇列上的是 agent 無法定案的區域，也就是失敗的那一小塊。這一頁是另一邊："
+            "已經有板級處置的每一片板，往哪一邊倒，以及底下有多少區域支撐它。"
+            "只讀——這裡不判定任何東西，只是已經做過的判定的紀錄。",
+        "boards.all": '全部 {count}',
+        "boards.held": '扣住 {count}',
+        "boards.released": '放行 {count}',
+        "boards.truncated":
+            "顯示最新 {shown} 片，共 {total} 片；另外 {hidden} 片不在這一頁上。"
+            "上面的計數是對整張表數的，不是對這一頁數的。",
+        "boards.empty": '還沒有任何板級處置。',
+        "boards.empty_hint": '跑一片板就會有：',
+        "boards.board": '板',
+        "boards.disposition": '處置',
+        "boards.regions": '旗標區域',
+        "boards.confirmed": '確認為缺陷',
+        "boards.still_waiting": '等待人工',
+        "boards.open": '看紀錄 →',
         "board.title": '板 {stem}',
         "board.disposition": '板級處置',
         "board.sub":
@@ -342,6 +362,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "deferred.empty": "Nothing has been handed back.",
         "deferred.declines": "handed back by",
         "deferred.no_routing_note": "This page is a list, not an assignment. The station has no notion of senior and ordinary — every operator can answer every region — so nothing here routes these to anybody.",
+        "nav.boards": 'boards',
         "nav.deferred": "Can't tell",
         "queue.deferred_link": "{count} more that nobody could judge →",
         "queue.empty": 'Nothing waiting.',
@@ -406,6 +427,28 @@ STRINGS: dict[str, dict[str, str]] = {
         "region.back_to_queue": 'Back to the queue →',
         "region.path": 'path',
         "region.timings": 'timings',
+        "boards.title": 'Boards this system has judged',
+        "boards.sub":
+            "The queue holds the regions the agent could not settle -- the "
+            "small part that failed. This page is the other side: every board "
+            "with a standing disposition, which way it went, and how many "
+            "regions are behind that. Read-only -- nothing here dispositions "
+            "anything, it is the record of dispositions already made.",
+        "boards.all": 'all {count}',
+        "boards.held": 'held {count}',
+        "boards.released": 'released {count}',
+        "boards.truncated":
+            "Showing the {shown} most recent of {total}; {hidden} are not on "
+            "this page. The counts above are taken over the whole table, not "
+            "over this page.",
+        "boards.empty": 'No board has been dispositioned yet.',
+        "boards.empty_hint": 'Running one board is all it takes:',
+        "boards.board": 'board',
+        "boards.disposition": 'disposition',
+        "boards.regions": 'flagged',
+        "boards.confirmed": 'confirmed',
+        "boards.still_waiting": 'waiting on a person',
+        "boards.open": 'record →',
         "board.title": 'board {stem}',
         "board.disposition": 'Board disposition',
         "board.sub":

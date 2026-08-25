@@ -234,6 +234,88 @@ def latest(stem: str) -> dict | None:
     return rows[0] if rows else None
 
 
+def _standing_ids():
+    """The id of each board's standing disposition, as a subquery.
+
+    Rows accumulate, so "this board's disposition" is a *rule* and not a
+    column, and the rule is the one ``history`` already uses: newest
+    ``decided_at``, ties broken by ``id``. Written once here because a second
+    definition of latest is a second answer to the only question this table
+    exists to answer, and the two would disagree precisely on the boards an
+    auditor asks about -- the ones dispositioned twice in a day.
+
+    ``test_the_index_and_the_board_page_agree_on_what_stands`` holds the two
+    together rather than a refactor: ``latest()`` reads one board and this
+    reads all of them, and the guard is that they never differ.
+    """
+    ranked = select(
+        BoardDisposition.id.label("id"),
+        func.row_number()
+        .over(
+            partition_by=BoardDisposition.board_id,
+            order_by=(
+                BoardDisposition.decided_at.desc(),
+                BoardDisposition.id.desc(),
+            ),
+        )
+        .label("rank"),
+    ).subquery()
+    return select(ranked.c.id).where(ranked.c.rank == 1)
+
+
+def board_counts() -> dict[str, int]:
+    """How many boards stand held and how many released.
+
+    A ``COUNT(*)`` over the standing rows, deliberately not ``len(recent())``.
+    The queue badge counted the length of a capped list for a while and was the
+    same wrong number in five places at once; an aggregate that silently agrees
+    with its own page size is worse than no aggregate, because the page looks
+    consistent.
+
+    Boards with no disposition row are in neither count and in no total here.
+    That is not an oversight: a board nobody has run is not a released board,
+    and the fleet size lives in ``boards``, not in this table.
+    """
+    with session_factory()() as session:
+        rows = session.execute(
+            select(BoardDisposition.disposition, func.count(BoardDisposition.id))
+            .where(BoardDisposition.id.in_(_standing_ids()))
+            .group_by(BoardDisposition.disposition)
+        ).all()
+    counts = {HELD: 0, RELEASED: 0}
+    counts.update({disposition: count for disposition, count in rows})
+    counts["total"] = sum(count for _disposition, count in rows)
+    return counts
+
+
+def recent(limit: int = 50, status: str | None = None) -> list[dict]:
+    """The boards this system has dispositioned, newest first.
+
+    The station could show the queue and one board reached by a link from it,
+    which meant the 82% the agent settled had no page at all -- the only thing
+    visible was what it could not settle. A reviewer reading only the queue is
+    reading the failures and calling it the system.
+
+    Read-only, and no ``ground_truth``: ``_as_dict`` carries none, which is the
+    same dict boundary the queue and the analysis page use rather than a rule
+    about templates.
+    """
+    with session_factory()() as session:
+        query = (
+            select(BoardDisposition, Board.stem)
+            .join(Board, BoardDisposition.board_id == Board.id)
+            .where(BoardDisposition.id.in_(_standing_ids()))
+        )
+        if status is not None:
+            query = query.where(BoardDisposition.disposition == status)
+        rows = session.execute(
+            query.order_by(
+                BoardDisposition.decided_at.desc(), BoardDisposition.id.desc()
+            ).limit(limit)
+        ).all()
+        return [_as_dict(row, stem) for row, stem in rows]
+
+
 def decision_provenance(stem: str) -> list[dict]:
     """Every region on a board with the decision that stands and what made it.
 
