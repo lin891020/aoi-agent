@@ -45,7 +45,7 @@ src/aoi_agent/
 scripts/                    gate_check, build_patches, train, report, seed_store,
                             analysis_eval, add_operator,
                             mark_unattributed_resolutions, ...
-tests/                      1,171 tests; dataset-dependent ones behind `-m dataset`
+tests/                      1,173 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -60,7 +60,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 1,171 tests, no GPU needed, no model called
+uv run pytest                                    # 1,173 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
@@ -472,7 +472,15 @@ On the station itself:
   Held by `tests/test_deferral.py`. **What it deliberately does not do is route
   anything to anyone** -- this station has no notion of who is more senior, so
   `/deferred` is a list and says on its face that it is not an assignment.
-  Giving it teeth needs roles, which is the item below.
+  Giving it teeth needs roles, which is the item below -- and once roles
+  shipped, that standing note went false where it stood: it still read "the
+  station has no notion of senior and ordinary, every operator can answer every
+  region", one paragraph above the line telling an operator they may not answer
+  these. Two adjacent paragraphs contradicting each other, and the test passed
+  because it asserted only the half that stayed true. Fixed 2026-08-25, and the
+  rule is structural rather than a corrected sentence: **the standing note may
+  not name a role at all**, because anything it says about who may answer is a
+  second source of truth beside the credential file.
 
   **The defect it shipped with, because it is the shape to watch for.**
   `dispositions.OPEN_STATUSES` listed only `pending`, so a deferral took the

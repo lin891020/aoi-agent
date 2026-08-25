@@ -21,7 +21,9 @@ from datetime import datetime
 
 import pytest
 
+from aoi_agent import i18n as strings
 from aoi_agent.provenance import ReviewerIdentity
+from aoi_agent.station import auth
 from aoi_agent.station import service
 from aoi_agent.store import boards, escalations
 from aoi_agent.store.models import (
@@ -413,6 +415,52 @@ def test_a_senior_is_not_told_they_cannot_answer(station, senior):
 
     assert "can answer these" in body
     assert "Nobody is configured as senior" not in body
+
+
+def test_the_standing_note_makes_no_claim_about_who_may_answer(station,
+                                                               senior_elsewhere):
+    """The defect this replaced, and the shape worth keeping a test for.
+
+    The page's standing note read "the station has no notion of senior and
+    ordinary -- every operator can answer every region". True when written, and
+    still rendered after roles shipped -- directly above the line telling this
+    operator they may not answer these. Two adjacent paragraphs flatly
+    contradicting each other, and the older test passed because it asserted
+    only the half that stayed true ("not an assignment").
+
+    So the rule is structural rather than a corrected sentence: **the standing
+    note may not name a role at all.** Anything it says about who may answer is
+    a second source of truth beside the credential file, and the file is the
+    authority -- the same reason the role is read per request rather than off
+    the session.
+    """
+    client, _ = station
+    client.post(f"/c/{STEM}/0/defer", follow_redirects=False)
+
+    for locale in ("en", "zh-TW"):
+        note = strings.STRINGS[locale]["deferred.no_routing_note"]
+        for role in auth.ROLES:
+            assert role not in note.lower(), (
+                f"the {locale} standing note names {role!r}; the credential "
+                f"file is the only thing entitled to say who may answer"
+            )
+        assert note in read_in(client, locale).get("/deferred").text
+
+
+def test_the_two_permission_lines_never_appear_together(station,
+                                                        senior_elsewhere):
+    """One role, one sentence. The contradiction above was visible only because
+    both claims were on the page at once; this fails if they ever are again."""
+    client, _ = station
+    client.post(f"/c/{STEM}/0/defer", follow_redirects=False)
+
+    body = read_in(client, "en").get("/deferred").text
+    may = strings.STRINGS["en"]["deferred.may_answer"]
+    may_not = strings.STRINGS["en"]["deferred.needs_senior"]
+
+    assert (may in body) != (may_not in body), (
+        "the page told this operator both that they may and may not answer"
+    )
 
 
 # ---- the board above the region -----------------------------------------

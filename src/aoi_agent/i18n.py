@@ -103,7 +103,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "deferred.may_answer": '你的權限是 senior，可以回答這裡的區域。',
         "deferred.empty": '目前沒有被退回的區域。',
         "deferred.declines": '幾個人退回',
-        "deferred.no_routing_note": '這一頁只是清單，不是派工。這個站台沒有資深/一般的分別 —— 每個作業員都能回答每一區 —— 所以沒有東西會把這些指派給誰。',
+        "deferred.no_routing_note":
+            '這一頁只是清單，不是派工。誰答得了寫在下面一行，由憑證檔決定；'
+            '但這裡沒有任何東西會把某一區指給某個人，也沒有人會收到通知。'
+            '要有人來清這份清單，得靠交接，不靠這個站台。',
         "nav.boards": '板',
         "nav.deferred": '無法判斷',
         "queue.deferred_link": '另外有 {count} 區沒有人能判斷 →',
@@ -361,7 +364,11 @@ STRINGS: dict[str, dict[str, str]] = {
         "deferred.may_answer": "You are a senior and can answer these.",
         "deferred.empty": "Nothing has been handed back.",
         "deferred.declines": "handed back by",
-        "deferred.no_routing_note": "This page is a list, not an assignment. The station has no notion of senior and ordinary — every operator can answer every region — so nothing here routes these to anybody.",
+        "deferred.no_routing_note":
+            "This page is a list, not an assignment. Who may answer is the "
+            "line below, and it comes from the credential file; but nothing "
+            "here hands a particular region to a particular person and nobody "
+            "is notified. Emptying this list happens at handover, not here.",
         "nav.boards": 'boards',
         "nav.deferred": "Can't tell",
         "queue.deferred_link": "{count} more that nobody could judge →",
