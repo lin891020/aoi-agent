@@ -237,7 +237,13 @@ class Escalation(Base):
     ``escalations.explanation_counts`` reports it."""
 
     status: Mapped[str] = mapped_column(String(16), index=True, default="pending")
-    """``pending``, ``resolved``, or ``resolved_unattributed``.
+    """``pending``, ``deferred``, ``resolved``, or ``resolved_unattributed``.
+
+    ``deferred`` means a person looked at this region and said they could not
+    judge it. It is not a verdict and it is not a closure -- the run stays
+    suspended in the checkpointer, because the region still needs an answer --
+    it only takes the region out of the flow of whoever could not answer it, so
+    the next person reaches something they might be able to.
 
     The third is not a state the station can write. It is a mark applied by
     ``scripts/mark_unattributed_resolutions.py`` to rows this store already
@@ -251,6 +257,54 @@ class Escalation(Base):
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     candidate: Mapped[CandidateRecord] = relationship()
+
+
+class Deferral(Base):
+    """One person, one region, and the statement that they could not judge it.
+
+    **The station had no way to say this until 2026-08-25**, and its absence
+    cost this project real data. The doctrine has always been that an uncertain
+    region goes to a person; what the screen offered that person was seven
+    certain answers and nothing else. Five regions were clicked through without
+    the domain knowledge to judge them, four of the five wrong, and because
+    nothing could tell those labels from an expert's they all had to be deleted
+    by hand. The operator who does not know is the one this table is for.
+
+    Deliberately *not* a ``ReviewDecision``. A deferral is the absence of a
+    verdict, and a row in that table is a training label -- writing "I don't
+    know" there would put it in the next training round, which is the failure
+    the whole thing is trying to avoid. Two tables because they are two
+    different facts, not one fact with a flag.
+
+    They accumulate, and the count is the point: a region three people declined
+    is a harder case than a region one person declined, and that ordering is
+    information no model in this system produces. One person may decline the
+    same region twice -- coming back to it later and still not knowing is a true
+    thing about it, and deduplicating would hide that the queue is stuck.
+    """
+
+    __tablename__ = "deferrals"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    escalation_id: Mapped[int] = mapped_column(ForeignKey("escalations.id"), index=True)
+
+    operator: Mapped[str] = mapped_column(String(64), index=True)
+    """Who declined. Never ``NULL``: ``store.escalations.defer`` refuses a
+    deferral that names nobody, which is the same rule ``record_decision``
+    applies to a human verdict and for the same reason -- "nobody could judge
+    this" and "nobody recorded who could not judge this" are different facts."""
+
+    attribution: Mapped[str] = mapped_column(String(16), index=True)
+    """How that name was established: ``signed_in`` or ``host_account``."""
+
+    note: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    """What they could not tell, if they said. ``NULL`` means they declined
+    without saying why, which is a real and common thing to do and must not be
+    made mandatory -- a required box gets filled with a full stop."""
+
+    deferred_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    escalation: Mapped[Escalation] = relationship()
 
 
 class BoardDisposition(Base):

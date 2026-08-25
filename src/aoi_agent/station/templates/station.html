@@ -12,7 +12,7 @@
       &middot; <a href="/board/{{ stem }}">{{ t('region.board_record') }}</a>
     </span>
     <span class="grow"></span>
-    {% if escalation and escalation.status == 'pending' %}
+    {% if answerable %}
       <span class="chip warn">{{ t('region.waiting_on_you') }}</span>
     {% elif escalation %}
       <span class="chip done">{{ t('region.already_answered') }}</span>
@@ -147,7 +147,7 @@
 
   </div>
 
-  {% if escalation and escalation.status == 'pending' %}
+  {% if answerable %}
   <form class="verdict" method="post" action="/c/{{ stem }}/{{ index }}/verdict">
     <div class="verdict-head">
       <h2>{{ t('region.your_verdict') }}</h2>
@@ -164,6 +164,23 @@
        by the script; empty when nobody measured, which is a true statement
        about the decision rather than a missing field. #}
     <input type="hidden" name="measurement" id="measurement" value="">
+    {% if declines %}
+    {# Shown before the buttons, not after: somebody who declined this
+       yesterday should not rediscover it by spending five minutes on it. #}
+    <div class="declined-before">
+      <p class="sub warn-line">{{ t('region.declined_before', count=declines|length) }}</p>
+      <ul>
+        {% for decline in declines %}
+        <li>
+          <span class="mono">{{ t('region.declined_by',
+                operator=decline.operator, when=decline.deferred_at) }}</span>
+          {% if decline.note %}&mdash; {{ decline.note }}
+          {% else %}<span class="dim">{{ t('region.declined_no_note') }}</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
     <div class="options">
       {% for option in options %}
       <button type="submit" name="verdict" value="{{ option }}"
@@ -176,6 +193,23 @@
     <p class="sub dim">
       {{ t('region.verdict_note') }}
     </p>
+  </form>
+
+  {# The eighth option, and deliberately outside the verdict form: it posts to
+     its own route, because anything reaching the verdict route can end up in
+     `review_decisions`, and "unsure" is the one label that must never become a
+     training label. Two forms because they are two different acts. #}
+  <form class="defer" method="post"
+        action="/c/{{ stem }}/{{ candidate.index_on_board }}/defer">
+    <label class="defer-note" for="defer-note">
+      {{ t('region.defer_note_label') }}
+    </label>
+    <input type="text" id="defer-note" name="note" maxlength="2000"
+           placeholder="{{ t('region.defer_note_placeholder') }}">
+    <button type="submit" class="option defer-button" data-key="0">
+      <kbd>0</kbd>{{ t('region.defer') }}
+    </button>
+    <p class="sub dim">{{ t('region.defer_hint') }}</p>
   </form>
   {% else %}
   <div class="verdict answered">

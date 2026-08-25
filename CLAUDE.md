@@ -45,7 +45,7 @@ src/aoi_agent/
 scripts/                    gate_check, build_patches, train, report, seed_store,
                             analysis_eval, add_operator,
                             mark_unattributed_resolutions, ...
-tests/                      931 tests; dataset-dependent ones behind `-m dataset`
+tests/                      1,141 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -60,7 +60,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 931 tests, no GPU needed, no model called
+uv run pytest                                    # 1,141 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
@@ -87,7 +87,9 @@ uv run python -m aoi_agent queue                 # what is waiting on a person
 uv run python -m aoi_agent explanations          # how many dispositions carry no rationale, and why
 uv run python -m aoi_agent provenance 20085294   # who decided this board, when, and under which model
 uv run python scripts/seed_store.py --migrate-only  # add missing columns to an existing store
-uv run python scripts/add_operator.py <name>        # who may answer the queue
+uv run python scripts/add_operator.py <name> [--role senior]
+                                                 # who may answer the queue, and who
+                                                 # may answer what others handed back
 uv run python scripts/mark_unattributed_resolutions.py --dry-run
                                                  # queue entries closed with no human decision behind them
 
@@ -153,7 +155,7 @@ board is back under the unscoped reading.
   `uv run python -m aoi_agent explanations`. It used to be an error string in
   the rationale field, which read like something the model had concluded and
   which nothing counted. Pinned by
-  `test_an_unparseable_verdict_at_0_93_is_decided_anyway` and
+  `test_an_unparseable_verdict_in_the_explanation_band_is_decided_anyway` and
   `tests/test_explanation_status.py`. The analysis flow's failures terminate in a message on the page
   instead -- an unplanned question, a rejected plan, a branch whose tool raised.
   There is no disposition waiting on any of them and nothing for a person to
@@ -412,11 +414,58 @@ On the station itself:
   deleted by hand -- and the five queue entries left closed behind them still
   read `resolved_unattributed`, which is the true statement about them.
   What is *not* here, on purpose, and should not be added without a reason
-  that is written down: TLS termination, a rate limit or lockout on `/login`,
-  and any notion of who may do *what* -- every operator can answer every region
-  and ask `/ask` anything. The scheme's limits are stated in
-  `station/auth.py`; a shared passphrase still names one operator for two
-  people, and nothing here can tell them apart.
+  that is written down: TLS termination, and a rate limit or lockout on
+  `/login`. The scheme's limits are stated in `station/auth.py`; a shared
+  passphrase still names one operator for two people, and nothing here can tell
+  them apart.
+- **Two roles, and the second one exists to answer one question.** Added
+  2026-08-25 with the deferral path, because that path created the first
+  permission this station actually needed: a region reaches `deferred` because
+  a trained person could not read it, so handing it to the next ordinary
+  operator hands it to the same judgement that already failed, and what comes
+  out is a guess recorded as a training label. `senior` may answer a
+  handed-back region; `operator` may not; **nothing else is gated**, because on
+  a line every trained operator answers every ordinary region and a permission
+  grid over defect classes would encode a policy no work instruction states.
+  The role lives in a third field of the credential file, an old two-field line
+  still parses, and silence about a role reads as `operator` -- reading it as
+  `senior` would grant a permission nobody decided to give, on the file whose
+  whole purpose is making that decidable. **Read from the file on every
+  request, never off the session**: a role frozen at sign-in outlives the file
+  that granted it, so revoking one would take effect whenever the operator next
+  happened to log out, which is not a revocation. A role the vocabulary does
+  not contain is tolerated on read (a typo must not lock out a station) and
+  refused on write, and `add_operator.py --list` reports both any unknown role
+  and the state where **no senior exists at all** -- in which the handed-back
+  queue grows with nobody able to empty it and nothing else anywhere raises.
+  Held by `tests/test_roles.py`.
+- **An operator who cannot judge a region now has a button for it.** Closed on
+  2026-08-25. The doctrine has always been that an uncertain region goes to a
+  person; what the screen offered that person was seven certain answers, so
+  "I don't know" could only be expressed by navigating away -- and a region
+  navigated away from is indistinguishable from one nobody has reached, so the
+  next operator met it and declined it again, and nothing counted how often.
+  That absence has a price already paid: five regions clicked through without
+  the domain knowledge to judge them, four of the five wrong, all five deleted
+  by hand. A deferral is **not** a `ReviewDecision` -- that table is the next
+  training round's labels and "unsure" is the one label that must never be one
+  -- so it is its own table, its own route, and its own queue state
+  (`deferred`). It does not resume the graph either: the interrupt is what
+  keeps the region answerable, and consuming it would close a run nobody
+  answered. Declines accumulate and the count is the ranking, because a region
+  three people could not judge is a different object from one somebody skipped.
+  Held by `tests/test_deferral.py`. **What it deliberately does not do is route
+  anything to anyone** -- this station has no notion of who is more senior, so
+  `/deferred` is a list and says on its face that it is not an assignment.
+  Giving it teeth needs roles, which is the item below.
+
+  **The defect it shipped with, because it is the shape to watch for.**
+  `dispositions.OPEN_STATUSES` listed only `pending`, so a deferral took the
+  escalation out of the open set while the model's row stayed the standing
+  decision, and a board went from **held to released** -- an operator refusing
+  to guess was the act that shipped it. Nothing at the region level was wrong,
+  which is why no region-level test saw it. A new queue state has to be checked
+  against every rule that reads queue state, not only the ones that write it.
 - **Three classes are judged by a ratio, and the ruler now exists.** WI-203's
   own "escalate for measurement" pointed at the operator, who is the last stop,
   so it had nowhere to go. `station/static/measure.js` measures a *ratio* --

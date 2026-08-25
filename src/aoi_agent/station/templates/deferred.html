@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}{{ t('nav.deferred') }} &middot; {{ total }}{% endblock %}
+{% block content %}
+<section class="panel">
+  <h1>{{ t('deferred.title') }}</h1>
+  <p class="sub">{{ t('deferred.sub') }}</p>
+
+  {# Said on the page, not only in a docstring. A list that looks like a work
+     queue but assigns nothing to nobody will be read as a work queue, and the
+     first person to notice is the one who assumed somebody else had it. #}
+  <p class="sub dim">{{ t('deferred.no_routing_note') }}</p>
+
+  {% if not seniors %}
+  {# The state where this page grows and nobody can empty it. It raises
+     nothing anywhere else, so it is said here, where the person who can fix
+     it is already looking. #}
+  <p class="sub warn-line">{{ t('deferred.no_senior') }}</p>
+  {% elif may_answer %}
+  <p class="sub dim">{{ t('deferred.may_answer') }}</p>
+  {% else %}
+  <p class="sub warn-line">{{ t('deferred.needs_senior') }}</p>
+  {% endif %}
+
+  {% if not_shown %}
+  <p class="sub warn-line">
+    {{ t('queue.truncated', shown=rows|length, total=total, hidden=not_shown) }}
+  </p>
+  {% endif %}
+
+  {% if not rows %}
+    <p class="empty">{{ t('deferred.empty') }}</p>
+  {% else %}
+  <table class="queue">
+    <thead>
+      <tr>
+        <th>{{ t('common.region') }}</th>
+        <th>{{ t('common.model_said') }}</th>
+        <th>{{ t('queue.false_call_probability') }}</th>
+        <th>{{ t('queue.line_machine') }}</th>
+        <th>{{ t('deferred.declines') }}</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td class="mono">{{ row.reference }}</td>
+        <td><span class="chip">{{ row.model_class }}</span></td>
+        <td class="mono">{{ '%.2f'|format(row.false_call_probability) }}</td>
+        <td class="mono">{{ row.line_id }} / {{ row.machine_id }}</td>
+        <td class="mono">{{ row.declines }}</td>
+        <td><a class="go" href="/c/{{ row.board_stem }}/{{ row.index }}">{{ t('queue.review') }}</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</section>
+{% endblock %}

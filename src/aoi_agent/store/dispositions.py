@@ -51,7 +51,18 @@ MIXED = "mixed"
 #: one of them: those rows were closed, badly, and are marked as such -- see
 #: ``scripts/mark_unattributed_resolutions.py``. Counting them as pending would
 #: put five boards back on a queue no one is working.
-OPEN_STATUSES = ("pending",)
+#:
+#: ``deferred`` **is** one of them, and leaving it out was a defect for the
+#: length of one commit -- the worst-directed defect this file could have had.
+#: The sequence: the model dispositions a region `false_call`, the flow
+#: escalates it anyway, a person opens it and says they cannot judge it. With
+#: only ``pending`` here, that person's answer moved the escalation out of the
+#: open set while the model's row stayed the standing decision -- so the board
+#: went from **held to released**, and the act of an operator refusing to guess
+#: is what shipped it. A feature built to stop uncertain regions being answered
+#: as certain would have been the thing certifying them. Held by
+#: ``tests/test_deferral.py::test_a_deferral_cannot_release_a_board``.
+OPEN_STATUSES = ("pending", "deferred")
 
 
 def _latest_decisions(session, board: Board) -> dict[int, ReviewDecision]:

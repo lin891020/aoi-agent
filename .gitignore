@@ -16,5 +16,6 @@ __pycache__/
 # than in the clear, which is not a reason to publish one.
 data/operators
 data/aoi_agent.db
+data/aoi_agent.db.bak-*
 data/checkpoints.db*
 data/chroma/

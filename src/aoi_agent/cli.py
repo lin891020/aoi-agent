@@ -93,13 +93,31 @@ def _run_one(graph, reference: str, auto_answer: str | None, to_queue: bool) -> 
 
 def _cmd_queue() -> int:
     rows = escalations.pending()
+    waiting = escalations.pending_count()
     if rows:
-        print(f"{len(rows)} regions waiting on a person\n")
+        # The count and the listing are two questions. `pending` caps at 200,
+        # so `len(rows)` under-reports a busy queue -- which is exactly what the
+        # station did until 2026-08-25, and a CLI that repeats it is a second
+        # place to read the wrong number.
+        print(f"{waiting} regions waiting on a person\n")
         for row in rows:
             print(f"  {row['reference']:<16} model {row['model_class']:<10} "
                   f"({row['model_confidence']:.2f})  {row['reason'][:70]}")
+        if waiting > len(rows):
+            print(f"\n  ... and {waiting - len(rows)} more not listed")
     else:
         print("queue is empty")
+
+    # Regions somebody looked at and could not judge. Off the queue on purpose
+    # -- the person who declined one should not be sent back to it -- and
+    # printed here because a thing that is off the queue and unmentioned is a
+    # thing that is gone.
+    handed_back = escalations.deferred()
+    if handed_back:
+        print(f"\n  {escalations.deferred_count()} regions nobody could judge "
+              "-- most-declined first")
+        for row in handed_back[:10]:
+            print(f"    {row['reference']:<16} declined by {row['declines']}")
 
     # Closed entries that no human decision backs. Not part of the queue and
     # not work for anyone; printed here because this is where a person looks at
@@ -277,7 +295,7 @@ def main(argv: list[str] | None = None) -> int:
 
     station = sub.add_parser("station", help="serve the review station")
     station.add_argument("--host", default="127.0.0.1")
-    station.add_argument("--port", type=int, default=8000)
+    station.add_argument("--port", type=int, default=8110)
 
     args = parser.parse_args(argv)
 

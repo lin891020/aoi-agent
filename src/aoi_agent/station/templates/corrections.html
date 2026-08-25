@@ -7,6 +7,12 @@
     {{ t('corrections.sub') }}
   </p>
 
+  {% if not_shown %}
+  <p class="sub warn-line">
+    {{ t('corrections.truncated', shown=rows|length, total=rows|length + not_shown) }}
+  </p>
+  {% endif %}
+
   {% if not rows %}
     <p class="empty">
       {{ t('corrections.none_yet') }}<br>

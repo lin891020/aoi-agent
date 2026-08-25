@@ -78,6 +78,30 @@ STRINGS: dict[str, dict[str, str]] = {
         "queue.sub": '每一列都是視覺模型無法定案、agent 也不願臆測的區域。最舊的在前。',
         "queue.unexplained":
             '{count} 件（共 {total} 件）沒有書面說明。每一件的處置仍是複判模型的判定、不受影響；缺的是作業員讀的那段文字。',
+        # A page that shows part of a list has to say so. Before 2026-08-25 the
+        # queue rendered its first 200 rows and reported that as the total.
+        "queue.truncated":
+            '顯示最舊的 {shown} 件，共 {total} 件在等 —— 還有 {hidden} 件不在這一頁上。先把上面的清掉。',
+        "corrections.truncated":
+            '顯示最近的 {shown} 筆，共 {total} 筆。下方的彙總涵蓋全部 {total} 筆，不只是這一頁。',
+        # The eighth option, and the only one that is not an answer.
+        "region.defer": '我不確定',
+        "region.defer_hint": '看不出來就按這個。它不會寫成判定，區域會留在待判清單上換下一個人看。',
+        "region.defer_note_label": '你看不出來的是什麼？（可留白）',
+        "region.defer_note_placeholder": '例：缺口和鍍層分不出來',
+        "region.declined_before": '已經有 {count} 個人看過這一區並表示無法判斷：',
+        "region.declined_by": '{operator} 於 {when} UTC',
+        "region.declined_no_note": '（未說明原因）',
+        "deferred.title": '沒有人能判斷的區域',
+        "deferred.sub": '每一列都是至少一個人看過、並且說看不出來的區域。被越多人退回的排越前面 —— 那是這裡唯一帶資訊的排序。',
+        "deferred.no_senior": '目前沒有任何人被設為 senior，所以這一頁上的區域沒有人可以回答。用 scripts/add_operator.py --role senior 指定一個。',
+        "deferred.needs_senior": '你的權限是 operator，看得到但不能回答這裡的區域 —— 這些是別人已經判不出來的。',
+        "deferred.may_answer": '你的權限是 senior，可以回答這裡的區域。',
+        "deferred.empty": '目前沒有被退回的區域。',
+        "deferred.declines": '幾個人退回',
+        "deferred.no_routing_note": '這一頁只是清單，不是派工。這個站台沒有資深/一般的分別 —— 每個作業員都能回答每一區 —— 所以沒有東西會把這些指派給誰。',
+        "nav.deferred": '無法判斷',
+        "queue.deferred_link": '另外有 {count} 區沒有人能判斷 →',
         "queue.empty": '沒有待處理項目。',
         "queue.empty_hint": '用下列指令餵入佇列：',
         "queue.false_call_probability": 'P(誤判)',
@@ -289,6 +313,27 @@ STRINGS: dict[str, dict[str, str]] = {
             'Every row is a region the vision model could not settle and the agent declined to guess at. Oldest first.',
         "queue.unexplained":
             "{count} of {total} carry no written explanation. The disposition on each is the re-verification model's and is unaffected; what is missing is the paragraph the operator reads.",
+        "queue.truncated":
+            "Showing the {shown} oldest of {total} waiting — {hidden} are not on this page. Clear the ones above first.",
+        "corrections.truncated":
+            "Showing the {shown} most recent of {total}. The summary below covers all {total}, not just this page.",
+        "region.defer": "I can't tell",
+        "region.defer_hint": "Press this if you cannot see it. It is not recorded as a verdict; the region stays on the list for someone else and you move on.",
+        "region.defer_note_label": "What could you not tell? (optional)",
+        "region.defer_note_placeholder": "e.g. cannot separate the notch from the plating",
+        "region.declined_before": "{count} people have looked at this region and said they could not judge it:",
+        "region.declined_by": "{operator} at {when} UTC",
+        "region.declined_no_note": "(no reason given)",
+        "deferred.title": "Regions nobody could judge",
+        "deferred.sub": "Every row is a region at least one person looked at and could not read. The ones the most people handed back are first — that is the only ranking here that carries information.",
+        "deferred.no_senior": "Nobody is configured as senior, so nothing on this page can be answered by anyone. Give one operator --role senior with scripts/add_operator.py.",
+        "deferred.needs_senior": "You are an operator: you can see these but not answer them — they are the ones somebody else already could not read.",
+        "deferred.may_answer": "You are a senior and can answer these.",
+        "deferred.empty": "Nothing has been handed back.",
+        "deferred.declines": "handed back by",
+        "deferred.no_routing_note": "This page is a list, not an assignment. The station has no notion of senior and ordinary — every operator can answer every region — so nothing here routes these to anybody.",
+        "nav.deferred": "Can't tell",
+        "queue.deferred_link": "{count} more that nobody could judge →",
         "queue.empty": 'Nothing waiting.',
         "queue.empty_hint": 'Feed the queue with',
         "queue.false_call_probability": 'P(false call)',

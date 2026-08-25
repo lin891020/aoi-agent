@@ -154,6 +154,39 @@ def resume_review(
     return state
 
 
+def defer_review(
+    reference: str, identity: ReviewerIdentity, note: str | None = None
+) -> bool:
+    """Record that this operator could not judge the region, and move them on.
+
+    The counterpart to ``resume_review`` and deliberately a *different
+    function*, not a verdict called "unsure". They differ in almost everything
+    that matters: this one never touches the graph, never writes to
+    ``review_decisions``, and never closes the queue entry.
+
+    Routing it through ``resume_review`` with an eighth ``VERDICT_OPTIONS``
+    entry would have been fewer lines and would have put the string
+    ``"unsure"`` one careless call away from ``record_decision``. The point of
+    a boundary is that the wrong thing cannot reach it, and a boundary with a
+    second door is not a boundary -- the same argument ``result_view`` makes
+    about ``ground_truth``.
+
+    Attribution is required for the reason it is required on a verdict: a
+    decline is evidence about how hard a region is, and the count of declines
+    is the ranking the deferred queue is ordered by. Evidence naming nobody
+    cannot be weighed, and one operator declining twice is a different fact
+    from two operators declining once.
+    """
+    if not identity.is_attributable:
+        raise ValueError(
+            f"{reference} cannot be deferred by an unattributable operator "
+            f"({identity.method})"
+        )
+    return escalations.defer(
+        thread_for(reference), identity.name, identity.method, note
+    )
+
+
 def settle_board(reference: str, decided_by: str | None = None) -> dict | None:
     """Write the board-level record, once the board has nothing outstanding.
 

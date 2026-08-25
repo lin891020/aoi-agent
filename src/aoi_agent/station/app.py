@@ -82,7 +82,12 @@ from aoi_agent.station.prose import blocks as prose_blocks
 from aoi_agent.station.result_view import clip, error_text, readable_rows, shown_count
 from aoi_agent.store import analysis as analysis_store
 from aoi_agent.store import dispositions, escalations
-from aoi_agent.store.boards import correction_summary, corrections, resolve_candidate
+from aoi_agent.store.boards import (
+    correction_count,
+    correction_summary,
+    corrections,
+    resolve_candidate,
+)
 
 HERE = Path(__file__).parent
 
@@ -408,17 +413,33 @@ def _next_pending(after: str | None = None) -> str | None:
 
 @app.get("/", response_class=HTMLResponse)
 def queue_page(request: Request):
+    """The queue, and an honest statement of how much of it is on screen.
+
+    ``waiting`` is a ``COUNT(*)`` and ``queue`` is at most one page of rows.
+    They were one number until 2026-08-25 -- ``len(escalations.pending())`` --
+    and ``pending`` caps at 200, so a queue of 250 rendered "200 waiting" with
+    nothing on screen saying so. Reproduced before it was fixed: 250 in, 200
+    shown, 50 people waiting invisibly. At this project's own throughput
+    figures an unattended queue crosses 200 in about a quarter of an hour, so
+    this was not a scale problem for later.
+
+    The same applies to ``unexplained``: computed over a screenful it cannot
+    see the shift it exists to make visible.
+    """
     queue = escalations.pending()
-    # Counted on the page rather than left to a report nobody runs. The LLM's
-    # only remaining job is writing these, so a shift in which it wrote none is
-    # a thing the person watching the queue should be able to see happening.
-    unexplained = sum(
-        1 for row in queue if (row["explanation_status"] or "ok") != "ok"
-    )
+    waiting = escalations.pending_count()
     return templates.TemplateResponse(
         request,
         "queue.html",
-        {"queue": queue, "waiting": len(queue), "unexplained": unexplained},
+        {
+            "queue": queue,
+            "waiting": waiting,
+            "unexplained": escalations.pending_unexplained_count(),
+            "deferred_count": escalations.deferred_count(),
+            # Not `waiting > len(queue)` at the template: the template should be
+            # given the fact, not the arithmetic that derives it.
+            "not_shown": max(waiting - len(queue), 0),
+        },
     )
 
 
@@ -463,6 +484,13 @@ def station_page(request: Request, stem: str, index: int):
             "index": index,
             "candidate": record,
             "escalation": escalation,
+            # Whether this region can still take an answer -- the fact, not the
+            # rule. The template asked `status == 'pending'` in two places, so
+            # a deferred region rendered as "already answered" with no form on
+            # it: deferring it made it unanswerable in the markup as well as in
+            # the route. One source for the set, and both readers ask it.
+            "answerable": bool(escalation)
+            and escalation["status"] in ANSWERABLE,
             "state": state,
             # Rendered from the status, never stored as though the model had
             # written it. WI-300: an absent rationale is absent, and the gap is
@@ -478,10 +506,26 @@ def station_page(request: Request, stem: str, index: int):
             "gap_fraction": images.PANEL_GAP / (
                 images.CONTEXT_SIZE * images.SCALE * 3 + images.PANEL_GAP * 2
             ),
-            "waiting": len(escalations.pending()),
+            "waiting": escalations.pending_count(),
+            # Who has already declined this region, shown to whoever opens it
+            # next. Somebody who declined it yesterday should not spend five
+            # minutes rediscovering that, and a note saying what they could not
+            # tell is the closest thing this station has to handing over a case.
+            "declines": escalations.declines_for(service.thread_for(reference)),
             "next_reference": _next_pending(after=reference),
         },
     )
+
+
+#: Queue states an answer may still be recorded against.
+#:
+#: ``deferred`` belongs here and its absence was a real defect for the length of
+#: one commit: this route tested ``status != "pending"`` and a region somebody
+#: had declined became permanently unanswerable through the station, silently,
+#: by redirect. A deferral is supposed to move a region to someone else, not
+#: strand it, and the store-level tests could not see this because the store was
+#: never the thing refusing.
+ANSWERABLE = (escalations.PENDING, escalations.DEFERRED)
 
 
 @app.post("/c/{stem}/{index}/verdict")
@@ -505,7 +549,21 @@ def submit_verdict(
         raise HTTPException(400, f"{verdict!r} is not a valid verdict")
 
     escalation = escalations.get(service.thread_for(reference))
-    if escalation is None or escalation["status"] != "pending":
+    if (
+        escalation is not None
+        and escalation["status"] == escalations.DEFERRED
+        and auth.role_of(getattr(request.state, "operator", None)) != auth.SENIOR
+    ):
+        # The one permission this station models. A region reaches this state
+        # because a trained person looked at it and said they could not read
+        # it, so handing it to the next ordinary operator is handing it back to
+        # the same judgement -- and the failure that would produce is a guess
+        # recorded as a label, which is what the whole deferral path exists to
+        # prevent. Refused rather than redirected: a redirect here is
+        # indistinguishable from "somebody else got there first", and an
+        # operator who is not allowed to answer needs to be told that.
+        raise HTTPException(403, f"answering a handed-back region needs {auth.SENIOR}")
+    if escalation is None or escalation["status"] not in ANSWERABLE:
         # Two operators opened the same region, or a back button was pressed.
         # The first answer stands; recording a second would put two labels on
         # one region and silently corrupt the training set.
@@ -520,6 +578,69 @@ def submit_verdict(
         measurement=(measurement or "").strip()[:256] or None,
     )
     return RedirectResponse(f"/next/{stem}/{index}", status_code=303)
+
+
+@app.post("/c/{stem}/{index}/defer")
+def submit_deferral(request: Request, stem: str, index: int, note: str = Form("")):
+    """Record that this operator could not judge the region, and move them on.
+
+    A separate route from ``submit_verdict`` rather than an eighth entry in
+    ``VERDICT_OPTIONS``, which would have been fewer lines. The verdict route
+    ends in ``record_decision``; a string that can reach it is a string that can
+    become a training label, and "unsure" is the one label that must never be
+    one. Two routes because they are two different acts.
+
+    The name comes off the session, like the verdict's. The note does not -- it
+    is what the operator typed -- so it is capped and stored as text nothing
+    parses.
+    """
+    reference = _reference(stem, index)
+    _candidate_or_404(stem, index)
+
+    service.defer_review(
+        reference, operator_of(request), (note or "").strip()[:2000] or None
+    )
+    return RedirectResponse(f"/next/{stem}/{index}", status_code=303)
+
+
+@app.get("/deferred", response_class=HTMLResponse)
+def deferred_page(request: Request):
+    """Regions nobody could judge, hardest-looking first.
+
+    Its own page rather than a section of the queue. These are not waiting for
+    the next operator in the ordinary sense -- an operator who works down this
+    list and declines everything on it has done the right thing twice, and
+    burying them in the main queue would put them back in front of the person
+    who already said no.
+
+    **What this page does not do is route them to anyone**, because this station
+    has no notion of who is more senior than whom -- every operator can answer
+    every region. So this is a list, honestly, and not an assignment. The
+    decline count is the only ranking available and it is a real one: a region
+    three people declined is a different object from one somebody skipped.
+    """
+    rows = escalations.deferred()
+    return templates.TemplateResponse(
+        request,
+        "deferred.html",
+        {
+            "rows": rows,
+            "waiting": escalations.pending_count(),
+            "total": escalations.deferred_count(),
+            "not_shown": max(escalations.deferred_count() - len(rows), 0),
+            # Visible to everyone -- seeing is not doing, and a list only
+            # seniors can see is a list nobody knows is growing. Whether *this*
+            # reader may act on it is a separate fact and the page states it.
+            "may_answer": auth.role_of(
+                getattr(request.state, "operator", None)
+            ) == auth.SENIOR,
+            # No senior configured at all is the state where this queue grows
+            # with nobody able to empty it and nothing anywhere raising. Said on
+            # the page, because the person who needs to read it is looking at
+            # the page and not at a log.
+            "seniors": auth.seniors(),
+        },
+    )
 
 
 @app.get("/c/{stem}/{index}/triptych.png")
@@ -568,15 +689,19 @@ def board_page(request: Request, stem: str):
             "history": dispositions.history(stem),
             "assessment": dispositions.assess(stem),
             "absences": (UNAVAILABLE, UNRECORDED),
-            "waiting": len(escalations.pending()),
+            "waiting": escalations.pending_count(),
         },
     )
 
 
 @app.get("/queue-count", response_class=HTMLResponse)
 def queue_count():
-    """Polled by the station header so an operator sees work arriving."""
-    return HTMLResponse(str(len(escalations.pending())))
+    """Polled by the station header so an operator sees work arriving.
+
+    A ``COUNT(*)``. This badge is on every page, so when it counted the length
+    of a capped list it was the same wrong number in five places at once.
+    """
+    return HTMLResponse(str(escalations.pending_count()))
 
 @app.get("/corrections", response_class=HTMLResponse)
 def corrections_page(request: Request):
@@ -594,13 +719,17 @@ def corrections_page(request: Request):
     Whether the operators were themselves right is a question for the evaluation
     scripts, which are not served over HTTP.
     """
+    shown = corrections(200)
     return templates.TemplateResponse(
         request,
         "corrections.html",
         {
-            "rows": corrections(200),
+            "rows": shown,
+            # Over every human decision, not over `shown`. The list is a page;
+            # the aggregate is the claim.
             "summary": correction_summary(),
-            "waiting": len(escalations.pending()),
+            "waiting": escalations.pending_count(),
+            "not_shown": max(correction_count() - len(shown), 0),
         },
     )
 
@@ -701,7 +830,7 @@ def _analysis_context(run: dict | None) -> dict:
         # in, which is why the template renders it with no `|safe` -- see
         # `station/prose.py`.
         "prose_blocks": prose_blocks,
-        "waiting": len(escalations.pending()),
+        "waiting": escalations.pending_count(),
     }
 
 

@@ -173,6 +173,43 @@ table.mini tr.fleet td { color: var(--dim); border-bottom: none; }
 }
 .verdict.answered { color: var(--dim); }
 
+/* The eighth option, and the only one that is not an answer.
+ *
+ * Set apart from `.options` rather than sitting in the row with them, because
+ * it is a different act: the seven record a verdict, this one records that the
+ * operator could not reach one. A button styled to match its neighbours is a
+ * button that gets pressed like its neighbours, and the whole point of adding
+ * it was to stop uncertain regions being answered as though they were certain.
+ * Quieter than the verdicts, and reachable -- not hidden, which would send an
+ * unsure operator back to guessing. */
+.defer {
+  margin-top: 1.1rem; padding-top: 1rem;
+  border-top: 1px dashed var(--line);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem;
+}
+.defer .defer-note { flex-basis: 100%; font-size: 0.82rem; color: var(--dim); }
+.defer input[type="text"] {
+  flex: 1 1 22rem; min-width: 0;
+  background: var(--bg); color: var(--ink);
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 0.55rem 0.8rem; font: inherit; font-size: 0.9rem;
+}
+.defer input[type="text"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.defer .sub { flex-basis: 100%; margin: 0.1rem 0 0; }
+.option.defer-button { background: transparent; border-style: dashed; color: var(--dim); }
+.option.defer-button:hover { background: #26262d; color: var(--ink); border-color: var(--warn); }
+
+/* Who already declined this region, shown above the buttons. Warn-coloured
+ * because it changes what the reader should do: two declines on one region is
+ * a signal about the region, not a note about the people. */
+.declined-before {
+  margin-top: 1rem; padding: 0.75rem 0.9rem;
+  border-left: 3px solid var(--warn); background: #221b0f; border-radius: 0 6px 6px 0;
+}
+.declined-before p { margin: 0 0 0.4rem; }
+.declined-before ul { margin: 0; padding-left: 1.1rem; font-size: 0.88rem; }
+.declined-before li { margin-bottom: 0.3rem; }
+
 .trace { display: flex; align-items: baseline; gap: 0.75rem; flex-wrap: wrap;
          font-size: 0.82rem; padding-top: 0.5rem; }
 

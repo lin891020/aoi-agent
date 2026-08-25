@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ t('nav.queue') }} &middot; {{ queue|length }} {{ t('queue.waiting') }}{% endblock %}
+{% block title %}{{ t('nav.queue') }} &middot; {{ waiting }} {{ t('queue.waiting') }}{% endblock %}
 {% block content %}
 <section class="panel">
   <h1>{{ t('queue.title') }}</h1>
@@ -7,7 +7,22 @@
 
   {% if unexplained %}
   <p class="sub warn-line">
-    {{ t('queue.unexplained', count=unexplained, total=queue|length) }}
+    {{ t('queue.unexplained', count=unexplained, total=waiting) }}
+  </p>
+  {% endif %}
+
+  {% if deferred_count %}
+  {# A region nobody could judge must not vanish. It is off this queue on
+     purpose -- so the person who declined it is not sent back to it -- and a
+     thing that is off the queue and unlinked is a thing that is gone. #}
+  <p class="sub">
+    <a href="/deferred">{{ t('queue.deferred_link', count=deferred_count) }}</a>
+  </p>
+  {% endif %}
+
+  {% if not_shown %}
+  <p class="sub warn-line">
+    {{ t('queue.truncated', shown=queue|length, total=waiting, hidden=not_shown) }}
   </p>
   {% endif %}
 

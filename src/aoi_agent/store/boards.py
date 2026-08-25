@@ -268,37 +268,77 @@ def corrections(limit: int = 100) -> list[dict]:
         ]
 
 
-def correction_summary(limit: int = 1000) -> dict:
-    """Where the model gets corrected, aggregated.
+def correction_count() -> int:
+    """How many human decisions exist, for a page that shows only some of them.
+
+    ``corrections`` takes a ``limit`` and the page renders whatever comes back.
+    Without this the page cannot say what it is not showing, and a list that
+    silently ends is read as a list that ended.
+    """
+    from aoi_agent.store.models import ReviewDecision
+
+    with session_factory()() as session:
+        return int(
+            session.execute(
+                select(func.count())
+                .select_from(ReviewDecision)
+                .where(ReviewDecision.source == "human")
+            ).scalar_one()
+        )
+
+
+def correction_summary() -> dict:
+    """Where the model gets corrected, aggregated over *every* human decision.
 
     The list of corrections says what happened; this says what keeps happening.
     A class the operators overturn again and again is a training-set problem or
     a threshold problem, and it is invisible in a chronological list once there
     are more than a screenful.
 
-    Counts human decisions only, so a class the model was never asked about
-    does not appear as a perfect score.
+    Counts human decisions only, so a class the model was never asked about does
+    not appear as a perfect score.
+
+    **It took a ``limit`` of 1000 until 2026-08-25, and that was worse than the
+    truncated list it sat above.** A list that stops after N rows is visibly a
+    list; an aggregate that stops after N rows still reads as "where the model
+    gets corrected" while describing only the most recent slice of it -- and the
+    slice is the recent one, so a class the operators stopped overturning months
+    ago silently leaves the table and a reader concludes it was fixed. Grouping
+    in SQL costs nothing here and removes the parameter that made the lie
+    possible.
     """
-    rows = corrections(limit)
+    from aoi_agent.store.models import ReviewDecision
+
+    with session_factory()() as session:
+        grouped = session.execute(
+            select(
+                CandidateRecord.predicted_class,
+                ReviewDecision.verdict,
+                func.count(),
+            )
+            .join(CandidateRecord, ReviewDecision.candidate_id == CandidateRecord.id)
+            .where(ReviewDecision.source == "human")
+            .group_by(CandidateRecord.predicted_class, ReviewDecision.verdict)
+        ).all()
+
     pairs: dict[tuple[str, str], int] = {}
     by_model_class: dict[str, dict[str, int]] = {}
 
-    for row in rows:
-        key = (row["model_said"], row["human_said"])
-        pairs[key] = pairs.get(key, 0) + 1
-        bucket = by_model_class.setdefault(
-            row["model_said"], {"total": 0, "overruled": 0}
-        )
-        bucket["total"] += 1
-        bucket["overruled"] += int(row["overruled"])
+    for model_said, human_said, count in grouped:
+        pairs[(model_said, human_said)] = count
+        bucket = by_model_class.setdefault(model_said, {"total": 0, "overruled": 0})
+        bucket["total"] += count
+        bucket["overruled"] += count if human_said != model_said else 0
 
     classes = sorted(
         by_model_class,
         key=lambda name: (-by_model_class[name]["overruled"], name),
     )
     return {
-        "total": len(rows),
-        "overruled": sum(1 for row in rows if row["overruled"]),
+        "total": sum(pairs.values()),
+        "overruled": sum(
+            count for (model, human), count in pairs.items() if model != human
+        ),
         "pairs": pairs,
         "by_model_class": [
             {
