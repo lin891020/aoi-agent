@@ -14,9 +14,17 @@ point.
 stored as a PBKDF2-HMAC-SHA256 record with its own salt and its iteration
 count written beside it. Signing in exchanges the passphrase for an HMAC-signed
 cookie carrying the operator's name and an expiry; every request reads the
-name off that signature. No user management, no registration, no roles, no
-reset flow: a line has a fixed set of operators and a supervisor who can run
-one script.
+name off that signature. No user management, no registration, no reset flow:
+a line has a fixed set of operators and a supervisor who can run one script.
+
+**Two roles, and only two.** ``operator`` and ``senior``, where the only thing
+the second may do that the first may not is answer a region another person
+handed back. That is the whole model, and its smallness is the design: on a
+line every trained operator answers every ordinary region, so a permission
+grid over defect classes would encode a policy no work instruction states.
+The role is read from the file on every request and never from the cookie --
+see ``role_of`` for why that distinction is the difference between a
+revocation and a wish.
 
 **What it does not protect against**, stated here rather than left for someone
 to discover:
@@ -55,6 +63,7 @@ import hmac
 import os
 import secrets
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from aoi_agent.provenance import ReviewerIdentity
@@ -124,8 +133,54 @@ def operators_path() -> Path:
     return Path(os.getenv(OPERATORS_ENV) or DEFAULT_OPERATORS_PATH)
 
 
-def load_operators() -> dict[str, str]:
-    """The operator file, as ``name -> encoded secret``.
+#: Anyone who may sign in and answer the ordinary queue.
+OPERATOR = "operator"
+
+#: Also allowed to answer a region another operator handed back.
+SENIOR = "senior"
+
+#: The whole vocabulary, and it is short on purpose -- see ``role_of``.
+ROLES = (OPERATOR, SENIOR)
+
+#: What an operator line with no role on it means.
+#:
+#: The lower of the two, always. A credential file written before roles existed
+#: says nothing about seniority, and reading silence as "senior" would grant
+#: every existing operator a permission nobody decided to give them -- on a
+#: file whose whole purpose is to make a permission decidable. Least privilege
+#: is also the failure that is *visible*: an operator who cannot clear the
+#: handed-back queue finds out immediately, where an operator who wrongly can
+#: leaves no trace at all.
+DEFAULT_ROLE = OPERATOR
+
+
+@dataclass(frozen=True)
+class Operator:
+    """One line of the credential file."""
+
+    name: str
+    encoded: str
+    role: str
+
+
+def load_operator_records() -> dict[str, Operator]:
+    """The operator file, parsed once.
+
+    Two formats, and the older one stays valid::
+
+        mike:pbkdf2_sha256$600000$<salt>$<digest>
+        sandy:pbkdf2_sha256$600000$<salt>$<digest>:senior
+
+    The encoded secret separates its own fields with ``$``, so ``:`` is free to
+    mean what it means here and a file written before 2026-08-25 parses
+    unchanged into ``DEFAULT_ROLE``.
+
+    A role the vocabulary does not contain is read as ``DEFAULT_ROLE`` rather
+    than raising: a typo in this file must not be able to lock every operator
+    out of the station, which is what refusing to load it would do. It is not
+    silent either -- ``scripts/add_operator.py`` refuses to *write* one, so the
+    supported path cannot produce it, and ``unknown_roles`` reports any that
+    reached the file another way.
 
     A missing file is an empty mapping, and an empty mapping means nobody can
     sign in and therefore nobody can answer the queue. That is the correct
@@ -135,15 +190,73 @@ def load_operators() -> dict[str, str]:
     path = operators_path()
     if not path.exists():
         return {}
-    operators: dict[str, str] = {}
+    records: dict[str, Operator] = {}
     for line in path.read_text().splitlines():
         line = line.strip()
         if not line or line.startswith("#") or ":" not in line:
             continue
-        name, _, encoded = line.partition(":")
-        if name.strip():
-            operators[name.strip()] = encoded.strip()
-    return operators
+        parts = line.split(":")
+        name, encoded = parts[0].strip(), parts[1].strip()
+        role = parts[2].strip() if len(parts) > 2 and parts[2].strip() else DEFAULT_ROLE
+        if not name:
+            continue
+        records[name] = Operator(
+            name=name, encoded=encoded,
+            role=role if role in ROLES else DEFAULT_ROLE,
+        )
+    return records
+
+
+def load_operators() -> dict[str, str]:
+    """``name -> encoded secret``, for callers that only ask who exists."""
+    return {name: record.encoded for name, record in load_operator_records().items()}
+
+
+def role_of(name: str | None) -> str:
+    """What this operator is allowed to do, read from the file every time.
+
+    Never off the session cookie, and that is the point rather than an
+    implementation detail. A role baked into a cookie at sign-in outlives the
+    file that granted it: revoking a role would then take effect whenever the
+    operator next happened to log out, which is not a revocation. Reading the
+    file per request costs a few microseconds and makes the file the authority.
+
+    An unknown name gets ``DEFAULT_ROLE``, not an exception -- a session
+    surviving the removal of its operator should lose privileges, not crash the
+    page it is on.
+    """
+    record = load_operator_records().get((name or "").strip())
+    return record.role if record else DEFAULT_ROLE
+
+
+def unknown_roles() -> dict[str, str]:
+    """Names whose role the file states and this module does not recognise.
+
+    Reported rather than raised, and reported rather than ignored: the value was
+    silently downgraded to ``DEFAULT_ROLE``, so somebody wrote a permission that
+    is not in force and nothing else would ever say so.
+    """
+    path = operators_path()
+    if not path.exists():
+        return {}
+    stated: dict[str, str] = {}
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or ":" not in line:
+            continue
+        parts = line.split(":")
+        if len(parts) > 2 and parts[2].strip() and parts[2].strip() not in ROLES:
+            stated[parts[0].strip()] = parts[2].strip()
+    return stated
+
+
+def seniors() -> list[str]:
+    """Who may answer a handed-back region. Empty is a real and bad state, and
+    the deferred page says so rather than growing quietly."""
+    return sorted(
+        name for name, record in load_operator_records().items()
+        if record.role == SENIOR
+    )
 
 
 def authenticate(name: str, secret: str) -> ReviewerIdentity | None:
