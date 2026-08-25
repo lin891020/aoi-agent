@@ -1808,3 +1808,73 @@ At the ≤0.5% budget (threshold 0.961):
 | copper | 466 | 2 | 0.43% |
 | pin-hole | 464 | 0 | 0.00% |
 
+### Threshold sweep — `ESCALATE_BELOW` and `CONFIDENT` (2026-08-25 · commit 5684241)
+
+7322 stored candidates from the official DeepPCB test split (3018 real defects), `fragment` held out. No GPU: the sweep reads the predictions already in the store, the same source `routing_report.py` uses.
+
+Held fixed: `DEFAULT_DISMISS_THRESHOLD` = 0.961, which by itself dismisses 15 real defects — the whole of QP-110's ≤0.5% escape budget. There is no room left in the budget for a second dismissing branch, so the criterion for `ESCALATE_BELOW` is zero *added* escapes, not a share of one.
+
+#### `ESCALATE_BELOW` — the confidence at which a region goes to a person
+
+The only way this branch can add an escape is `decide_node` dismissing: the classifier's class is `false_call`, so `confidence` *is* `P(false call)`, and the region sits in the band [`ESCALATE_BELOW`, `DEFAULT_DISMISS_THRESHOLD`). Everything else the branch does is confirm a defect or hand it over, and neither ships a board.
+
+| `ESCALATE_BELOW` | escalated | decided | of those, dismissed | escapes added | line escape rate | decided class right |
+|---|---|---|---|---|---|---|
+| 0.600 | 60 (0.8%) | 1197 | 397 | **13** | 0.928% | 94.7% |
+| 0.650 | 80 (1.1%) | 1177 | 383 | **13** | 0.928% | 94.8% |
+| 0.700 | 106 (1.4%) | 1151 | 372 | **11** | 0.861% | 95.6% |
+| 0.750 | 133 (1.8%) | 1124 | 352 | **10** | 0.828% | 95.9% |
+| 0.800 | 175 (2.4%) | 1082 | 323 | **8** | 0.762% | 96.6% |
+| 0.850 | 221 (3.0%) | 1036 | 288 | **8** | 0.762% | 96.9% |
+| 0.860 | 230 (3.1%) | 1027 | 280 | **8** | 0.762% | 96.9% |
+| 0.870 | 242 (3.3%) | 1015 | 272 | **8** | 0.762% | 97.1% |
+| 0.875 | 248 (3.4%) | 1009 | 268 | **8** | 0.762% | 97.1% |
+| 0.880 | 257 (3.5%) | 1000 | 260 | **8** | 0.762% | 97.1% |
+| 0.890 | 272 (3.7%) | 985 | 248 | **6** | 0.696% | 97.3% |
+| 0.900 | 297 (4.1%) | 960 | 229 | **6** | 0.696% | 97.3% |
+| 0.910 | 317 (4.3%) | 940 | 211 | **5** | 0.663% | 97.3% |
+| 0.915 | 332 (4.5%) | 925 | 199 | **3** | 0.596% | 97.6% |
+| 0.920 | 352 (4.8%) | 905 | 185 | **2** | 0.563% | 97.8% |
+| 0.950 | 499 (6.8%) | 758 | 74 | **1** | 0.530% | 97.9% |
+| 0.960 | 579 (7.9%) | 678 | 7 | **1** | 0.530% | 97.9% |
+| 0.961 | 586 (8.0%) | 671 | 0 | **0** | 0.497% | 98.1% |
+| 0.970 | 600 (8.2%) | 657 | 0 | **0** | 0.497% | 98.3% |
+| 0.980 | 631 (8.6%) | 626 | 0 | **0** | 0.497% | 98.9% |
+| 0.990 | 689 (9.4%) | 568 | 0 | **0** | 0.497% | 99.3% |
+
+The highest-confidence real defect this branch would dismiss carries **0.9609**. So on this grid the lowest threshold adding no escape is **0.961** — not 0.90, which the citation in `docs/architecture.md` claimed until 2026-08-23 and which clears the same bar with -0.061 to spare.
+
+Neither is the value to ship. 0.961 sits 0.0001 above the worst miss on this split: that is a threshold read off the test set at three decimal places, and the next lot's tail lands on top of it. And 0.90 is a round number that happened to be conservative — it was never derived from anything, which is the finding, not the fix.
+
+The value that needs no split at all is `DEFAULT_DISMISS_THRESHOLD` (0.961). At or above it the band is empty by construction: a region the classifier calls `false_call` above that confidence was already dismissed upstream, so it never reaches `decide_node`. The agent branch may confirm a defect; it cannot dismiss one. That holds for any model and survives a retrain, where a swept number would have to be swept again and silently would not be.
+
+#### `CONFIDENT` — the confidence at which the classifier's class skips the LLM
+
+`confirm_node` and `decide_node` write the same verdict: `model_class`. So above `ESCALATE_BELOW` this threshold moves candidates between two paths that disposition them identically. It is a cost gate, not a decision gate — the sweep below is of LLM calls, and the "dispositions changed" column is what makes that claim checkable.
+
+| `CONFIDENT` | confirmed without the LLM | that class right | reaching the LLM | escalated | escapes added | dispositions changed vs 0.996 |
+|---|---|---|---|---|---|---|
+| 0.700 | 2396 | 98.7% | 1062 | 510 | 0 | **76** |
+| 0.800 | 2381 | 99.1% | 1077 | 525 | 0 | **61** |
+| 0.850 | 2370 | 99.3% | 1088 | 536 | 0 | **50** |
+| 0.900 | 2357 | 99.4% | 1101 | 549 | 0 | **37** |
+| 0.915 | 2353 | 99.4% | 1105 | 553 | 0 | **33** |
+| 0.920 | 2349 | 99.4% | 1109 | 557 | 0 | **29** |
+| 0.950 | 2330 | 99.5% | 1128 | 576 | 0 | **10** |
+| 0.970 | 2310 | 99.7% | 1148 | 586 | 0 | **0** |
+| 0.990 | 2254 | 99.8% | 1204 | 586 | 0 | **0** |
+| 0.995 | 2221 | 99.9% | 1237 | 586 | 0 | **0** |
+| 0.996 | 2201 | 99.9% | 1257 | 586 | 0 | **0** |
+| 0.999 | 1983 | 99.9% | 1475 | 586 | 0 | **0** |
+
+Zero dispositions change anywhere at or above `ESCALATE_BELOW`, and the escape column never moves. Below it the threshold stops being free: it starts confirming, unreviewed, regions the flow would have handed to a person. That is the one thing `CONFIDENT` must not do, and it is a constraint the code can hold rather than a number a sweep can pick — `CONFIDENT` must be at least `ESCALATE_BELOW`.
+
+Within that constraint the choice buys an operator a written rationale on the record, at one 20B-model call each. It is a cost dial and the citation should say so; it is not a decision authority and WI-300 never gave it one.
+
+#### What the constants are set to now
+
+| constant | value | escalated | reaching the LLM | escapes added |
+|---|---|---|---|---|
+| `ESCALATE_BELOW` | 0.961 | 586 (8.0%) | 1257 | 0 |
+| `CONFIDENT` | 0.996 | — | — | — |
+
