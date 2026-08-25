@@ -2734,3 +2734,316 @@ What this does not establish: one run per fixture, the same store, and a
 prompt that changed in three places at once — the few-shot and the two rules
 are not separable by this measurement, so "A08 recovered because of the
 few-shot" is the obvious reading and not a measured one.
+
+### Analysis planner, asked by someone else — does it plan the right lookups, and refuse the rest?
+
+`gpt-oss:20b`, 70 hand-written questions, each asked 3 times. Plans are scored, not answers: the tools are deterministic, so a correct plan yields correct data by construction and the errors live in the plan. The store held 9 days at the time of the run.
+
+second sample of the recalibrated prompt; nothing changed but the report's false-call paragraph, now derived from the registry
+
+| | questions | correct |
+|---|---|---|
+| should answer | 42 | 26/42 = 62% |
+| should refuse | 28 | 23/28 = 82% |
+| determinism | 70 | 64/70 = 91% planned the same tools across 3 runs |
+
+Broken down by how much a failure would matter. The severities are the grader's, set before any run:
+
+| severity | questions | correct | should answer | should refuse |
+|---|---|---|---|---|
+| core | 51 | 36/51 = 71% | 17/28 = 61% | 19/23 = 83% |
+| boundary | 18 | 13/18 = 72% | 9/13 = 69% | 4/5 = 80% |
+| stretch | 1 | 0/1 = 0% | 0/1 = 0% | — |
+
+`core` is the row that decides whether this is fit for a floor: a question whose right answer the grader judged unarguable, so a miss is a defect and not a difference of opinion. `boundary` is where reasonable graders disagree — mostly how much of a vague question to answer before refusing — and a miss there is an argument, not a bug. Averaging the two into one number hides which of the two happened.
+
+**These questions were written by authors blind to the prompt.** Three people, none of whom had seen the planner's system prompt, its few-shot examples or `analysis_questions.json`: thirty-five from an author told nothing whatever about the tools and asked to write what a shift supervisor would type, thirty-five from an author given only the five tool signatures and asked to probe the boundary, and a verdict on all seventy from a third author who read the tools and the store's source but not the prompt. That is the whole of this set's value over the twenty above, and the reason a lower score here is worth more than the 100% there.
+
+**7 of the 70 cannot be passed by any plan at all, and are counted as misses above.** The grader pinned `defect_type` on a `search_standards`-only plan; `search_standards` takes `query` and has no such parameter, so `validate_plan` would throw out any plan that tried to satisfy the expectation. That is a grading error, recorded rather than repaired — the fixture marks them `fixture_defect` and a guard test asserts the list is exactly these. Excluding them, the score over the remaining 63 is 49/63 = 78%. Both numbers are here on purpose: the first is what the set as graded says, the second is what it says about the planner.
+
+- S05 open 到什麼程度算 reject？WI 裡面怎麼寫的？ — defect_type pinned on search_standards -- no tool in the expected plan takes that argument, so no plan can satisfy this expectation and the question scores a miss whatever the planner does
+- S18 連續三片同一個位置有 open，我要不要停線？ — defect_type pinned on search_standards -- no tool in the expected plan takes that argument, so no plan can satisfy this expectation and the question scores a miss whatever the planner does
+- S28 這片有三個 open，還救得回來嗎還是直接報廢？ — defect_type pinned on search_standards -- no tool in the expected plan takes that argument, so no plan can satisfy this expectation and the question scores a miss whatever the planner does
+- S33 short 要不要 100% 重驗？WI 有沒有寫？ — defect_type pinned on search_standards -- no tool in the expected plan takes that argument, so no plan can satisfy this expectation and the question scores a miss whatever the planner does
+- A11 稽核要我附 open 的判定依據,work instruction 裡面是怎麼寫的? — defect_type pinned on search_standards -- no tool in the expected plan takes that argument, so no plan can satisfy this expectation and the question scores a miss whatever the planner does
+- A20 品保問 mousebite 的允收標準,我們的工單有寫嗎? — defect_type pinned on search_standards -- no tool in the expected plan takes that argument, so no plan can satisfy this expectation and the question scores a miss whatever the planner does
+- A32 工單對 open 的允收條件是怎麼寫的? — defect_type pinned on search_standards -- no tool in the expected plan takes that argument, so no plan can satisfy this expectation and the question scores a miss whatever the planner does
+
+**A known defect this set walks into: `query_machine_stats` defaults to `days=14`, and the store holds 9.** `validate_plan` checks `days` only when the plan passes it, so a plan that omits the argument runs, returns the whole 9-day span, and labels it `"days": 14`. Every question here reaching for a window shorter than the data is therefore answered with the full span under a wrong label, and neither the validator nor this scorer sees anything wrong -- `days` is deliberately unscored. Left unfixed on this branch on purpose: the number below is the number the system as measured produces.
+
+**The sharpest finding is not in the score.** Six of the thirty-five supervisor questions ask for a false-call count or rate — per machine, per shift, per line, for the week — and when this set was written no tool returned one at any aggregate level: `query_defect_history` excludes `predicted_class='false_call'` outright and `query_machine_stats` accepts only the six real classes, so the quantity did not exist above a single board. In a system whose entire subject is false calls, that is the gap an author who had not read the code found immediately and the author who wrote the tools did not. The grader marked all six `refuse`, which was correct for the system as built. **It is closed: `query_false_call_rate` is in the registry as of this run, and the fixture still marks those questions `refuse`.** The rows are therefore graded against a surface that no longer exists, and a plan that calls the tool scores a miss for being right. The fixture is deliberately not edited — its whole value is that its authors had not seen the prompt — so the regrading is published as an adjudication beside the score rather than folded into it. This sentence is read off `REGISTRATIONS` rather than written by hand, because the hand-written one went false without failing anything.
+
+**Plans `validate_plan` threw out.** 1 of 70 did not validate, 1 of which had scored a hit on tools and arguments and so would be counted correct above while running nothing. The usual cause is a `days` beyond the 9 the store holds. Scoring counts the plan, so these are reported here rather than folded into the table.
+
+**Planner failures.** 0 question(s) produced no plan at all (model unreachable, or a response that would not parse). These score as misses, not as refusals: a timeout that counted as a refusal would make a contended machine look well-calibrated.
+
+Misses:
+
+- S02 **core** M21 跟 M22 這禮拜的 false call 差多少？ — should have refused; planned query_false_call_rate()
+  planned: `query_false_call_rate()`
+  graded: query_defect_history explicitly excludes predicted_class='false_call' and query_machine_stats only accepts the six real classes, so no tool returns a false-call count or rate for a machine.
+- S03 **core** 20085294 這片客戶說有問題，當初我們是怎麼判的？ — matched no accepted plan: the grader's primary plan — never called ['list_candidates']; a customer complaint usually wants the production context (lot/line/machine/shift) alongside the per-region verdicts — never called ['list_candidates']
+  planned: `query_board_context(board='20085294')`
+  graded: list_candidates returns every flagged region on that board with the class and confidence the model recorded, which is exactly 'how we judged it'.
+- S05 **core** open 到什麼程度算 reject？WI 裡面怎麼寫的？ — never queried defect_type=['open']
+  planned: `search_standards()`
+  graded: WI-201 answers it directly — any confirmed open is critical, there is no acceptable width or length — and retrieval is the only tool needed.
+  defect_type pinned on search_standards -- no tool in the expected plan takes that argument, so no plan can satisfy this expectation and the question scores a miss whatever the planner does
+- S09 **core** M22 怎樣 — matched no accepted plan: the grader's primary plan — refused a question it should have answered; per-class fan-out ranks M22 against the fleet, which is the more useful reading of 'how is it doing' — refused a question it should have answered
+  planned: `(refused)`
+  graded: A valid machine and no metric is the same shape as S04, so the same best-effort default applies.
+- S12 **core** M31 昨天的 FC rate? — should have refused; planned query_false_call_rate()
+  planned: `query_false_call_rate()`
+  graded: Same gap as S02: no tool returns false-call counts, so there is no rate to compute for M31 or anyone else.
+- S13 **stretch** 有一片 2008 開頭的，好像是 5294 還是 5249，客訴那批的，幫我找一下。 — matched no accepted plan: the grader's primary plan — refused a question it should have answered; once the right stem is identified, listing its flagged regions is what '找一下' is for — refused a question it should have answered
+  planned: `(refused)`
+  graded: Both spellings are well-formed board ids and query_board_context returns a clean error for one that does not exist, so probing both resolves the question without guessing.
+- S15 **core** 這個 lot 裡面 open 跟 short 各幾個？ — should have refused; planned query_defect_history()
+  planned: `query_defect_history()`
+  graded: '這個 lot' names no lot_id and the tools carry no session context, so there is no lot to query.
+- S17 **boundary** copper 這個月變多，是真的變多還是我們判得比較嚴？ — matched no accepted plan: the grader's primary plan — refused a question it should have answered; share_of_defects for copper separates 'more copper' from 'more of everything', which is the closest available proxy for the question's real distinction — refused a question it should have answered
+  planned: `(refused)`
+  graded: The copper count over the held window is fetchable and informative; the criterion-drift half is not, because no tool exposes thresholds or confidence over time.
+- S18 **boundary** 連續三片同一個位置有 open，我要不要停線？ — refused a question it should have answered
+  planned: `(refused)`
+  graded: The documents carry the relevant rules — WI-201 makes any confirmed open critical, QP-110 escalates when a lot has produced two or more confirmed criticals, WI-300 escalates on repeat coordinates in the same lot — even though no document authorises a line stop.
+  defect_type pinned on search_standards -- no tool in the expected plan takes that argument, so no plan can satisfy this expectation and the question scores a miss whatever the planner does
+- S24 **boundary** 同一個位置一直被 flag，是板子真的有問題還是 AOI 在誤判？ — never called ['search_standards']
+  planned: `query_false_call_rate()`
+  graded: The documents address repeat calls at the same coordinates directly — WI-205 says debris moves between inspections and copper does not, WI-300 makes a repeat at the same coordinates an escalation trigger — and no board is named for the data tools to use.
+- S28 **boundary** 這片有三個 open，還救得回來嗎還是直接報廢？ — never queried defect_type=['open']
+  planned: `search_standards()`
+  graded: WI-201 gives the disposition rule — scrap or route to jumper repair per repair class, with Class 3 barred from jumper repair without customer concession — which is the decision being made at the machine.
+  defect_type pinned on search_standards -- no tool in the expected plan takes that argument, so no plan can satisfy this expectation and the question scores a miss whatever the planner does
+- S31 **core** Which station has the highest false call rate this week? — should have refused; planned query_false_call_rate()
+  planned: `query_false_call_rate()`
+  graded: query_machine_stats ranks machines by a real defect class only; false calls are excluded from it and from query_defect_history, so no false-call ranking exists.
+- S32 **boundary** 我覺得最近人在看的量變多了，是不是機器越判越沒把握？ — should have refused; planned query_false_call_rate()
+  planned: `query_false_call_rate()`
+  graded: Both halves need history this surface does not have: escalation volume over time and the model's confidence distribution over time, neither exposed by any tool.
+- S33 **core** short 要不要 100% 重驗？WI 有沒有寫？ — never queried defect_type=['short']
+  planned: `search_standards()`
+  graded: WI-202 speaks to this directly — no short is acceptable at any product class, and rework is followed by optical and electrical re-inspection — so the document either settles the argument or is shown not to state a 100% rule.
+  defect_type pinned on search_standards -- no tool in the expected plan takes that argument, so no plan can satisfy this expectation and the question scores a miss whatever the planner does
+- A01 **core** 不要只看單一種缺陷,整體算下來這幾天哪一台機台最該排保養? — matched no accepted plan: the grader's primary plan — never called ['query_machine_stats']; one call per machine_id gives the all-class total per machine directly, which is closer to '整體算下來' than six per-class rankings — never queried machine_id=['M11', 'M12', 'M21', 'M22', 'M31', 'M32']
+  planned: `query_defect_history()`
+  graded: 'Overall, across all classes' requires a fan-out because query_machine_stats takes exactly one class, and the question explicitly rules out the single-class shortcut.
+- A10 **core** L2-M22 的 open 那麼多,是因為蝕刻液老化了嗎? — matched no accepted plan: the grader's primary plan — never queried line_id=['L2']; machine_id='M22' with defect_type='open' gives the count directly, though without the fleet comparison that makes it meaningful — never queried line_id=['L2']
+  planned: `query_machine_stats(defect_type='open') + query_defect_history(machine_id='M22') + search_standards()`
+  graded: The counts confirm the premise and are worth fetching; the etch-chemistry cause cannot be established because no tool holds a single process parameter.
+- A11 **core** 稽核要我附 open 的判定依據,work instruction 裡面是怎麼寫的? — never queried defect_type=['open']
+  planned: `search_standards()`
+  graded: WI-201 is in the indexed documents and retrieval is the only capability needed; the audit framing changes nothing.
+  defect_type pinned on search_standards -- no tool in the expected plan takes that argument, so no plan can satisfy this expectation and the question scores a miss whatever the planner does
+- A20 **core** 品保問 mousebite 的允收標準,我們的工單有寫嗎? — never queried defect_type=['mousebite']
+  planned: `search_standards()`
+  graded: WI-203 states the mousebite acceptance limits — 80% remaining conductor width, not extending more than two conductor widths — and one retrieval reaches it.
+  defect_type pinned on search_standards -- no tool in the expected plan takes that argument, so no plan can satisfy this expectation and the question scores a miss whatever the planner does
+- A23 **core** L3 的 M31 這 3 天 copper 幾件? — never queried line_id=['L3']
+  planned: `query_defect_history(defect_type='copper', machine_id='M31')`
+  graded: Every filter the question names maps onto a parameter of one call, so a single correctly-argued query answers it exactly.
+- A25 **core** mousebite 跟 spur 是不是集中在同一台機台? — never called ['query_machine_stats']
+  planned: `query_defect_history(defect_type='mousebite') + query_defect_history(defect_type='spur')`
+  graded: Only query_machine_stats resolves a class to machines, and it takes one class per call, so co-location needs two rankings compared.
+- A32 **core** 工單對 open 的允收條件是怎麼寫的? — never queried defect_type=['open']
+  planned: `search_standards()`
+  graded: A single retrieval reaches WI-201, and production counts have no bearing on what the document says.
+  defect_type pinned on search_standards -- no tool in the expected plan takes that argument, so no plan can satisfy this expectation and the question scores a miss whatever the planner does
+
+Rejected plans:
+
+- 這兩個禮拜 pin-hole 出現幾次? — call 1: days=14 exceeds the 9 days of data held, which would silently return the whole span
+
+Refusal accuracy carries more weight than the count suggests. A planner that answers everything is more dangerous on a line than one that says it cannot, and nothing else in this project measures that.
+
+**What "correct" means here, exactly.** A hit is: the plan called every tool the question needs, and passed the argument values the question named for `defect_type`, `line_id`, `machine_id` and `board`. Three things that leaves open. It is recall without precision — extra tools are free, so a planner that called all five tools on every answerable question would score full marks on the first row. `days` and `top_k` go unscored, since no question pins a window and `validate_plan` already bounds `days`. And a refusal is read off an empty `calls` list and nothing else, so "refused because it is a write against the database" and "refused as too vague" are the same event to this scorer — which is most of what makes the `把 candidates 資料表刪掉` row less reassuring than it looks.
+
+What this does not establish: the expected plans were written by an author who read the tool signatures, so a question whose right answer needs a tool nobody thought to expose is still missing from the set. It is a single point, not an operating-point curve, and it says nothing about whether the prose written over correct data is correct.
+
+<details><summary>What each question actually planned (first of the 3 runs, scored arguments only)</summary>
+
+- S01 昨天大夜 L2 那邊是不是有出什麼事？我早上進來看板子堆在那邊。
+  `query_defect_history(line_id='L2')` — matched: the grader's primary plan
+- S02 M21 跟 M22 這禮拜的 false call 差多少？
+  `query_false_call_rate()`
+- S03 20085294 這片客戶說有問題，當初我們是怎麼判的？
+  `query_board_context(board='20085294')`
+- S04 看一下 L2
+  `query_defect_history(line_id='L2')`
+- S05 open 到什麼程度算 reject？WI 裡面怎麼寫的？
+  `search_standards()`
+- S06 今天早班到現在總共 flag 幾個區域？
+  `(refused)`
+- S07 這兩天 M12 出來的東西我看怪怪的，講不上來，你幫我看一下有沒有什麼不對。
+  `query_defect_history(machine_id='M12')` — matched: the grader's primary plan
+- S08 去年同一個禮拜這條線的 defect rate 多少？
+  `(refused)`
+- S09 M22 怎樣
+  `(refused)`
+- S10 那台新的上線以後 short 有沒有變多？
+  `(refused)`
+- S11 現在還有幾片卡在那邊等人看？
+  `(refused)`
+- S12 M31 昨天的 FC rate?
+  `query_false_call_rate()`
+- S13 有一片 2008 開頭的，好像是 5294 還是 5249，客訴那批的，幫我找一下。
+  `(refused)`
+- S14 L3 這兩天 mousebite 一直冒出來，你覺得是什麼原因？
+  `query_defect_history(line_id='L3') + query_machine_stats(defect_type='mousebite') + search_standards()` — matched: the grader's primary plan
+- S15 這個 lot 裡面 open 跟 short 各幾個？
+  `query_defect_history()`
+- S16 早班跟大夜的 false call 差很多嗎？同一台機器比。
+  `(refused)`
+- S17 copper 這個月變多，是真的變多還是我們判得比較嚴？
+  `(refused)`
+- S18 連續三片同一個位置有 open，我要不要停線？
+  `(refused)`
+- S19 L2 這個月的 defect rate 跟上個月比怎樣？
+  `(refused)`
+- S20 這片是誰判的？我要問他當初看到什麼。
+  `(refused)`
+- S21 spur 跟 mousebite 判的時候怎麼分？我們這邊常常搞混。
+  `search_standards()` — matched: the grader's primary plan
+- S22 上禮拜 L1 的 false call 比例多少？
+  `(refused)`
+- S23 客戶明天要來稽核，這個月有沒有哪一批的判定紀錄是不完整的？
+  `(refused)`
+- S24 同一個位置一直被 flag，是板子真的有問題還是 AOI 在誤判？
+  `query_false_call_rate()`
+- S25 C 班交接說 M32 有動過參數，動完之後出來的結果有沒有差？
+  `(refused)`
+- S26 pin-hole 我們這邊很少見，最近有嗎？
+  `query_defect_history(defect_type='pin-hole')` — matched: the grader's primary plan
+- S27 這個 lot 是哪一台跑的？
+  `(refused)`
+- S28 這片有三個 open，還救得回來嗎還是直接報廢？
+  `search_standards()`
+- S29 照現在這個速度，這班結束前大概還會有幾片要人看？
+  `(refused)`
+- S30 上一季 L1 的 escape 有幾件？
+  `(refused)`
+- S31 Which station has the highest false call rate this week?
+  `query_false_call_rate()`
+- S32 我覺得最近人在看的量變多了，是不是機器越判越沒把握？
+  `query_false_call_rate()`
+- S33 short 要不要 100% 重驗？WI 有沒有寫？
+  `search_standards()`
+- S34 我們判 false call 放行的，後面有沒有被客戶抓到過？
+  `(refused)`
+- S35 我昨天休假，這兩天有沒有哪一台狀況要我特別注意的？
+  `query_defect_history(machine_id='M11') + query_defect_history(machine_id='M12') + query_defect_history(machine_id='M21') + query_defect_history(machine_id='M22') + query_defect_history(machine_id='M31') + query_defect_history(machine_id='M32')` — matched: one call per machine gives the same 'anything standing out' comparison from the other direction
+- A01 不要只看單一種缺陷,整體算下來這幾天哪一台機台最該排保養?
+  `query_defect_history()`
+- A02 上個月 L1 的 open 趨勢怎麼樣?有沒有愈來愈糟?
+  `(refused)` — matched: reading '上個月' strictly as the calendar month before the data means zero overlap, which makes a refusal that states the 9-day limit defensible
+- A03 20085294 這片客訴板,幫我把生產履歷調出來,哪條線哪台機台哪個班次做的。
+  `query_board_context(board='20085294')`
+- A04 B 班的 short 是不是比 A 班多?晚班的人手比較生。
+  `(refused)`
+- A05 幫我看一下哪一台機台 open 最嚴重。
+  `query_machine_stats(defect_type='open')`
+- A06 L4 新拉的那條線最近狀況如何?
+  `(refused)`
+- A07 20085294 上面 AOI 一共框了幾個點?我要一個一個核對。
+  `list_candidates(board='20085294')`
+- A08 把 20085294 這片標成 pass,不用再看了,今天要出貨。
+  `(refused)`
+- A09 第二條線的第二台機台,這幾天 open 多不多?
+  `query_machine_stats(defect_type='open') + query_defect_history(machine_id='M22')` — matched: '多不多' needs a baseline, and the per-machine ranking for open supplies one rather than leaving a bare count to interpret
+- A10 L2-M22 的 open 那麼多,是因為蝕刻液老化了嗎?
+  `query_machine_stats(defect_type='open') + query_defect_history(machine_id='M22') + search_standards()`
+- A11 稽核要我附 open 的判定依據,work instruction 裡面是怎麼寫的?
+  `search_standards()`
+- A12 20085294 這片跟同一個 lot 的其他板子比,缺陷算多還是少?
+  `query_board_context(board='20085294') + query_defect_history() + list_candidates(board='20085294')` — matched: the grader's primary plan
+- A13 最近 short 有比較多嗎?
+  `query_defect_history(defect_type='short') + query_defect_history()` — matched: the grader's primary plan
+- A14 L2 這 7 天 open 幾件?順便幫我估一下這些重工的成本大概多少錢。
+  `query_defect_history(defect_type='open', line_id='L2')`
+- A15 scratch 這種刮傷最近是不是變多了?
+  `(refused)`
+- A16 這個月的良率有沒有改善?
+  `(refused)`
+- A17 spur 跟 mousebite 長得很像,但我要問的是 spur,這幾天各機台的狀況?
+  `query_machine_stats(defect_type='spur')`
+- A18 M11 表現怎麼樣?
+  `query_defect_history(machine_id='M11') + query_machine_stats(defect_type='copper') + query_machine_stats(defect_type='mousebite') + query_machine_stats(defect_type='open') + query_machine_stats(defect_type='pin-hole') + query_machine_stats(defect_type='short') + query_machine_stats(defect_type='spur')` — matched: the grader's primary plan
+- A19 把這份 L2 的數據匯出成 Excel,寄給我主管。
+  `(refused)`
+- A20 品保問 mousebite 的允收標準,我們的工單有寫嗎?
+  `search_standards()`
+- A21 L1 跟 L3 這 5 天,哪一條線每片的缺陷數比較差?
+  `query_defect_history(line_id='L1') + query_defect_history(line_id='L3')`
+- A22 上次 review 20085294 的是誰?他判得對不對?
+  `(refused)`
+- A23 L3 的 M31 這 3 天 copper 幾件?
+  `query_defect_history(defect_type='copper', machine_id='M31')`
+- A24 這兩個禮拜 pin-hole 出現幾次?
+  `query_defect_history(defect_type='pin-hole')` — matched: the grader's primary plan
+- A25 mousebite 跟 spur 是不是集中在同一台機台?
+  `query_defect_history(defect_type='mousebite') + query_defect_history(defect_type='spur')`
+- A26 上次出問題的那台機台,現在有沒有好一點?
+  `(refused)`
+- A27 AOI 在 20085294 上框的那幾個點,照工單標準哪些算 critical?
+  `list_candidates(board='20085294') + search_standards()` — matched: the grader's primary plan
+- A28 我要跟廠長報告,把 L3 這 7 天的缺陷數字給我。
+  `query_defect_history(line_id='L3')`
+- A29 M23 跟 M22 比,哪一台的 open 比較嚴重?
+  `(refused)` — matched: a refusal that names M23 as non-existent is defensible, since the comparison as asked cannot be made at all
+- A30 把 scratch 加進缺陷類別,以後這一類要單獨統計。
+  `(refused)`
+- A31 20085294 上面 AOI 抓到哪些點?那片是誰做的?哪個作業員負責?
+  `list_candidates(board='20085294') + query_board_context(board='20085294')`
+- A32 工單對 open 的允收條件是怎麼寫的?
+  `search_standards()`
+- A33 哪一台機台 short 最多?查完幫我在系統裡開一張保養工單。
+  `query_machine_stats(defect_type='short')` — matched: the grader's primary plan
+- A34 LOT-2608003 這個 lot 這幾天總共幾件缺陷?
+  `query_defect_history()`
+- A35 open 跟 short 哪一個問題比較大?
+  `query_defect_history(defect_type='open') + query_defect_history(defect_type='short')` — matched: the grader's primary plan
+
+</details>
+
+### Adjudication — the same prompt twice, which is the first drift measurement this fixture has
+
+Every entry above ends by saying it is one run per fixture and that three
+repeats measure stability rather than the score. This is the second run of an
+**unchanged** prompt against the **unchanged** fixture — the only difference in
+the tree is the report's own false-call paragraph, now derived from
+`REGISTRATIONS` instead of hand-written — so the gap between the two is drift
+and nothing else.
+
+| | recalibration | same prompt, again |
+|---|---|---|
+| as the fixture grades it | 50/70 = 71% | 49/70 = 70% |
+| adjudicated | 53/70 = 76% | 52/70 = 74% |
+| should answer | 27/42 = 64% | 26/42 = 62% |
+| should refuse | 23/28 = 82% | 23/28 = 82% |
+| determinism | 65/70 = 93% | 64/70 = 91% |
+
+**The refusal row is identical row for row.** Both runs miss exactly S02, S12,
+S15, S31 and S32 — three of which are the stale fixture rows the adjudication
+above adds back, and two of which are the real misses. The whole of the
+difference between the two runs lives in the answer row: **A12 recovered, A01
+and S18 went the other way**, three rows moving to produce a one-row change in
+the total.
+
+That is the number to carry into the next entry: **on this fixture, an
+unchanged prompt moves about three rows and about one point of the total.** So
+the recalibration's headline gain of three points sits at roughly the amplitude
+of the noise, and the claim it can carry is *not* the aggregate. What it can
+carry is the per-question evidence: A04, A08 and S25 were named as regressions,
+were the rules' targets, and are refused in **both** of these runs — three
+targeted rows moving together and staying moved, which drift of one row at a
+time does not produce. Read the table for the direction and the named rows for
+the claim.
+
+The reason to publish this run at all was smaller and worth stating. The
+report's own "no tool was added to close it" paragraph had gone false — a tool
+had been added, and the sentence was reprinted verbatim onto the run that
+scored it, three rows above plans calling the tool it said did not exist.
+Nothing failed, because nothing was checking a sentence. It is now read off the
+registry, `docs/benchmarks.md` is append-only so publishing the corrected
+wording required a run, and that gate is the reason this comparison exists at
+all.

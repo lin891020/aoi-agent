@@ -29,9 +29,11 @@ from pathlib import Path
 from aoi_agent.analysis.plan import PLANNABLE_TOOLS, store_domains, validate_plan
 from aoi_agent.store import seed
 
+import analysis_eval
 from analysis_eval import (
     BLIND_TO_THE_PROMPT,
     DAYS_DEFAULT_DEFECT,
+    FALSE_CALL_TOOL,
     NO_FALSE_CALL_METRIC,
     QUESTIONS,
     SCORED_ARGS,
@@ -390,3 +392,58 @@ def test_the_published_section_did_not_displace_the_original_one():
     third = published.find("### Analysis planner", second + 1)
     original_seventy = published[second:third if third != -1 else len(published)]
     assert "| should refuse | 28 | 28/28 = 100% |" in original_seventy
+
+
+def test_the_false_call_paragraph_is_read_off_the_registry():
+    """The one sentence in the report that a later commit can falsify.
+
+    "No tool was added to close it" was hand-written, true when written, and
+    reprinted verbatim onto the run that scored the tool which closed it --
+    beside three rows the planner had answered by calling exactly the tool the
+    paragraph said did not exist. Nothing failed, because nothing was checking.
+    Derived, never declared, is the rule the provenance digest already sets;
+    this is the same rule applied to prose."""
+    registered = [r for r in analysis_eval.REGISTRATIONS if r.name == FALSE_CALL_TOOL]
+    assert registered, f"{FALSE_CALL_TOOL} is expected in the registry"
+
+    closed = analysis_eval._false_call_metric()
+    assert FALSE_CALL_TOOL in closed
+    assert "It is closed" in closed
+    assert "none was added to close it" not in closed
+
+
+def test_the_paragraph_says_the_gap_is_open_when_no_tool_answers_it(monkeypatch):
+    """The other branch, which is the state the set was written in.
+
+    Without this the assertion above passes on a paragraph that says "closed"
+    unconditionally, which is a declaration wearing a derivation's clothes."""
+    without = tuple(
+        r for r in analysis_eval.REGISTRATIONS if r.name != FALSE_CALL_TOOL
+    )
+    monkeypatch.setattr(analysis_eval, "REGISTRATIONS", without)
+
+    open_ = analysis_eval._false_call_metric()
+    assert "It is still open" in open_
+    assert "It is closed" not in open_
+
+
+def test_both_branches_keep_the_finding_the_blind_author_actually_made():
+    """The registry answers "is it closed", not "was it ever a gap".
+
+    The six questions were written against a surface that did not answer them,
+    and that stays true whatever the registry later holds. A derivation that
+    can erase its own finding is worse than the hand-written sentence it
+    replaced."""
+    without = tuple(
+        r for r in analysis_eval.REGISTRATIONS if r.name != FALSE_CALL_TOOL
+    )
+    closed = analysis_eval._false_call_metric()
+
+    import unittest.mock
+
+    with unittest.mock.patch.object(analysis_eval, "REGISTRATIONS", without):
+        open_ = analysis_eval._false_call_metric()
+
+    for paragraph in (closed, open_):
+        assert "Six of the thirty-five" in paragraph
+        assert "the grader marked all six `refuse`" in paragraph.lower()

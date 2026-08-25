@@ -65,7 +65,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from aoi_agent.analysis.graph import build_analysis_graph, make_plan_node  # noqa: E402
-from aoi_agent.analysis.plan import store_domains  # noqa: E402
+from aoi_agent.analysis.plan import REGISTRATIONS, store_domains  # noqa: E402
 from aoi_agent.graph.flow import DEFAULT_MODEL  # noqa: E402
 from aoi_agent.llm.ollama import EXPLANATION_DEADLINE_S, OllamaClient  # noqa: E402
 
@@ -128,23 +128,62 @@ DAYS_DEFAULT_DEFECT = (
     "system as measured produces."
 )
 
-#: The sharpest thing the set found, and the one worth stating before any
-#: score: it is a gap in the tool surface, not a planner failure.
-NO_FALSE_CALL_METRIC = (
-    "**The sharpest finding is not in the score.** Six of the thirty-five "
-    "supervisor questions ask for a false-call count or rate — per machine, "
-    "per shift, per line, for the week — and no tool returns one at any "
-    "aggregate level. `query_defect_history` excludes "
-    "`predicted_class='false_call'` outright and `query_machine_stats` accepts "
-    "only the six real classes, so the quantity does not exist above a single "
-    "board. In a system whose entire subject is false calls, that is the gap "
-    "an author who had not read the code found immediately and the author who "
-    "wrote the tools did not. The grader marked all six `refuse`, which is "
-    "correct for the system as built, and refusing them is what the planner is "
-    "scored on here — but a refusal is the right answer to the wrong question. "
-    "No tool was added to close it, because adding one to pass a set is how a "
-    "measurement stops measuring."
-)
+#: The tool that would close the gap the set found, named once so the
+#: paragraph below can ask the registry rather than assert an answer.
+FALSE_CALL_TOOL = "query_false_call_rate"
+
+
+def _false_call_metric() -> str:
+    """The sharpest thing the set found, and whether it is still open.
+
+    This was a hand-written paragraph ending "No tool was added to close it"
+    until 2026-08-25, by which point a tool had been added to close it -- and
+    the sentence had been reprinted verbatim into `docs/benchmarks.md` on the
+    very run that scored the new tool, where it sat beside three rows the
+    planner had answered with exactly the tool the paragraph said did not
+    exist. Nothing failed. A published claim that rotted between two runs of
+    the script that publishes it is the same shape as `model_version`: the
+    release it goes stale on is the release where it is wrong and looks right.
+
+    So the standing half is stated as history, with a date, and the current
+    half is read off ``REGISTRATIONS`` at render time.
+    """
+    closed = any(r.name == FALSE_CALL_TOOL for r in REGISTRATIONS)
+    finding = (
+        "**The sharpest finding is not in the score.** Six of the thirty-five "
+        "supervisor questions ask for a false-call count or rate — per "
+        "machine, per shift, per line, for the week — and when this set was "
+        "written no tool returned one at any aggregate level: "
+        "`query_defect_history` excludes `predicted_class='false_call'` "
+        "outright and `query_machine_stats` accepts only the six real "
+        "classes, so the quantity did not exist above a single board. In a "
+        "system whose entire subject is false calls, that is the gap an "
+        "author who had not read the code found immediately and the author "
+        "who wrote the tools did not. The grader marked all six `refuse`, "
+        "which was correct for the system as built."
+    )
+    if not closed:
+        return finding + (
+            " It is still open: no tool in the registry returns an aggregate "
+            f"false-call rate, and none was added to close it, because "
+            "adding one to pass a set is how a measurement stops measuring. "
+            "Refusing these six is what the planner is scored on here — but "
+            "a refusal is the right answer to the wrong question."
+        )
+    return finding + (
+        f" **It is closed: `{FALSE_CALL_TOOL}` is in the registry as of this "
+        "run, and the fixture still marks those questions `refuse`.** The "
+        "rows are therefore graded against a surface that no longer exists, "
+        "and a plan that calls the tool scores a miss for being right. The "
+        "fixture is deliberately not edited — its whole value is that its "
+        "authors had not seen the prompt — so the regrading is published as "
+        "an adjudication beside the score rather than folded into it. This "
+        "sentence is read off `REGISTRATIONS` rather than written by hand, "
+        "because the hand-written one went false without failing anything."
+    )
+
+
+NO_FALSE_CALL_METRIC = _false_call_metric()
 
 QUESTIONS = Path(__file__).resolve().parents[1] / "tests/fixtures/analysis_questions.json"
 
