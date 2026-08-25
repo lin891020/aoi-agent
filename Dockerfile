@@ -53,7 +53,7 @@ ENV PATH=/app/.venv/bin:$PATH \
     PYTHONUNBUFFERED=1
 
 USER aoi
-EXPOSE 8000
+EXPOSE 8110
 
 # The CLI defaults to 127.0.0.1, which from outside a container is nowhere.
-CMD ["python", "-m", "aoi_agent", "station", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "aoi_agent", "station", "--host", "0.0.0.0", "--port", "8110"]

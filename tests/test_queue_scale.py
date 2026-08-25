@@ -179,3 +179,19 @@ def test_the_corrections_summary_covers_every_decision_not_the_recent_ones(
     )
     # Every one of them overruled `open` with `false_call`.
     assert summary["overruled"] == OVER_THE_PAGE
+
+
+def test_the_queue_shows_when_each_region_started_waiting_labelled_utc(
+    crowded_client,
+):
+    """The ordering rule -- longest wait goes next -- was invisible: the queue
+    never showed since when. And an unlabelled clock stored in UTC and read at
+    UTC+8 is an eight-hour lie by omission, which the board record and the
+    corrections pages already close by saying UTC; this holds the queue to the
+    same sentence."""
+    body = read_in(crowded_client, "en").get("/").text
+
+    assert "Waiting since (UTC)" in body
+    # The fixture raises its escalations at 2026-08-25 08:00 plus seconds; the
+    # first page row is the oldest, so its minute-precision stamp is fixed.
+    assert "2026-08-25 08:00" in body

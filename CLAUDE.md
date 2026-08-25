@@ -82,7 +82,7 @@ uv run python scripts/check_mcp_servers.py       # servers start and advertise t
 uv run python scripts/invariant_audit.py         # which invariants below would fail a test if broken
 uv run python scripts/invariant_audit.py --collect  # the same, checking pytest really collects each one
 uv run python -m aoi_agent board 20085294 --queue  # run a board, queue what it cannot settle
-uv run python -m aoi_agent station               # review station on :8000 -- the queue, and /ask
+uv run python -m aoi_agent station               # review station on :8110 -- the queue, and /ask
 uv run python -m aoi_agent queue                 # what is waiting on a person
 uv run python -m aoi_agent explanations          # how many dispositions carry no rationale, and why
 uv run python -m aoi_agent provenance 20085294   # who decided this board, when, and under which model
@@ -94,7 +94,7 @@ uv run python scripts/mark_unattributed_resolutions.py --dry-run
                                                  # queue entries closed with no human decision behind them
 
 docker build -t aoi-agent .                      # CPU torch; nothing heavy baked in
-docker run --rm -p 8000:8000 \
+docker run --rm -p 8110:8110 \
   -v "$PWD/data:/app/data" -v "$PWD/models:/app/models" aoi-agent
                                                  # the station, containerised
 ```
@@ -397,13 +397,14 @@ On the station itself:
   disposition and every region's, with the weights, thresholds and code behind
   each -- but there is no index of boards to reach it from except a link on a
   queued region.
-- **Timestamps are stored UTC and displayed UTC**, and now labelled `UTC` on
-  the board record, the CLI and the corrections page -- the last of those closed
-  on 2026-08-23 while that page was being translated. The queue is still
-  unlabelled, which on a quality record read at UTC+8 is an eight-hour lie.
-  Store UTC, render local, say which. It was the last of the two halves of
-  a quality record that named nothing an auditor could use; the other half --
-  who made the decision -- closed on 2026-08-23.
+- **Timestamps are stored UTC and displayed UTC**, and labelled `UTC` on the
+  board record, the CLI, the corrections page, and -- closed 2026-08-25 -- the
+  queue, which until then showed no clock at all: the ordering rule ("whoever
+  waited longest goes next") ran on a timestamp the page never displayed. The
+  remaining honest gap is that display is UTC rather than local; "store UTC,
+  render local, say which" is still the right end state, and every page saying
+  `UTC` explicitly is what makes that a rendering change rather than a data
+  migration.
 - **Authentication is done, and what it deliberately leaves out is not.**
   Closed on 2026-08-23. Both pages are behind a sign-in, `record_decision`
   refuses a `human` row that names nobody, and the station reads the name off

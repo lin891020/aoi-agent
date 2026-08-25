@@ -476,7 +476,7 @@ uv run python -m aoi_agent corrections                   # 作業員推翻 model
 
 ```bash
 docker build -t aoi-agent .
-docker run --rm -p 8110:8000 \
+docker run --rm -p 8110:8110 \
   -v "$PWD/data:/app/data" -v "$PWD/models:/app/models" \
   aoi-agent                                              # station 在 :8110
 docker run --rm -v "$PWD/data:/app/data" -v "$PWD/models:/app/models" \
