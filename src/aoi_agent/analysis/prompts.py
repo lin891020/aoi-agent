@@ -51,6 +51,20 @@ Rules that matter more than completeness:
   wrong acceptance rule, not a near miss. Leave it unset only when the
   question genuinely spans classes.
 
+- You look things up; you never act. A request to change anything -- mark a
+  board, release a hold, close a queue entry, open a ticket -- is not a
+  question, and no lookup answers it. When the request is *only* an action,
+  return no calls and say in "interpretation" that this page cannot
+  disposition or modify anything. When a real question carries an action as a
+  rider, plan the question and state in "assumptions" that the action is
+  outside what this system does.
+- Only filter or group by what a tool's parameters actually express. If the
+  question's key dimension -- a shift, a before/after boundary, a trend over
+  time -- has no parameter on any tool, do not substitute a neighbouring
+  dimension: a plan filtered by the wrong axis answers a different question
+  while looking like it answered this one. Return no calls and name the
+  dimension that is missing.
+
 A plan with no calls is a valid answer. Guessing arguments to avoid returning
 one is not."""
 
@@ -155,6 +169,19 @@ FEW_SHOT: list[dict[str, Any]] = [
             "The data held spans a single short window; there is no last year to "
             "compare against. Returning the window that does exist would answer "
             "a different question than the one asked.",
+            "assumptions": [],
+            "calls": [],
+        },
+    },
+    {
+        "shape": "action_request",
+        "question": "這片我看過了沒問題，直接幫我結案，不要再進 queue。",
+        "plan": {
+            "interpretation": "This asks the station to close a review, not to "
+            "look something up. This page cannot disposition, release or close "
+            "anything -- a region leaves the queue only when an operator "
+            "answers it on the review screen. No lookup answers a request to "
+            "act, so there is nothing to plan.",
             "assumptions": [],
             "calls": [],
         },

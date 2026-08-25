@@ -1,9 +1,16 @@
-"""The prompt, and the five examples that shape what comes back.
+"""The prompt, and the six examples that shape what comes back.
 
-Diversity beats count: five examples that show the edges teach more than five
-that show the happy path. Four of these five are refusals or hedges, which is
+Diversity beats count: examples that show the edges teach more than ones that
+show the happy path. Five of these six are refusals or hedges, which is
 deliberate -- a system that answers everything is more dangerous on a factory
 floor than one that says it cannot.
+
+The sixth arrived 2026-08-25, and what forced it is in docs/benchmarks.md:
+adding `query_false_call_rate` made the planner bolder on questions the tool
+cannot answer, including a disposition request it had previously refused
+("mark this board pass, it ships today"). The example is that *category* in a
+different sentence -- teaching the shape, not reciting the fixture -- and the
+independent seventy stays the measure of whether it worked.
 """
 
 from __future__ import annotations
@@ -27,8 +34,8 @@ DOMAINS = {
 }
 
 
-def test_there_are_five_examples():
-    assert len(FEW_SHOT) == 5
+def test_there_are_six_examples():
+    assert len(FEW_SHOT) == 6
 
 
 def test_every_example_plan_would_pass_validation():
@@ -41,7 +48,7 @@ def test_every_example_plan_would_pass_validation():
         assert validate_plan(plan, DOMAINS) == [], example["question"]
 
 
-def test_the_examples_cover_the_five_shapes():
+def test_the_examples_cover_the_six_shapes():
     shapes = {example["shape"] for example in FEW_SHOT}
     assert shapes == {
         "cross_tool",
@@ -49,13 +56,17 @@ def test_the_examples_cover_the_five_shapes():
         "causal",
         "out_of_range",
         "too_vague",
+        "action_request",
     }
 
 
 def test_refusals_are_expressed_as_an_empty_plan_with_a_reason():
     """A refusal is not an error. It is a plan with no calls and an
     interpretation that says why, so it renders through the same path."""
-    refusals = [e for e in FEW_SHOT if e["shape"] in ("out_of_range", "too_vague")]
+    refusals = [
+        e for e in FEW_SHOT
+        if e["shape"] in ("out_of_range", "too_vague", "action_request")
+    ]
     assert refusals
     for example in refusals:
         assert example["plan"]["calls"] == []
