@@ -33,8 +33,10 @@ from typing import Any, Callable, Mapping, TypedDict
 from sqlalchemy import func, select
 
 from aoi_agent.mcp_servers.production import (
+    GROUP_BY,
     query_board_context,
     query_defect_history,
+    query_false_call_rate,
     query_machine_stats,
 )
 from aoi_agent.mcp_servers.standards import search_standards
@@ -59,6 +61,7 @@ class Domains(TypedDict):
     machine_id: set[str]
     defect_type: set[str]
     defect_class: set[str]
+    group_by: set[str]
     max_days: int
 
 
@@ -73,6 +76,10 @@ DOMAIN_OF = {
     #: over the six real classes. Same vocabulary plus one, different question,
     #: so they are two domains rather than one shared name.
     "defect_class": "defect_class",
+    #: `query_false_call_rate`'s axis. The tool owns the vocabulary (it is a
+    #: fact about the tool, not the store) and the validator reads it from the
+    #: tool's module, so the two cannot drift.
+    "group_by": "group_by",
 }
 
 
@@ -329,6 +336,7 @@ REGISTRATIONS: tuple[Registration, ...] = (
     #: `lot_id` is matched against `Board.lot_id` and nothing else.
     Registration(query_defect_history, identifiers=frozenset({"lot_id"})),
     Registration(query_machine_stats),
+    Registration(query_false_call_rate),
     Registration(query_board_context, identifiers=frozenset({"board"})),
     #: The one free-text parameter in the system, and the reason this check is
     #: a declaration rather than a rule about types: it is the same `str` as a
@@ -416,6 +424,7 @@ def store_domains() -> Domains:
         "machine_id": set(),
         "defect_type": {"open", "short", "mousebite", "spur", "copper", "pin-hole"},
         "defect_class": set(SCOPES),
+        "group_by": set(GROUP_BY),
         "max_days": 1,
     }
 
@@ -438,6 +447,7 @@ def store_domains() -> Domains:
         "machine_id": machines,
         "defect_type": empty["defect_type"],
         "defect_class": empty["defect_class"],
+        "group_by": empty["group_by"],
         "max_days": span,
     }
 

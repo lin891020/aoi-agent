@@ -27,6 +27,8 @@ DOMAINS = {
     # classifier emitted, and `false_call` is one of those.
     "defect_class": {"open", "short", "mousebite", "spur", "copper", "pin-hole",
                      "false_call"},
+    # The tool's own axis vocabulary, not a store fact -- see plan.DOMAIN_OF.
+    "group_by": {"machine", "line", "shift"},
     "max_days": 9,
 }
 

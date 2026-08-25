@@ -148,9 +148,45 @@ def _machine_comparison(payloads: list[dict]) -> dict | None:
 #: answer leaves the reader to do the joining. The branches of one fan-out are
 #: not unrelated: they are the same lookup asked about different entities, and
 #: they belong on one chart together.
+def _false_call_rates(payloads: list[dict]) -> dict | None:
+    """Each group's false-call rate, one series per grouping asked about.
+
+    The rate, not the counts: the tool sorts by it, the question that reaches
+    this tool is about it, and plotting `flagged` beside `dismissed` would make
+    the reader derive the one number the payload already carries. What the bar
+    is is the payload's own caveat -- the re-verifier's judgement, not ground
+    truth -- and the synthesis prose carries that sentence; the chart only has
+    to not claim more, which a rate labelled as dismissal does not.
+    """
+    usable = [p for p in payloads if p.get("by_group")]
+    if not usable:
+        return None
+
+    series: list[dict[str, Any]] = [
+        {
+            "name_key": "chart.series.dismissal_rate_by",
+            "name_args": {"group_by": payload.get("filters", {}).get("group_by", "")},
+            "points": [
+                {"x": row["group"], "y": round(row["false_call_rate"], 4)}
+                for row in payload["by_group"]
+            ],
+        }
+        for payload in usable
+    ]
+
+    return {
+        "kind": "bar",
+        "title_key": "chart.title.false_call_rate",
+        "x_label_key": "chart.axis.group",
+        "y_label_key": "chart.axis.dismissal_rate",
+        "series": series,
+    }
+
+
 BUILDERS = {
     "query_machine_stats": _machine_comparison,
     "query_defect_history": _defect_breakdown,
+    "query_false_call_rate": _false_call_rates,
 }
 
 

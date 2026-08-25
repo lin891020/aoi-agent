@@ -366,11 +366,27 @@ def test_the_published_section_carries_the_script_s_own_wording():
 
 
 def test_the_published_section_did_not_displace_the_original_one():
-    """Two question sets, two sections, and the older one's figures stay put.
-    They are not comparable and the new section is not a correction of the old."""
+    """The originals stay put; reruns append after them, never over them.
+
+    This asserted exactly two `### Analysis planner` sections until 2026-08-25,
+    which was a count standing in for the real invariant -- and the first
+    legitimate rerun (after `query_false_call_rate` was added) broke the count
+    without touching an original. What actually must hold: the first two
+    sections still exist, in their original order, with their original headline
+    figures unmoved, and anything newer sits after both. Benchmarks are
+    append-only; a rerun is a new entry, not a correction.
+    """
     published = BENCHMARKS.read_text()
 
-    assert published.count("### Analysis planner") == 2
-    assert published.index("### Analysis planner —") < published.index(
-        "### Analysis planner, asked by someone else"
-    )
+    assert published.count("### Analysis planner") >= 2
+    first = published.index("### Analysis planner —")
+    second = published.index("### Analysis planner, asked by someone else")
+    assert first < second
+
+    # The originals' headline rows, verbatim. If a rerun ever overwrote either
+    # section in place, these figures are what would move.
+    original_twenty = published[first:second]
+    assert "| should refuse | 7 | 7/7 = 100% |" in original_twenty
+    third = published.find("### Analysis planner", second + 1)
+    original_seventy = published[second:third if third != -1 else len(published)]
+    assert "| should refuse | 28 | 28/28 = 100% |" in original_seventy

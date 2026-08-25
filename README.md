@@ -111,6 +111,17 @@ The set also found two real defects that the score does not contain:
   Neither has been papered over, because adding a tool to pass a set is how a
   measurement stops measuring.
 
+  **2026-08-25: the tool was then built, and the fixture deliberately was not
+  touched** -- its value is that nobody who saw the prompt wrote it, and the
+  person adding the tool rewriting its answer key would end that. Re-run
+  against the fixture as written: 47/70, adjudicated 50/70, against 55/70
+  before. Three of the seven new "wrongly answered" rows are the fixture being
+  stale about `query_false_call_rate`; **four are a real finding -- adding one
+  tool made the planner bolder on questions the tool cannot answer**, including
+  a disposition request it had previously refused. The adjudication table and
+  both readings are in benchmarks; the rate the tool reports is labelled in
+  its own payload as the re-verifier's judgement, never ground truth.
+
 What it does not establish: the questions were written by LLM authors working
 from different briefs, not by a real shift supervisor, so this bounds the shapes
 those briefs produce and nothing else. Plans are scored, not prose — the

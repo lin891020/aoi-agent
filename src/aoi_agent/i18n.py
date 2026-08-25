@@ -45,6 +45,10 @@ STRINGS: dict[str, dict[str, str]] = {
         # for a reader to reconcile in their head.
         "chart.title.defects_by_class": "各類缺陷數量",
         "chart.title.share_by_machine": "各機台缺陷佔比",
+        "chart.title.false_call_rate": "誤判駁回率（複判模型的判定，非真值）",
+        "chart.axis.group": "分組",
+        "chart.axis.dismissal_rate": "被駁回為誤判的比例",
+        "chart.series.dismissal_rate_by": "依{group_by}分組",
         "chart.axis.defect_class": "缺陷類別",
         "chart.axis.count": "數量",
         "chart.axis.machine": "機台",
@@ -271,6 +275,7 @@ STRINGS: dict[str, dict[str, str]] = {
         # auditable for decoration.
         "tool.query_defect_history": "缺陷歷史",
         "tool.query_machine_stats": "機台比較",
+        "tool.query_false_call_rate": "誤判駁回率",
         "tool.query_board_context": "單板脈絡",
         "tool.search_standards": "驗收標準檢索",
         "tool.list_candidates": "單板區域清單",
@@ -279,6 +284,10 @@ STRINGS: dict[str, dict[str, str]] = {
         # -- charts ---------------------------------------------------------
         "chart.title.defects_by_class": "Defects by class",
         "chart.title.share_by_machine": "Defect share by machine",
+        "chart.title.false_call_rate": "False-call dismissal rate (the re-verifier's judgement, not ground truth)",
+        "chart.axis.group": "Group",
+        "chart.axis.dismissal_rate": "Share dismissed as false calls",
+        "chart.series.dismissal_rate_by": "grouped by {group_by}",
         "chart.axis.defect_class": "class",
         "chart.axis.count": "count",
         "chart.axis.machine": "machine",
@@ -515,6 +524,7 @@ STRINGS: dict[str, dict[str, str]] = {
         # -- what a tool is called on screen ---------------------------------
         "tool.query_defect_history": "Defect history",
         "tool.query_machine_stats": "Machine comparison",
+        "tool.query_false_call_rate": "False-call dismissal rate",
         "tool.query_board_context": "Board context",
         "tool.search_standards": "Criteria retrieval",
         "tool.list_candidates": "Regions on a board",
