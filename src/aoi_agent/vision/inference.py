@@ -20,19 +20,22 @@ DEFAULT_CHECKPOINT = Path("models/reverifier.pt")
 #: split: the highest review reduction available while keeping the
 #: re-verification escape rate under 0.5%. See docs/benchmarks.md.
 #:
-#: The sweep's own answer is 0.9154344201087952. A constant nobody can read is
-#: worse than one that is rounded, so this is rounded -- **upwards**, and that
-#: direction is the whole of the note. It was 0.915 until 2026-08-24, which is
-#: the sweep's value rounded to the nearest, and at 0.915 the split escapes 15
-#: defects rather than 14: **0.5005%, over the budget the constant is cited to
-#: satisfy**. One defect, and the citation above was false the whole time.
+#: The sweep's own answer is 0.9609377384185791, rounded **up**. That direction
+#: is the whole of the note: higher dismisses less, so up is the safe side and
+#: rounding to the nearest is a coin. It was 0.915 until 2026-08-24 -- the
+#: previous model's value rounded to the *nearest*, one notch below its sweep,
+#: at which the split escaped 15 defects rather than 14: 0.5005%, over the
+#: budget this line is cited to satisfy. The citation had been false since it
+#: was written.
 #:
-#: Higher dismisses less, so rounding up is the safe direction and rounding to
-#: the nearest is a coin. What the correction costs is 0.07 points of review
-#: reduction, 56.22% to 56.15%. `test_the_shipped_threshold_meets_the_budget_it
-#: _cites` re-derives this from the stored predictions rather than trusting
-#: either number.
-DEFAULT_DISMISS_THRESHOLD = 0.916
+#: Moved to 0.961 the same day, when registration was turned on in the
+#: detector. That changed the candidate population -- 11.5% fewer, the easy
+#: false calls residual misalignment was producing -- so the model was retrained
+#: and the threshold re-swept, which is the chain
+#: `.claude/skills/retraining-the-reverifier` exists to make unskippable.
+#: `test_the_shipped_threshold_meets_the_budget_it_cites` re-derives this from
+#: the stored predictions rather than trusting either number.
+DEFAULT_DISMISS_THRESHOLD = 0.961
 
 #: Below this the model is not confident enough about *any* class for the
 #: verdict to stand on its own, and the case is worth escalating.

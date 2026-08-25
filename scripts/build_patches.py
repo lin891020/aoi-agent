@@ -42,7 +42,7 @@ def main() -> int:
     if args.limit:
         pairs = pairs[: args.limit]
 
-    config = DetectorConfig(threshold=args.threshold)
+    config = DetectorConfig(threshold=args.threshold, register=True)
     label_index = {name: i for i, name in enumerate(LABEL_NAMES)}
 
     all_patches: list[np.ndarray] = []

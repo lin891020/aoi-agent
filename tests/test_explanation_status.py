@@ -27,7 +27,7 @@ import pytest
 from fastapi.testclient import TestClient
 from langgraph.checkpoint.memory import InMemorySaver
 
-from conftest import read_in, sign_in
+from conftest import IN_THE_EXPLANATION_BAND, read_in, sign_in
 from aoi_agent.graph import flow
 from aoi_agent.station import app as station_app
 from aoi_agent.station import service
@@ -109,7 +109,7 @@ def test_the_two_operational_failures_are_told_apart(stub_tools, client, expecte
     Ollama is not running. Collapsed into one error string they were the same
     event, and neither could be counted.
     """
-    stub_tools["classify"]["confidence"] = 0.93
+    stub_tools["classify"]["confidence"] = IN_THE_EXPLANATION_BAND
     graph = flow.build_graph(client, InMemorySaver())
     state = graph.invoke(
         {"candidate_ref": REFERENCE, "trace": [], "timings_ms": {}},
@@ -120,7 +120,7 @@ def test_the_two_operational_failures_are_told_apart(stub_tools, client, expecte
 
 def test_an_unparseable_response_is_a_third_status(stub_tools):  # noqa: F811
     """The model answered. What it said is unusable, which is not an outage."""
-    stub_tools["classify"]["confidence"] = 0.93
+    stub_tools["classify"]["confidence"] = IN_THE_EXPLANATION_BAND
     graph = flow.build_graph(StubClient(raw_text="sure, looks fine"), InMemorySaver())
     state = graph.invoke(
         {"candidate_ref": REFERENCE, "trace": [], "timings_ms": {}},
@@ -133,7 +133,7 @@ def test_a_written_explanation_is_marked_as_one(stub_tools):  # noqa: F811
     """``ok`` has to be recorded too. Without it the only way to read the count
     is "rows that failed", and a station that stopped calling the model at all
     would report a perfect record."""
-    stub_tools["classify"]["confidence"] = 0.93
+    stub_tools["classify"]["confidence"] = IN_THE_EXPLANATION_BAND
     graph = flow.build_graph(StubClient(), InMemorySaver())
     state = graph.invoke(
         {"candidate_ref": REFERENCE, "trace": [], "timings_ms": {}},
@@ -155,7 +155,7 @@ def test_the_disposition_survives_every_way_the_explanation_can_fail(stub_tools)
     60s explanation deadline can sit inside a 10s response budget without
     contradiction.
     """
-    stub_tools["classify"]["confidence"] = 0.93
+    stub_tools["classify"]["confidence"] = IN_THE_EXPLANATION_BAND
     verdicts = set()
     for index, client in enumerate([StubClient(), SlowClient(), DeadClient(),
                                     StubClient(raw_text="nope")]):
@@ -240,7 +240,7 @@ def test_a_decision_records_whether_it_carries_an_explanation(store, stub_tools)
     """The rationale column stays empty. WI-300: an absent rationale is absent,
     and the gap is not to be filled by any other means -- including by a notice
     that would then read back as something the model wrote."""
-    stub_tools["classify"]["confidence"] = 0.93
+    stub_tools["classify"]["confidence"] = IN_THE_EXPLANATION_BAND
     service.start_review(flow.build_graph(SlowClient(), InMemorySaver()), REFERENCE)
 
     with store() as session:
@@ -251,7 +251,7 @@ def test_a_decision_records_whether_it_carries_an_explanation(store, stub_tools)
 
 def test_the_counts_answer_the_question_wi_300_asks(store, stub_tools):  # noqa: F811
     """Two candidates, two outcomes, one number a person can read off."""
-    stub_tools["classify"]["confidence"] = 0.93
+    stub_tools["classify"]["confidence"] = IN_THE_EXPLANATION_BAND
     service.start_review(flow.build_graph(StubClient(), InMemorySaver()), REFERENCE)
     service.start_review(
         flow.build_graph(SlowClient(), InMemorySaver()), f"{STEM}#1"

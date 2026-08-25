@@ -91,6 +91,23 @@ RESPONSE_BUDGET_S = 10.0
 #: carries the floor and this constant must stay at or above it.
 ESCALATE_BELOW = DEFAULT_DISMISS_THRESHOLD
 
+#: How far above ``ESCALATE_BELOW`` an explanation is still worth paying for.
+#:
+#: 0.035 is the width the system shipped with -- 0.95 minus 0.915, back when
+#: both ends were literals -- and it is kept because nothing measured argues
+#: for another number. What it buys is measured rather than assumed: on the
+#: 2026-08-24 split it puts 1,460 of 6,736 automatic dispositions (21.7%) into
+#: the queue for a written rationale, about 2.9 a board, and they are the ones
+#: nearest the line where the region would instead have gone to a person --
+#: which is where an auditor reading the record most wants to know why.
+#:
+#: The risk this shape carries, named rather than engineered around: the
+#: confidences pile up against 1.0, so a future ``ESCALATE_BELOW`` above 0.965
+#: makes this band swallow everything and the explanation cost goes to one
+#: model call per candidate. ``tests/test_threshold_citations.py`` fails on
+#: that, in both directions, against the current predictions.
+EXPLAINED_BAND = 0.035
+
 #: Above this the classifier's class stands without the LLM being asked.
 #:
 #: A cost gate, not a decision gate. ``confirm_node`` and ``decide_node`` write
@@ -105,7 +122,19 @@ ESCALATE_BELOW = DEFAULT_DISMISS_THRESHOLD
 #: person -- 66 of them at 0.70. That constraint is the citation; the value
 #: within it is a dial. ``docs/architecture.md`` cited "WI-300 decision
 #: authority" until 2026-08-23, and WI-300 states no such number.
-CONFIDENT = 0.95
+#:
+#: **Derived, because declared broke it.** This was the literal 0.95 until
+#: 2026-08-24, when a retrain moved ``DEFAULT_DISMISS_THRESHOLD`` to 0.961 and
+#: inverted the pair. Thirteen tests went red, which is the loud half; the
+#: quiet half is what inversion does, and it is worse than the ordering
+#: argument above describes. Above ``CONFIDENT`` the LLM is not asked at all,
+#: so with the two crossed the band between them is empty and **every one of
+#: the 6,736 automatically dispositioned candidates on this split would have
+#: been recorded with no rationale at all** -- the LLM's only remaining job,
+#: silently not done, on a flow whose tests all still described it. Writing it
+#: as an offset is the same fix ``ESCALATE_BELOW = DEFAULT_DISMISS_THRESHOLD``
+#: already is: a retrain cannot invert what it carries along with it.
+CONFIDENT = ESCALATE_BELOW + EXPLAINED_BAND
 
 #: ``explanation_status`` when the operator has a written explanation.
 EXPLAINED = "ok"

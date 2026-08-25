@@ -327,9 +327,10 @@ table.
 
 | constant | value | source |
 |---|---|---|
-| `DEFAULT_DISMISS_THRESHOLD` | 0.916 | the operating-point sweep at the ≤0.5% escape budget, **rounded up** -- `scripts/report.py`. The sweep's own answer is 0.9154344201087952; it was rounded to the nearest until 2026-08-24, and at 0.915 the split escapes 15 defects rather than 14 -- 0.5005%, over the budget this row cites. Higher dismisses less, so up is the safe direction and nearest is a coin. |
-| `ESCALATE_BELOW` | 0.916 | `= DEFAULT_DISMISS_THRESHOLD`, which empties the only band in which the agent branch could dismiss -- `scripts/threshold_sweep.py` |
-| `CONFIDENT` | 0.95 | a cost gate: changes no disposition at or above `ESCALATE_BELOW`, and must not drop below it -- `scripts/threshold_sweep.py` |
+| `DEFAULT_DISMISS_THRESHOLD` | 0.961 | the operating-point sweep at the ≤0.5% escape budget, **rounded up** -- `scripts/report.py`. The sweep's own answer is 0.9609377384185791. Rounded **up**: higher dismisses less, so up is the safe direction and nearest is a coin -- the previous value was rounded to the nearest and sat 0.5005% against a 0.5% budget. Re-swept 2026-08-24 when registration entered the detector and moved the candidate population. |
+| `ESCALATE_BELOW` | 0.961 | `= DEFAULT_DISMISS_THRESHOLD`, which empties the only band in which the agent branch could dismiss -- `scripts/threshold_sweep.py` |
+| `EXPLAINED_BAND` | 0.035 | how far above `ESCALATE_BELOW` a written rationale is still bought. The width the system shipped with (0.95 - 0.915, when both ends were literals); what it buys is measured -- 1,460 of 6,736 automatic dispositions, 21.7%, about 2.9 a board -- `scripts/threshold_sweep.py` |
+| `CONFIDENT` | 0.996 | a cost gate: changes no disposition at or above `ESCALATE_BELOW`, and must not drop below it. `= ESCALATE_BELOW + EXPLAINED_BAND` since 2026-08-24, because as a literal it inverted -- `scripts/threshold_sweep.py` |
 | `LOW_CONFIDENCE` | 0.70 | WI-300 escalation triggers, stated there as a floor -- `data/standards/reverification-procedure.md` |
 | `RESPONSE_BUDGET_S` | 10.0 | WI-300 response budget, derived from QP-110 -- `data/standards/reverification-procedure.md` |
 | `EXPLANATION_DEADLINE_S` | 60.0 | how long the client waits for a rationale nobody blocks on; 2.8x the slowest of 24 measured calls -- `scripts/latency_report.py` |
@@ -364,12 +365,37 @@ confirm a defect; it may never dismiss one** -- WI-300 §1 now says so, and
 independently of what the numbers are. It costs 47 more escalations out of 8143
 candidates, 0.6% of the queue.
 
-`CONFIDENT` did not move, and the sweep is why: at or above `ESCALATE_BELOW` it
-changes zero dispositions, because `confirm_node` and `decide_node` write the
-same verdict. It decides who gets an LLM call and a written rationale, not what
-happens to the board. What it must not do is fall below `ESCALATE_BELOW`, where
-it starts confirming unreviewed regions the flow would have escalated -- 66 of
-them at 0.70. The constraint is the citation; the value inside it is a dial.
+`CONFIDENT` did not move then, and the sweep is why: at or above
+`ESCALATE_BELOW` it changes zero dispositions, because `confirm_node` and
+`decide_node` write the same verdict. It decides who gets an LLM call and a
+written rationale, not what happens to the board. What it must not do is fall
+below `ESCALATE_BELOW`, where it starts confirming unreviewed regions the flow
+would have escalated -- 66 of them at 0.70. The constraint is the citation; the
+value inside it is a dial.
+
+**On 2026-08-24 it fell below anyway, and the literal is why.** Registration
+entered the detector, the sweep returned 0.961, and `ESCALATE_BELOW` carried
+that across while `CONFIDENT` sat where it had been written. Thirteen tests went
+red, which is the half that gets noticed. The half that does not: above
+`CONFIDENT` the LLM is never asked, so an inverted pair empties the band between
+them, and **all 6,736 automatic dispositions on that split would have been
+recorded with no rationale at all** -- the model's only remaining job, not done,
+with nothing in the flow raising an error and every test still describing it as
+happening. `CONFIDENT` is now `ESCALATE_BELOW + EXPLAINED_BAND`, which is the
+same move `ESCALATE_BELOW = DEFAULT_DISMISS_THRESHOLD` already is: a constant
+that must stand in a relation to another one is written as that relation, so a
+retrain carries it rather than breaking it. The constraint that was the citation
+is now also the arithmetic.
+
+`EXPLAINED_BAND` is the dial that used to be hidden inside `CONFIDENT`'s value,
+and naming it is what makes the cost readable. It buys a written rationale for
+the dispositions nearest the line where the region would instead have gone to a
+person -- which is where an auditor reading the quality record most wants one.
+It carries a risk in the other direction, named here rather than engineered
+around: the confidences pile up against 1.0, so an `ESCALATE_BELOW` above 0.965
+would make this band swallow everything and take the explanation cost to one
+model call per candidate. `tests/test_threshold_citations.py` fails on both
+directions against the current predictions.
 
 The last two rows look like one number split in half and are not. Until
 2026-08-23 they *were* one number: `RESPONSE_BUDGET_S` was both WI-300's promise

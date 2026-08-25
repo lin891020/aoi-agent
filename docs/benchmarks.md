@@ -1758,3 +1758,53 @@ Confidence is kept, and it is reported, because it *is* the signal for the case 
 
 **What this does not establish.** The floor `MIN_CONFIDENCE` is not swept — there is no labelled set of mis-sorted panels here to sweep it against — so it is a value chosen to be obviously safe rather than an operating point. The disturbances are synthetic and this is still a binarised, pre-registered dataset underneath: illumination drift, scale and a board that flexes are all absent. And nothing here says which of these a line runs at. What the table supports is narrow and worth having: **translation is recoverable cheaply, rotation is not recoverable by this method at all, and the combination is where a half-working stage does damage.**
 
+## 2026-08-24 · commit f1825d2
+
+Model: ResNet-18, 3x64x64 (template / test / difference), 10 epochs
+Hardware: MacBook Air M5, 32GB, MPS
+Test split: 7322 AOI candidates from 499 unseen boards (3018 real defects, 4304 false calls)
+
+### Operating points
+
+Every candidate goes to a human today. The model dismisses the ones it is
+confident are false calls; the rest still go to a human.
+
+| escape budget | achieved escape rate | manual review removed | escapes | false calls dismissed |
+|---|---|---|---|---|
+| ≤0.10% | 0.10% | **24.5%** | 3/3018 | 1794/4304 (41.7%) |
+| ≤0.25% | 0.23% | **40.2%** | 7/3018 | 2940/4304 (68.3%) |
+| ≤0.50% | 0.50% | **52.8%** | 15/3018 | 3850/4304 (89.5%) |
+| ≤1.00% | 0.99% | **58.3%** | 30/3018 | 4236/4304 (98.4%) |
+| ≤2.00% | 1.99% | **59.5%** | 60/3018 | 4294/4304 (99.8%) |
+| ≤5.00% | 4.97% | **60.8%** | 150/3018 | 4302/4304 (100.0%) |
+
+Overall classification accuracy: 98.6% (reported for reference only — it weighs an escape the same as a false call)
+
+### Whole-line escape rate
+
+Not computed here. This script reads `test_predictions.npz`, which
+holds one row per *candidate* and excludes every candidate labelled
+`fragment` -- so it cannot see whether anything was flagged on a
+given defect, which is exactly the question a line escape rate asks.
+Composing one from an AOI miss rate handed in on the command line is
+what produced the 5.4% this project published until 2026-08-23, and
+that number was wrong by an order of magnitude.
+
+Run `scripts/escape_accounting.py`. It accounts per defect rather
+than per box, with the model in the loop, and reports the two figures
+separately: what the dismissal threshold governs, and what nothing
+recovers.
+
+### Where the escapes are
+
+At the ≤0.5% budget (threshold 0.961):
+
+| defect class | in test set | escaped | escape rate |
+|---|---|---|---|
+| open | 602 | 5 | 0.83% |
+| short | 452 | 7 | 1.55% |
+| mousebite | 558 | 0 | 0.00% |
+| spur | 476 | 1 | 0.21% |
+| copper | 466 | 2 | 0.43% |
+| pin-hole | 464 | 0 | 0.00% |
+

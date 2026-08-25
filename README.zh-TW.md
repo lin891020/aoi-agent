@@ -260,7 +260,7 @@ Escalation 進 queue，作業員有空再回。
 
 ```bash
 uv run python -m aoi_agent board 20085294 --queue   # 跑一片板子，收不掉的丟進 queue
-uv run python -m aoi_agent station                  # http://127.0.0.1:8000
+uv run python -m aoi_agent station                  # http://127.0.0.1:8110
 ```
 
 站上顯示的就是 agent 當時看到的證據，多的沒有：
@@ -468,9 +468,9 @@ uv run python -m aoi_agent corrections                   # 作業員推翻 model
 
 ```bash
 docker build -t aoi-agent .
-docker run --rm -p 8000:8000 \
+docker run --rm -p 8110:8000 \
   -v "$PWD/data:/app/data" -v "$PWD/models:/app/models" \
-  aoi-agent                                              # station 在 :8000
+  aoi-agent                                              # station 在 :8110
 docker run --rm -v "$PWD/data:/app/data" -v "$PWD/models:/app/models" \
   aoi-agent python -m aoi_agent queue                    # 或任何一個 CLI subcommand
 ```

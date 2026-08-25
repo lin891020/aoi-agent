@@ -36,7 +36,7 @@ from fastapi.testclient import TestClient
 from langgraph.checkpoint.memory import InMemorySaver
 from sqlalchemy import create_engine, inspect, text
 
-from conftest import sign_in
+from conftest import IN_THE_EXPLANATION_BAND, sign_in
 from aoi_agent.graph import flow
 from aoi_agent.provenance import (
     UNAVAILABLE,
@@ -187,7 +187,7 @@ def test_an_automated_decision_carries_the_weights_the_thresholds_and_the_code(
     store, stub_tools  # noqa: F811
 ):
     """End to end, through the flow the station actually runs."""
-    stub_tools["classify"]["confidence"] = 0.93
+    stub_tools["classify"]["confidence"] = IN_THE_EXPLANATION_BAND
     graph = flow.build_graph(StubClient(verdict="short"), InMemorySaver())
     service.start_review(graph, REFERENCE)
 
@@ -206,7 +206,7 @@ def test_the_thresholds_on_the_record_are_the_ones_that_routed_it(store, stub_to
     naming the model and not the threshold names half of what decided it."""
     import json
 
-    stub_tools["classify"]["confidence"] = 0.93
+    stub_tools["classify"]["confidence"] = IN_THE_EXPLANATION_BAND
     service.start_review(
         flow.build_graph(StubClient(verdict="short"), InMemorySaver()), REFERENCE
     )

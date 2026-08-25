@@ -12,6 +12,7 @@ from langgraph.types import Command
 
 from aoi_agent.graph import flow
 from aoi_agent.llm.ollama import ChatResult, Timing
+from conftest import ABOVE_CONFIDENT, IN_THE_EXPLANATION_BAND
 
 
 @dataclass
@@ -118,7 +119,7 @@ def test_a_confident_false_call_is_dismissed_without_the_llm(stub_tools):
 
 def test_a_confident_defect_is_confirmed_without_the_llm(stub_tools):
     stub_tools["classify"] = {
-        "predicted_class": "short", "confidence": 0.99,
+        "predicted_class": "short", "confidence": ABOVE_CONFIDENT,
         "false_call_probability": 0.001, "recommendation": "review",
     }
     client = StubClient()
@@ -205,7 +206,7 @@ def test_the_agent_branch_cannot_dismiss():
 
 
 def test_a_confident_classification_is_decided_after_the_evidence(stub_tools):
-    stub_tools["classify"]["confidence"] = 0.93
+    stub_tools["classify"]["confidence"] = IN_THE_EXPLANATION_BAND
     state, _ = run(flow.build_graph(StubClient(confident=True), InMemorySaver()))
 
     assert state["trace"] == ["classify", "gather_context", "reason", "decide"]
@@ -228,7 +229,7 @@ def test_the_llm_saying_it_is_confident_does_not_rescue_a_weak_classification(
 def test_the_classifier_class_stands_when_the_llm_disagrees(stub_tools):
     """It overrode the classifier twelve times in evaluation and was right once."""
     stub_tools["classify"] = {
-        "predicted_class": "spur", "confidence": 0.93,
+        "predicted_class": "spur", "confidence": IN_THE_EXPLANATION_BAND,
         "false_call_probability": 0.02, "recommendation": "review",
     }
     state, _ = run(
@@ -243,7 +244,7 @@ def test_an_unreachable_model_no_longer_forces_an_escalation(stub_tools):
     """It used to, and that was right while the LLM decided. Now the decision
     never depended on it, so an outage costs an explanation, not a verdict --
     and does not put every candidate on the line into the queue."""
-    stub_tools["classify"]["confidence"] = 0.93
+    stub_tools["classify"]["confidence"] = IN_THE_EXPLANATION_BAND
 
     class DeadClient:
         def chat(self, messages, **kwargs):
@@ -331,7 +332,7 @@ def test_an_unparseable_verdict_reaches_a_person_at_a_confidence_of_0_55(stub_to
     assert state["explanation_status"] == "unparsed"
 
 
-def test_an_unparseable_verdict_at_0_93_is_decided_anyway(stub_tools):
+def test_an_unparseable_verdict_in_the_explanation_band_is_decided_anyway(stub_tools):
     """The uncomfortable half, and the one the docs used to get wrong.
 
     "Unparseable verdict -> escalate" was true while the LLM decided. It is not
@@ -341,7 +342,7 @@ def test_an_unparseable_verdict_at_0_93_is_decided_anyway(stub_tools):
     failure direction is intact -- what was lost is an explanation, not a
     verdict -- but the sentence describing it was not, so it is written down as
     a test here."""
-    stub_tools["classify"]["confidence"] = 0.93
+    stub_tools["classify"]["confidence"] = IN_THE_EXPLANATION_BAND
     graph = flow.build_graph(StubClient(raw_text="I think it's fine?"), InMemorySaver())
     state, _ = run(graph)
 
@@ -357,8 +358,10 @@ def test_an_unreachable_model_at_0_55_reaches_a_person_rather_than_crashing(stub
 
     Same reading as the two above: the 0.55 escalates, the outage does not.
     Twelve lines up, `test_an_unreachable_model_no_longer_forces_an_escalation`
-    runs the identical dead client at 0.93 and settles. Both are green because
-    of a number, and now both name it."""
+    runs the identical dead client inside the explanation band and settles. Both
+    are green because of where the confidence sits, and now both say so --
+    the band's own number moves with the threshold and no longer belongs in a
+    sentence."""
     stub_tools["classify"]["confidence"] = 0.55
 
     class DeadClient:

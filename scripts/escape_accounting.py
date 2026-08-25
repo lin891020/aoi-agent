@@ -446,7 +446,7 @@ def main() -> int:
     print(f"accounting {boards} boards from the {args.split} split ...")
 
     accounting = measure(
-        args.split, reverifier, DetectorConfig(), args.threshold, args.limit
+        args.split, reverifier, DetectorConfig(register=True), args.threshold, args.limit
     )
     lines = render(accounting, args.split, args.threshold, boards)
     header = f"## {date.today().isoformat()} · commit {git_commit()}"

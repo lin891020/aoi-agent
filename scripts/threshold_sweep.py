@@ -34,9 +34,20 @@ from aoi_agent.store.boards import session_factory  # noqa: E402
 from aoi_agent.store.models import Board, CandidateRecord  # noqa: E402
 from aoi_agent.vision.inference import DEFAULT_DISMISS_THRESHOLD  # noqa: E402
 
-ESCALATE_GRID = [0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.86, 0.87, 0.875,
-                 0.88, 0.89, 0.90, 0.91, 0.915, 0.92, 0.95]
-CONFIDENT_GRID = [0.70, 0.80, 0.85, 0.90, 0.915, 0.92, 0.95, 0.97, 0.99, 0.999]
+#: The grids, with the shipped values folded in rather than listed.
+#:
+#: They were plain literals ending at 0.95 and 0.999 until 2026-08-24. A retrain
+#: took `DEFAULT_DISMISS_THRESHOLD` to 0.961 and `CONFIDENT` with it to 0.996,
+#: and the sweep meant to justify those two values then swept a range that
+#: contained neither -- while `routing_report.py` beside it went on reporting
+#: the shipped numbers. A sweep that cannot reach the value it is the citation
+#: for is a citation to a blank space, so the shipped values are unioned in and
+#: cannot fall off the end again.
+ESCALATE_GRID = sorted({0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.86, 0.87, 0.875,
+                        0.88, 0.89, 0.90, 0.91, 0.915, 0.92, 0.95, 0.96, 0.97,
+                        0.98, 0.99, ESCALATE_BELOW, DEFAULT_DISMISS_THRESHOLD})
+CONFIDENT_GRID = sorted({0.70, 0.80, 0.85, 0.90, 0.915, 0.92, 0.95, 0.97, 0.99,
+                         0.995, 0.999, CONFIDENT})
 
 #: Ground truths that are neither a defect nor a false call. A fragment is a
 #: candidate that clips a real defect without covering it; it is held out of
@@ -185,18 +196,32 @@ def main() -> int:
         (v for v in ESCALATE_GRID if tally(rows, CONFIDENT, v)["agent_escapes"] == 0),
         default=None,
     )
-    emit(f"The highest-confidence real defect this branch would dismiss carries "
-         f"**{worst:.4f}**. So on this grid the lowest threshold adding no escape "
-         f"is **{lowest:.3f}** — not 0.90, which the citation in "
-         "`docs/architecture.md` claimed until this run and which clears the "
-         f"same bar with {0.90 - worst:.3f} to spare.")
-    emit()
-    emit(f"Neither is the value to ship. {lowest:.3f} sits {lowest - worst:.4f} above the "
-         "worst miss on this split: that is a threshold read off the test set at "
-         "three decimal places, and the next lot's tail lands on top of it. And "
-         "0.90 is a round number that happened to be conservative — it was never "
-         "derived from anything, which is the finding, not the fix.")
-    emit()
+    if lowest is None:
+        # A `None` here used to be a TypeError three lines down, which is the
+        # worst way for a sweep to say "no value on this grid does what you
+        # asked": the script that exists to answer the question crashed on the
+        # answer being negative. It is a finding, and a stronger one than any
+        # number the grid could have returned.
+        emit(f"The highest-confidence real defect this branch would dismiss "
+             f"carries **{worst:.4f}**. **No threshold on this grid adds zero "
+             f"escapes** — the lowest count reached is "
+             f"{min(tally(rows, CONFIDENT, v)['agent_escapes'] for v in ESCALATE_GRID)}. "
+             f"So there is no swept value to cite here, and the argument below "
+             f"is the whole of the case for the shipped one.")
+        emit()
+    else:
+        emit(f"The highest-confidence real defect this branch would dismiss carries "
+             f"**{worst:.4f}**. So on this grid the lowest threshold adding no escape "
+             f"is **{lowest:.3f}** — not 0.90, which the citation in "
+             "`docs/architecture.md` claimed until 2026-08-23 and which clears the "
+             f"same bar with {0.90 - worst:.3f} to spare.")
+        emit()
+        emit(f"Neither is the value to ship. {lowest:.3f} sits {lowest - worst:.4f} above the "
+             "worst miss on this split: that is a threshold read off the test set at "
+             "three decimal places, and the next lot's tail lands on top of it. And "
+             "0.90 is a round number that happened to be conservative — it was never "
+             "derived from anything, which is the finding, not the fix.")
+        emit()
     emit(f"The value that needs no split at all is `DEFAULT_DISMISS_THRESHOLD` "
          f"({DEFAULT_DISMISS_THRESHOLD}). At or above it the band is empty by "
          "construction: a region the classifier calls `false_call` above that "

@@ -34,7 +34,12 @@ from pathlib import Path
 import pytest
 
 from aoi_agent.aoi.matching import FRAGMENT_GAP_PX, IOU_THRESHOLD
-from aoi_agent.graph.flow import CONFIDENT, ESCALATE_BELOW, RESPONSE_BUDGET_S
+from aoi_agent.graph.flow import (
+    CONFIDENT,
+    ESCALATE_BELOW,
+    EXPLAINED_BAND,
+    RESPONSE_BUDGET_S,
+)
 from aoi_agent.llm.ollama import EXPLANATION_DEADLINE_S
 from aoi_agent.vision.inference import DEFAULT_DISMISS_THRESHOLD
 from aoi_agent.vision.inference import DEFAULT_DISMISS_THRESHOLD, LOW_CONFIDENCE
@@ -50,6 +55,7 @@ CONSTANTS = {
     "DEFAULT_DISMISS_THRESHOLD": DEFAULT_DISMISS_THRESHOLD,
     "LOW_CONFIDENCE": LOW_CONFIDENCE,
     "ESCALATE_BELOW": ESCALATE_BELOW,
+    "EXPLAINED_BAND": EXPLAINED_BAND,
     "CONFIDENT": CONFIDENT,
     "RESPONSE_BUDGET_S": RESPONSE_BUDGET_S,
     "EXPLANATION_DEADLINE_S": EXPLANATION_DEADLINE_S,
@@ -326,4 +332,61 @@ def test_rounding_the_threshold_down_would_break_the_budget():
     assert at_915 > 0.005, (
         "0.915 no longer breaks the budget, so the model has changed and this "
         "threshold wants re-sweeping rather than re-rounding"
+    )
+
+
+# ---- the band between the two gates -------------------------------------
+#
+# `CONFIDENT` and `ESCALATE_BELOW` are held apart by arithmetic now, so the
+# ordering assertion above can no longer fail. What can still go wrong is the
+# width, in both directions, and neither shows up as an error:
+#
+# - collapsed, every automatic disposition is recorded with no rationale, which
+#   is what an inverted pair did on 2026-08-24;
+# - swallowing everything, every candidate costs a 20B-model call.
+#
+# Both are properties of where the confidences actually sit, so both are
+# measured against the stored predictions rather than argued from the constants.
+
+PREDICTIONS = ROOT / "models/test_predictions.npz"
+
+
+@pytest.fixture
+def band_occupancy():
+    """(explained, dispositioned) at the shipped thresholds."""
+    numpy = pytest.importorskip("numpy")
+    if not PREDICTIONS.exists():
+        pytest.skip("no stored predictions; run scripts/train.py")
+    data = numpy.load(PREDICTIONS, allow_pickle=False)
+    confidence = data["probabilities"].max(axis=1)
+    dispositioned = confidence >= ESCALATE_BELOW
+    explained = dispositioned & (confidence < CONFIDENT)
+    return int(explained.sum()), int(dispositioned.sum())
+
+
+def test_the_explanation_band_is_not_empty(band_occupancy):
+    """An empty band writes every quality record with no reason on it, and the
+    flow raises nothing. It also makes `conftest.IN_THE_EXPLANATION_BAND` land
+    on the boundary, so the flow tests that use it would pass by testing the
+    wrong branch."""
+    explained, dispositioned = band_occupancy
+
+    assert dispositioned > 0, "nothing is dispositioned automatically at all"
+    assert explained > 0, (
+        "no automatic disposition on this split gets a written rationale -- the "
+        "LLM's only remaining job is not being done"
+    )
+
+
+def test_the_explanation_band_does_not_swallow_every_disposition(band_occupancy):
+    """The other direction. The confidences pile up against 1.0, so a higher
+    `ESCALATE_BELOW` pushes `CONFIDENT` past where the mass sits and the cost
+    goes to one model call per candidate. There is no error for that either --
+    it is a bill."""
+    explained, dispositioned = band_occupancy
+
+    assert explained < dispositioned, (
+        f"every one of {dispositioned} automatic dispositions would take an LLM "
+        f"call; EXPLAINED_BAND={EXPLAINED_BAND} is too wide for where this "
+        f"checkpoint's confidences sit"
     )

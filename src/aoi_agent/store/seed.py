@@ -89,7 +89,7 @@ def seed(
 ) -> dict[str, int]:
     """Fill the store with one split's boards, candidates and model verdicts."""
     rng = random.Random(seed_value)
-    config = DetectorConfig()
+    config = DetectorConfig(register=True)
     reverifier = reverifier or ReVerifier()
 
     # Every row this writes is an automated decision and carries what produced

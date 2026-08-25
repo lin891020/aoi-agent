@@ -17,6 +17,8 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
+from aoi_agent.aoi.registration import align
+
 
 @dataclass(frozen=True)
 class Candidate:
@@ -101,6 +103,22 @@ class DetectorConfig:
     exists for. The numbers are in docs/benchmarks.md, from
     `scripts/opening_kernel_sweep.py`. Do not lower this without re-running
     that sweep -- it is a trade, and it has a curve.
+    """
+
+    register: bool = False
+    """Align the tested board to its template before differencing.
+
+    Off by default, and the default is the honest one: DeepPCB arrives
+    pre-registered, so turning this on changes the candidate population the
+    re-verifier was trained and swept on. Doing that without the full retrain
+    chain leaves a new detector running on the old model's operating point,
+    which is the silent failure `.claude/skills/retraining-the-reverifier`
+    exists to prevent.
+
+    What it buys, measured over the 500-pair test split: candidates 18.1 -> 16.1
+    a board and AOI recall 95.0% -> 95.6%, because "pre-registered" was never
+    "aligned" -- the median residual on an untouched pair is 0.48 px. What it
+    cannot do is rotation. See `scripts/registration_recovery.py`.
     """
 
     open_shape: str = "rect"
@@ -199,11 +217,32 @@ def detect(
     config: DetectorConfig | None = None,
     perturbation: Perturbation | None = None,
 ) -> list[Candidate]:
-    """Flag every region where the tested board differs from its template."""
+    """Flag every region where the tested board differs from its template.
+
+    ``config.register`` and ``perturbation`` do not compose, and asking for both
+    raises rather than returning boxes in a frame nobody expects. The
+    perturbation moves the *template*, which is the frame the annotations are
+    expressed in; registration moves the *test* onto whatever template it is
+    given. Together they would put candidates in the perturbed template's
+    coordinates and match them against boxes drawn in the original's, which is
+    an error that looks like a recall collapse rather than like a bug.
+    `scripts/registration_recovery.py` wants both and does them itself, in the
+    order that keeps the annotation frame: perturb the test, align it back.
+    """
     config = config or DetectorConfig()
+
+    if perturbation is not None and config.register:
+        raise ValueError(
+            "detect(register=True) and a perturbation put candidates in "
+            "different frames -- see the docstring. Perturb the test image and "
+            "call `registration.align` yourself, as registration_recovery does."
+        )
 
     if perturbation is not None:
         template = apply_perturbation(template, perturbation)
+
+    if config.register:
+        test, _alignment = align(template, test)
 
     diff = cv2.absdiff(test, template)
     _, mask = cv2.threshold(diff, config.threshold, 255, cv2.THRESH_BINARY)

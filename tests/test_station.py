@@ -18,7 +18,7 @@ from aoi_agent.station import app as station_app
 from aoi_agent.station import service
 from aoi_agent.store import boards, escalations
 from aoi_agent.store.models import Board, CandidateRecord, create_all, make_session_factory
-from conftest import read_in, sign_in
+from conftest import IN_THE_EXPLANATION_BAND, read_in, sign_in
 from test_graph import StubClient, stub_tools  # noqa: F401  (fixture)
 
 STEM = "20085293"
@@ -90,7 +90,7 @@ def test_an_escalated_run_lands_on_the_queue(store, graph):
 
 def test_a_settled_run_never_reaches_the_queue(store, stub_tools):  # noqa: F811
     """The queue is for what the agent could not settle, not for everything."""
-    stub_tools["classify"]["confidence"] = 0.93
+    stub_tools["classify"]["confidence"] = IN_THE_EXPLANATION_BAND
     settled = flow.build_graph(StubClient(confident=True, verdict="short"), InMemorySaver())
     state = service.start_review(settled, REFERENCE)
 

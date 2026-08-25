@@ -311,7 +311,7 @@ answers them when they get to it.
 
 ```bash
 uv run python -m aoi_agent board 20085294 --queue   # run a board, queue what it cannot settle
-uv run python -m aoi_agent station                  # http://127.0.0.1:8000
+uv run python -m aoi_agent station                  # http://127.0.0.1:8110
 ```
 
 The station shows the operator exactly the evidence the agent had, and nothing
@@ -555,9 +555,9 @@ exists to prevent.
 
 ```bash
 docker build -t aoi-agent .
-docker run --rm -p 8000:8000 \
+docker run --rm -p 8110:8000 \
   -v "$PWD/data:/app/data" -v "$PWD/models:/app/models" \
-  aoi-agent                                              # the station on :8000
+  aoi-agent                                              # the station on :8110
 docker run --rm -v "$PWD/data:/app/data" -v "$PWD/models:/app/models" \
   aoi-agent python -m aoi_agent queue                    # or any CLI subcommand
 ```
