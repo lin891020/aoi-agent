@@ -412,6 +412,25 @@ other side. `scripts/transfer_report.py` and `scripts/gate_check.py --dataset
 hripcb` rebuild every number; `tests/test_hripcb.py` holds the adapter's
 geometry and the class boundary.
 
+**The detector front end exists, and it localises without discriminating.**
+2026-08-26. YOLO26n on PCB-AoI -- real solder-paste images, no template, so a
+detector is the only front end that can exist there -- trained 56 minutes on
+the M5 Air, read the only way this project reads a model. It finds boxes:
+91.6% of defects covered at the floor, validation mAP50 0.658 on a median
+17 px target. It does not order them: at the ≤0.5% escape budget its
+confidence removes **1.2%** of the queue, against 52.8% for differencing plus
+the re-verifier on DeepPCB. Two lines, two prevalences, so not a ranking --
+but the shape is the finding: a detector's confidence is a localisation score
+with a class head attached, not a calibrated P(false_call), and this front
+end therefore has **no re-verification stage**. The two front ends are not
+interchangeable: one produces candidates for a re-verifier, the other
+produces candidates and an uncalibrated score. Next is a re-verifier over
+detector crops -- the architecture already here, minus the template channel
+-- and `imgsz=1280`, which nothing has tried. `scripts/train_detector.py`
+refuses to run beside a busy GPU; `scripts/detector_report.py` prints the
+sixty-image basis in its first line. Held by `tests/test_detector.py` and
+`tests/test_pcbaoi.py`.
+
 **Every decision the store held before 2026-08-23 reads `unrecorded`** -- 9,140
 of them, in `model_digest` and now in `reviewer_auth` too, stamped by the
 migration rather than left `NULL`, because a decision whose provenance was

@@ -4102,3 +4102,73 @@ that is the variable under test and the reseed together, and nothing here
 separates them. And the composition failure on S25 has one sample: whether a
 few-shot showing the before/after pair fixes it is the next measurement, and
 it is a prompt change that the precedent says re-runs this fixture first.
+
+## 2026-08-26 · commit 1ef4207
+
+### Detector front end — YOLO26n on PCB-AoI, read at the escape budget
+
+**Basis: 60 test images, 332 annotated defects (Bad_podu 295, Bad_qiaojiao 37).** Sixty images is a small test set and every interval below says so. The detector emitted 663 candidates at a confidence floor of 0.01 (11.1 an image): 449 covering a defect and 214 false calls, a prevalence of 67.7%. Trained 60 epochs on 966 images with 35 boards held out, 56 min on mps. `scripts/detector_report.py`, checkpoint `detector_pcbaoi.pt`, commit `1ef4207`.
+
+**S0 first.** 28 of 332 defects (8.4%) were covered by no box at the floor -- Bad_podu 21/295, Bad_qiaojiao 7/37. Those are escapes no threshold below can recover, and the table below is conditional on the rest.
+
+| escape budget | achieved | manual review removed | escapes | 95% interval on the escape rate | false calls dismissed |
+|---|---|---|---|---|---|
+| ≤0.10% | 0.00% | **0.3%** | 0/449 | 0.00%–0.85% | 2/214 |
+| ≤0.25% | 0.22% | **0.8%** | 1/449 | 0.04%–1.25% | 4/214 |
+| ≤0.50% | 0.45% | **1.2%** | 2/449 | 0.12%–1.61% | 6/214 |
+| ≤1.00% | 0.89% | **1.8%** | 4/449 | 0.35%–2.27% | 8/214 |
+| ≤2.00% | 1.78% | **3.3%** | 8/449 | 0.91%–3.48% | 14/214 |
+| ≤5.00% | 4.90% | **6.8%** | 22/449 | 3.26%–7.31% | 23/214 |
+
+The escape rate in this table divides by the defects the detector *flagged*, the way the re-verifier's table divides by the candidates it was handed. Add the unflagged row above to read it as a line rate.
+
+mAP50-95 on the same images: 0.256 (reported for reference only — it weighs every box the same and answers no question about a budget).
+
+**What this does not establish.** One run, one seed, sixty images; no CPU timing (nothing about inference speed is claimed until it is measured the way the re-verifier's was); and the two classes are the dataset's, with no work instruction behind either. The comparison with DeepPCB is a comparison of *readings*, not of numbers: the populations differ and so does the prevalence, which is why both are printed in the first line.
+
+### Adjudication — the detector localises and does not discriminate, and the two are different jobs
+
+Written 2026-08-26 against the section above, which is the script's own
+output over the sixty test images.
+
+**What the table says.** At every budget the project reads, the detector's
+confidence removes almost nothing: **1.2% of the queue at ≤0.50%**, 6.8% at
+≤5%. Of 214 false calls, six can be dismissed before the second real defect
+is lost. On DeepPCB the differencing-plus-re-verifier pipeline removes 52.8%
+at the same budget; the populations differ and the prevalence differs
+(67.7% here against 41.2%), so the two numbers are readings of two lines
+and not a ranking -- but the *shape* is the finding. This curve is flat where
+the other one is steep.
+
+**What the detector is actually good at.** Localising. 91.6% of defects are
+covered by a box at the floor (S0: 28 of 332 unflagged, the two classes at
+7.1% and 18.9%), and validation mAP50 is 0.658 with precision and recall
+both near 0.65 -- for a median 17 px target on a 600 px frame, after 56
+minutes on a laptop, that is the STAL claim doing roughly what it says. What
+it is not good at is **ordering**: a box's confidence does not tell a false
+call from a defect. Precision 0.65 at the default cut means one box in three
+is a false call whatever the score, and the sweep confirms there is no score
+below which false calls concentrate.
+
+**Why that is not surprising, and why it matters.** A detector is trained to
+put boxes on things; its confidence is a localisation score with a class head
+attached, not a calibrated probability that the box is a defect rather than a
+paste smear that looks like one. `P(false_call) = 1 - confidence` was the
+honest definition to start from -- it is the only score the front end
+emits -- and the result is that this front end has **no re-verification
+stage**. On DeepPCB the differencing stage found the boxes and a separate
+model ordered them; here one model does both jobs and does the second one
+badly. **The two front ends are not interchangeable after all: one produces
+candidates that need a re-verifier, the other produces candidates and an
+uncalibrated score.** The next step this points at is not more epochs. It is
+a re-verifier for detector output -- a second model over the detector's
+crops, which is the same architecture the project already has, minus the
+template channel.
+
+**What this does not establish.** One run, one seed, sixty test images, 214
+false calls -- the interval on every escape figure is wide and printed. The
+detector was trained at the dataset's native 600 px, so a 17 px box is a
+17 px box; training at `imgsz=1280` would put it in the regime YOLO's small
+target assignment is written for, and nothing here tries that. No CPU timing.
+And the 8.4% never flagged is a floor no threshold touches, the same shape as
+the seven sub-3 px notches the opening kernel erases on DeepPCB.

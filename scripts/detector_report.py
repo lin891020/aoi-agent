@@ -81,7 +81,10 @@ def score(detector: Detector, items: list[pcbaoi.Item]) -> dict:
 
 def render(scored: dict, detector: Detector, images: int, mean_ap: float | None) -> list[str]:
     out: list[str] = []
-    emit = out.append
+
+    def emit(text: str = "") -> None:
+        out.append(text)
+
     classes = scored["classes"]
     fc = classes.index(FALSE_CALL)
     labels, scores = scored["labels"], scored["scores"]
