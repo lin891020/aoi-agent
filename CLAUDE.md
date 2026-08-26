@@ -54,7 +54,7 @@ src/aoi_agent/
 scripts/                    gate_check, build_patches, train, report, seed_store,
                             analysis_eval, add_operator,
                             mark_unattributed_resolutions, ...
-tests/                      1259 tests; dataset-dependent ones behind `-m dataset`
+tests/                      1,264 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -69,7 +69,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 1259 tests, no GPU needed, no model called
+uv run pytest                                    # 1,264 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/gate_check.py --dataset hripcb --split aligned --limit 693 --thresholds 10 15 20 30 45 60 \
     --out eval/results/gate_check_hripcb_aligned.json   # the same gate on photographs (~2 min)
