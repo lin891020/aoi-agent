@@ -45,7 +45,7 @@ src/aoi_agent/
 scripts/                    gate_check, build_patches, train, report, seed_store,
                             analysis_eval, add_operator,
                             mark_unattributed_resolutions, ...
-tests/                      1,173 tests; dataset-dependent ones behind `-m dataset`
+tests/                      1,181 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -60,7 +60,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 1,173 tests, no GPU needed, no model called
+uv run pytest                                    # 1,181 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
@@ -101,8 +101,8 @@ docker run --rm -p 8110:8110 \
 
 ## Invariants — do not quietly change these
 
-Eighteen of them, and `scripts/invariant_audit.py` says which ones would
-actually fail a test if broken: **15 enforced, 2 partly enforced, 1
+Nineteen of them, and `scripts/invariant_audit.py` says which ones would
+actually fail a test if broken: **16 enforced, 2 partly enforced, 1
 unenforceable**. Each
 entry there names the tests that hold it and states what those tests do not
 cover; adding an invariant here without an entry fails
@@ -123,11 +123,26 @@ board is back under the unscoped reading.
 - **Report an operating-point curve, never bare accuracy.** An escape ships a
   bad board; a false call costs seconds. Headline is "review removed at an
   escape budget" -- and since 2026-08-24 that headline carries an interval.
-  14 escapes in 2,997 defects is 0.47% on this split exactly; read as the rate
+  15 escapes in 3,018 defects is 0.50% on this split exactly; read as the rate
   on unseen defects, which is the only reading that justifies deploying a
-  threshold, the 95% interval runs to 0.78% and **does not exclude exceeding
+  threshold, the 95% interval runs to 0.82% and **does not exclude exceeding
   QP-110's budget**. Every escape figure published before that date was a point
   estimate with nothing beside it. `scripts/prevalence_report.py`.
+- **A published figure names the run it came from.** `docs/benchmarks.md` is
+  append-only and newest-last, so the file already says which measurement is
+  current; what nothing checked until 2026-08-26 was whether the documents
+  quoting it had kept up. They had not. `README.md` opened with **56.2% review
+  removed over 8,143 candidates** -- a table produced on 2026-08-22 by a tree
+  whose own benchmarks header reads `commit uncommitted`, so unreproducible even
+  in principle -- while the shipped checkpoint measures **52.8% over 7,322**.
+  The code was right the whole time: registration was turned on, the population
+  fell, the model was retrained and the threshold re-swept from 0.915 to 0.961,
+  exactly as `retraining-the-reverifier` requires. Only the prose was left
+  behind, in the one place a reader looks first. A superseded figure may still
+  appear -- "this read 56.2% until 2026-08-24" is the sentence a reader needs --
+  but **only in a paragraph that dates it**, which is the rule
+  `tests/test_published_figures.py` holds over README.md, README.zh-TW.md,
+  CLAUDE.md and docs/architecture.md.
 - **The LLM explains; it does not decide.** Measured, its verdict was worse
   than the classifier's (12 overrides, 1 right) and its `confident` flag was
   worse at selecting who needs a person than a plain threshold on the
@@ -225,21 +240,23 @@ board is back under the unscoped reading.
 - **The escape budget is one number over six classes the work instructions do
   not treat alike.** WI-201 and WI-202 admit no acceptable open or short; the
   other four are conditional on a measurement. At the shipped threshold the
-  aggregate meets QP-110 at 0.47% and **`open` escapes at 1.35%, 2.9x that** --
+  aggregate meets QP-110 at 0.50% and **`short` escapes at 1.55%, 3.1x that** --
   the class that may never ship is the one exceeding the budget it is averaged
-  into. A class-aware veto is the obvious fix and **it does not exist**: on the
-  opens this model dismisses, `P(open)` is 0.00000-0.01672, and on the ones it
-  keeps the median is 0.999. They are confident errors, not uncertain ones, so
+  into. Which class it is moves with the checkpoint (it was `open` at 1.35%
+  before the 2026-08-24 retrain), which is why the guard reads `GOVERNS` rather
+  than naming a class. A class-aware veto is the obvious fix and **it does not
+  exist**: on the opens this model dismisses, `P(open)` is 0.00007-0.00589, and
+  on the ones it keeps the median is 1.000. They are confident errors, not uncertain ones, so
   no cut on the model's own output separates them. What closes them is a second
   measurement that does not share the failure -- electrical test, which WI-201
   already names. Do not present the aggregate figure without this split.
   `scripts/class_escape_report.py`, held by `tests/test_class_escape.py`.
-- **Say what the prevalence is, and what it costs.** The split is **36.8%
-  genuine defects** (2,997 of 8,143 candidates); no line is, and an AOI tuned
+- **Say what the prevalence is, and what it costs.** The split is **41.2%
+  genuine defects** (3,018 of 7,322 candidates); no line is, and an AOI tuned
   for recall over-calls by one to two orders of magnitude. Measured rather than
   hedged: the escape rate is prevalence-*invariant* (it divides by
   `defects_total`, so re-weighting cancels), review reduction *rises* on a
-  cleaner line (56.2% is a floor, not a ceiling -- 88.2% at 0.5% prevalence),
+  cleaner line (52.8% is a floor, not a ceiling -- 89.0% at 0.5% prevalence),
   and what does not transfer is the **verification**: a pilot seeing 100
   defects cannot confirm a 0.5% budget and one seeing 30 says nothing at all.
   Do not quote a review-reduction figure without the prevalence it assumes.
@@ -329,8 +346,11 @@ the detector project was killed for: a mechanism with nothing to run it on.
 
 What would make it buildable, in order: a line, or a second dataset with a
 different prevalence and its own registration problem. HRIPCB is the obvious
-candidate and is blocked twice -- it needs a Kaggle account, and it requires the
-registration stage this project does not have (see the invariant above).
+candidate and was **blocked twice until 2026-08-24; it is now blocked once.**
+`aoi/registration.py` was built that day (commit `f1825d2`), and this paragraph
+went on saying "the registration stage this project does not have" for two more
+days -- pointing at the invariant above, which is the paragraph that contradicts
+it. What remains is a Kaggle account, which is free.
 
 **Every decision the store held before 2026-08-23 reads `unrecorded`** -- 9,140
 of them, in `model_digest` and now in `reviewer_auth` too, stamped by the
@@ -347,7 +367,9 @@ figure move; nothing else will.
 
 INT8/ONNX is measured, and the answer was not a speed-up. **INT8 static holds
 the operating point** -- 56.0% review removed at the ≤0.5% escape budget
-against FP32's 56.2%, calibrated on 512 trainval patches, never test -- and
+against FP32's 56.2% (both on the superseded 8,143-candidate basis, being
+re-measured 2026-08-26; what does not move is the *comparison*, which is the
+finding), calibrated on 512 trainval patches, never test -- and
 what it buys is **memory: 389MB resident down to 81MB, 4.8x**, because most of
 the float32 process is the torch runtime rather than the weights. **INT8
 dynamic is refused**: it gives up 1.3 points of review reduction, which is

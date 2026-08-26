@@ -1,10 +1,15 @@
-# Dataset — clone it, don't vendor it (231 MB)
-data/DeepPCB/
-# Derived artefacts, rebuilt by scripts/build_patches.py
-data/patches/
-# Trained weights and predictions
+# Everything under data/ is ignored by default, and the exceptions are listed
+# below. This file listed each ignorable path individually until 2026-08-26,
+# which is the wrong way round for a directory whose whole purpose is holding
+# things too big to vendor: a dataset nobody had thought of yet was *tracked*
+# by default, and the commit that swept it in would be an ordinary `git add -A`.
+# Reversed, a new dataset is safe the moment it lands and an addition to the
+# repo has to be argued for in this file.
+data/*
+!data/standards/
+
+# Derived artefacts, trained weights, evaluation output -- all rebuilt by scripts
 models/
-# Evaluation output
 eval/results/
 
 __pycache__/
@@ -12,10 +17,3 @@ __pycache__/
 .venv/
 .DS_Store
 .pytest_cache/
-# The station's operator file. Passphrases are stored as PBKDF2 records rather
-# than in the clear, which is not a reason to publish one.
-data/operators
-data/aoi_agent.db
-data/aoi_agent.db.bak-*
-data/checkpoints.db*
-data/chroma/

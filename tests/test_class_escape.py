@@ -158,3 +158,67 @@ def test_a_veto_low_enough_to_bite_costs_more_review_than_it_recovers(scores, na
             f"a veto at {veto} started recovering {name}s -- the report's "
             f"negative result no longer holds and wants re-reading"
         )
+
+
+# ---- the prose under the table has to agree with the table ---------------
+
+
+def test_the_prose_reports_the_same_open_escapes_the_table_does(scores):
+    """The report's closing paragraphs are about `open` -- the class WI-201
+    sends to electrical test -- and they were hand-written.
+
+    By 2026-08-26 they read "these eight ... 8 escapes in 594 opens has a 95%
+    interval of 0.68% to 2.63%" three lines under a table saying **5 of 602**.
+    True of the run they were written on, reprinted verbatim on every run since,
+    and contradicting the table directly above them. Nothing failed, because
+    nothing was comparing a sentence to a number.
+
+    So the numbers are derived, and this is what stops them being written by
+    hand again: whatever the table says about `open`, the prose says the same.
+    """
+    import re
+
+    import class_escape_report
+
+    probabilities, labels, names = scores
+    report = class_escape_report.render(probabilities, labels, names)
+
+    open_index = names.index("open")
+    false_call = names.index("false_call")
+    dismissed = probabilities[:, false_call] >= DEFAULT_DISMISS_THRESHOLD
+    mask = labels == open_index
+    escaped, total = int((dismissed & mask).sum()), int(mask.sum())
+
+    row = re.search(r"\|\s*\*\*open\*\*\s*\|[^|]*\|\s*(\d+)\s*\|\s*(\d+)\s*\|", report)
+    assert row, "no open row in the rendered table"
+    assert (int(row.group(2)), int(row.group(1))) == (escaped, total)
+
+    sentence = re.search(r"(\d+) escapes in (\d+) opens", report)
+    assert sentence, "the limits paragraph no longer states its counts"
+    assert (int(sentence.group(1)), int(sentence.group(2))) == (escaped, total), (
+        "the prose and the table disagree about open -- the 2026-08-26 defect"
+    )
+
+    covered = re.search(r"these (\d+) are already covered", report)
+    assert covered and int(covered.group(1)) == escaped
+
+
+def test_the_published_interval_is_the_one_wilson_gives(scores):
+    """A hand-typed interval is the same failure one indirection along."""
+    import re
+
+    import class_escape_report
+    from aoi_agent.stats import wilson
+
+    probabilities, labels, names = scores
+    report = class_escape_report.render(probabilities, labels, names)
+
+    open_index, false_call = names.index("open"), names.index("false_call")
+    dismissed = probabilities[:, false_call] >= DEFAULT_DISMISS_THRESHOLD
+    mask = labels == open_index
+    low, high = wilson(int((dismissed & mask).sum()), int(mask.sum()))
+
+    published = re.search(r"95% interval of ([\d.]+)% to ([\d.]+)%", report)
+    assert published, "the interval is no longer published"
+    assert float(published.group(1)) == pytest.approx(low * 100, abs=0.01)
+    assert float(published.group(2)) == pytest.approx(high * 100, abs=0.01)

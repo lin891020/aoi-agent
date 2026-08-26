@@ -14,13 +14,23 @@ defect，false call 也是用真的演算法跑出來的，不是編的。
 
 ## 結果
 
-官方 DeepPCB test split，499 片沒看過的板子、8,143 個 AOI candidate：
+官方 DeepPCB test split，499 片沒看過的板子、7,322 個 AOI candidate，其中
+3,018 個（41.2%）是真的 defect：
 
 | escape budget | 實際 escape rate | 省掉的人工複判 |
 |---|---|---|
-| ≤0.25% | 0.23% | **50.2%** |
-| ≤0.50% | 0.47% | **56.2%** |
-| ≤1.00% | 0.97% | **60.6%** |
+| ≤0.25% | 0.23% | **40.2%** |
+| ≤0.50% | 0.50% | **52.8%** |
+| ≤1.00% | 0.99% | **58.3%** |
+
+**這些數字是在系統變好的時候變差的，值得一段說明。** 2026-08-26 之前這張表寫的是
+8,143 個 candidate、≤0.50% 省掉 56.2%。那一次量測早於 registration 階段：把它打開
+之後，偵測器不再送出「殘餘位移製造的簡單 false call」，candidate 掉到 7,322 ——
+少了 842 個 false call，而且**多**找到 21 個真 defect。省掉的比例是
+`dismissed / total`，分母變乾淨，比例自然下降。真正送到作業員面前的反而少了：
+**之前 3,568 個區域，之後 3,457 個。** 元件指標變差、產線變好，這就是為什麼這個
+專案在每一個複判減量數字旁邊都要寫上 prevalence —— 見 `docs/benchmarks.md`
+的 "Prevalence" 一節。
 
 Accuracy 故意不放頭條。把真的 defect 判掉是讓壞板子出貨，把 false call 留著只是多
 花作業員幾秒鐘；這兩種錯的代價差太多，不能混在一個數字裡。所以這裡報的是一條對
@@ -172,7 +182,9 @@ defect。舊檢索下已經寫出去的八段說明就地標記，沒有刪掉�
 `ESCALATE_BELOW` 現在就**等於**它，agent 分支唯一可能判掉真 defect 的那個帶寬因此
 在結構上是空的。**agent 分支可以 confirm defect，永遠不能 dismiss** —— 而且這件事
 retrain 之後還成立，sweep 出來的數字則要重 sweep，而且不 sweep 也不會有人發現。代價
-是 8,143 個 candidate 裡多 47 筆 escalation，佔 queue 的 0.6%。
+是 7,322 個 candidate 裡多 289 筆 escalation，佔 queue 的 3.9%，其中 229 筆是
+agent 原本的 dismissal，現在一筆都沒有了。（2026-08-26 之前這裡寫的是 8,143 裡
+多 47 筆、0.6%，那是 registration 之前的 candidate 母體。）
 
 `CONFIDENT` 則根本不是品質關卡。`confirm_node` 跟 `decide_node` 寫的是同一個 verdict，
 所以在 `ESCALATE_BELOW` 以上，它改變的 disposition 是**零**，增加的 escape 也是零；
@@ -422,6 +434,8 @@ Model 匯出成 ONNX 之後量化成 INT8，兩種做法：dynamic，以及用 *
 | FP32 torch | **56.2%** | 42.7 MB | 389 MB | 2.52 ms |
 | INT8 dynamic | 54.9% | 10.7 MB | 74 MB | 2.01 ms |
 | INT8 static | **56.0%** | 10.8 MB | 81 MB | 0.72 ms |
+
+> **這四格還在被取代的 8,143 candidate 基數上，正在重新量測**（2026-08-26）。registration 階段在這張表之後改變了 candidate 母體；它**沒有**改變的是引擎之間的比較，而那才是這一節的發現 —— 四個欄位是在同一次執行、同一個陣列上量的。
 
 **INT8 dynamic 不收。** 它拿 1.3 個百分點的複判減量去換一個比較小的檔案 —— 那大約
 是一個班別裡八十個區域重新回到作業員面前。快 1.25 倍買不回這件事，因為本來就沒有人

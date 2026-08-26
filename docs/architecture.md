@@ -362,8 +362,10 @@ classifier's class is `false_call`, and for that class its confidence *is*
 construction and keeps it empty through a retrain. **The agent branch may
 confirm a defect; it may never dismiss one** -- WI-300 §1 now says so, and
 `tests/test_graph.py::test_the_agent_branch_cannot_dismiss` holds it
-independently of what the numbers are. It costs 47 more escalations out of 8143
-candidates, 0.6% of the queue.
+independently of what the numbers are. It costs 289 more escalations out of
+7322 candidates, 3.9% of the queue -- 229 of them agent *dismissals*, of which
+there are now none. The figure was 47 of 8143 (0.6%) until 2026-08-26, taken
+from the 0.90 -> 0.915 move on the pre-registration candidate population.
 
 `CONFIDENT` did not move then, and the sweep is why: at or above
 `ESCALATE_BELOW` it changes zero dispositions, because `confirm_node` and

@@ -126,6 +126,31 @@ REGISTRY: tuple[Entry, ...] = (
         ),
     ),
     Entry(
+        match="A published figure names the run it came from",
+        status=ENFORCED,
+        tests=(
+            "tests/test_published_figures.py::test_the_readme_headline_is_the_run_the_repo_ships",
+            "tests/test_published_figures.py::test_a_superseded_count_may_only_appear_where_it_is_dated",
+        ),
+        note=(
+            "Parses every `Test split:` line in docs/benchmarks.md, treats the "
+            "last as current, and holds the four published documents against "
+            "it. A superseded count is allowed only in a paragraph carrying a "
+            "date, so a historical note stays writable and a bare stale number "
+            "does not."
+        ),
+        gap=(
+            "Counts only -- candidates, defects, false calls. A review-reduction "
+            "percentage that goes stale on its own, with the split line intact, "
+            "is not caught."
+        ),
+        proved_by=(
+            "README headline reverted to the 8,143 table: 2 failed. "
+            "Undated `2,997 of 8,143` added to CLAUDE.md: 1 failed. "
+            "The same sentence prefixed with a date: 0 failed, as intended."
+        ),
+    ),
+    Entry(
         match="The LLM explains; it does not decide",
         status=ENFORCED,
         tests=(

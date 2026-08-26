@@ -49,6 +49,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from aoi_agent.stats import wilson  # noqa: E402
 from aoi_agent.vision.inference import DEFAULT_DISMISS_THRESHOLD  # noqa: E402
 
 #: What each class's work instruction says about acceptability. Not a severity
@@ -77,19 +78,14 @@ def commit() -> str:
         return "uncommitted"
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
-        "--predictions", type=Path, default=Path("models/test_predictions.npz")
-    )
-    parser.add_argument("--out", type=Path, default=Path("docs/benchmarks.md"))
-    parser.add_argument("--dry-run", action="store_true")
-    args = parser.parse_args()
+def render(probabilities, labels, names: list[str]) -> str:
+    """The section, as a string, so a test can read what a reader reads.
 
-    data = np.load(args.predictions, allow_pickle=False)
-    probabilities = data["probabilities"]
-    labels = data["labels"]
-    names = [str(n) for n in data["label_names"]]
+    Split out of ``main`` on 2026-08-26. The two closing paragraphs had
+    hand-written counts that contradicted the table three lines above them,
+    and there was no way to assert against the rendered section because
+    rendering only ever happened on the way to a file.
+    """
     false_call = names.index("false_call")
     open_index = names.index("open")
 
@@ -100,7 +96,6 @@ def main() -> int:
     lines: list[str] = []
 
     def emit(text: str = "") -> None:
-        print(text)
         lines.append(text)
 
     emit()
@@ -121,6 +116,7 @@ def main() -> int:
     emit("|---|---|---|---|---|---|")
 
     worst = ("", 0.0)
+    counts: dict[str, tuple[int, int]] = {}
     for index, name in enumerate(names):
         if index == false_call:
             continue
@@ -128,6 +124,7 @@ def main() -> int:
         total = int(mask.sum())
         escaped = int((dismissed & mask).sum())
         rate = escaped / total if total else 0.0
+        counts[name] = (escaped, total)
         document, says, critical = GOVERNS.get(name, ("—", "—", False))
         marker = "**" if critical else ""
         if critical and rate > worst[1]:
@@ -201,6 +198,14 @@ def main() -> int:
         "veto on its own output can separate them, because its own output does "
         "not know."
     )
+    # The two paragraphs below are about `open` specifically -- it is the class
+    # WI-201 sends to electrical test -- so their counts come from the table
+    # above rather than from the prose. They were written by hand and read
+    # "these eight ... 8 escapes in 594 opens" against a table saying 5 of 602
+    # by 2026-08-26: true of the run they were written on, reprinted on every
+    # run since, and contradicting the table three lines above them.
+    open_escaped, open_total = counts["open"]
+    open_low, open_high = wilson(open_escaped, open_total)
     emit()
     emit(
         "**Which moves the question off the operating point.** A per-class "
@@ -212,24 +217,43 @@ def main() -> int:
         "different situation: *\"Suspected open that measures continuous on "
         "electrical test.\"* An open is precisely the class a downstream ICT or "
         "flying-probe stage catches independently. **On a line that has one, "
-        "these eight are already covered and the aggregate budget is the right "
-        "shape after all. On a line that does not, no threshold in this project "
-        "closes them.** Which line it is, is a question about the customer's "
-        "process and not about this model."
+        f"these {open_escaped} are already covered and the aggregate budget is "
+        "the right shape after all. On a line that does not, no threshold in "
+        "this project closes them.** Which line it is, is a question about the "
+        "customer's process and not about this model."
     )
     emit()
     emit(
         "**What this does not establish.** Six classes on one split, and the "
         "per-class counts are small enough that the intervals in the prevalence "
-        "section apply here with more force, not less — 8 escapes in 594 opens "
-        "has a 95% interval of 0.68% to 2.63%. The negative result about the "
+        f"section apply here with more force, not less — {open_escaped} escapes "
+        f"in {open_total} opens has a 95% interval of {open_low:.2%} to "
+        f"{open_high:.2%}. The negative result about the "
         "veto is about *this* checkpoint: a model trained with a loss that "
         "penalised confident errors on critical classes might well carry the "
         "signal this one does not, and nothing here tries that."
     )
     emit()
 
-    report = "\n".join(lines)
+    return "\n".join(lines)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--predictions", type=Path, default=Path("models/test_predictions.npz")
+    )
+    parser.add_argument("--out", type=Path, default=Path("docs/benchmarks.md"))
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args()
+
+    data = np.load(args.predictions, allow_pickle=False)
+    report = render(
+        data["probabilities"],
+        data["labels"],
+        [str(n) for n in data["label_names"]],
+    )
+    print(report)
     if not args.dry_run:
         with args.out.open("a") as handle:
             handle.write(report + "\n")

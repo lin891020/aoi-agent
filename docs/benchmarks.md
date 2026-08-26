@@ -3047,3 +3047,92 @@ Nothing failed, because nothing was checking a sentence. It is now read off the
 registry, `docs/benchmarks.md` is append-only so publishing the corrected
 wording required a run, and that gate is the reason this comparison exists at
 all.
+
+### Per-class escape — one budget over six classes that are not alike
+
+QP-110 is a single number: ≤0.5% of defects may escape. The work instructions are not written that way. WI-201 and WI-202 say **any** confirmed open or short is critical with no acceptable size; the other four are conditional on a measurement. Averaging those together lets the classes nobody may ship subsidise the ones that can be dispositioned. At the shipped threshold `0.961` it does. `scripts/class_escape_report.py`, commit `ba2b445`.
+
+| class | governed by | defects | escaped | escape rate | the document says |
+|---|---|---|---|---|---|
+| **open** | WI-201 | 602 | 5 | **0.83%** | critical — any confirmed instance |
+| **short** | WI-202 | 452 | 7 | **1.55%** | critical — any confirmed instance |
+| mousebite | WI-203 | 558 | 0 | 0.00% | conditional — ≥80% remaining width |
+| spur | WI-204 | 476 | 1 | 0.21% | conditional — ≥50% remaining clearance |
+| copper | WI-205 | 466 | 2 | 0.43% | conditional — full clearance, off footprints |
+| pin-hole | WI-206 | 464 | 0 | 0.00% | conditional — <25% of conductor width |
+| *aggregate* | QP-110 | 3018 | 15 | *0.50%* | ≤0.5% |
+
+**`short` escapes at 1.55%, 3.1× the aggregate**, and it is one of the two classes whose work instruction admits no acceptable instance. The single budget is met and the class that matters most is the one exceeding it.
+
+#### A class-aware rule would be the obvious fix, and it does not work
+
+The classifier emits a full distribution, so a candidate about to be dismissed still carries a `P(open)`. Refusing to dismiss when that is high trades review reduction for escapes recovered — which is what a per-class budget would be built on.
+
+| veto when P(open) > | escapes | opens escaped | open rate | review removed | cost |
+|---|---|---|---|---|---|
+| *(none)* | 15 | 5 | 0.83% | 52.77% | — |
+| 0.30 | 15 | 5 | 0.83% | 52.77% | 0.00% |
+| 0.10 | 15 | 5 | 0.83% | 52.77% | 0.00% |
+| 0.05 | 15 | 5 | 0.83% | 52.77% | 0.00% |
+| 0.02 | 15 | 5 | 0.83% | 52.69% | 0.08% |
+| 0.01 | 15 | 5 | 0.83% | 52.05% | 0.72% |
+
+**Nothing moves until the veto is absurd, and then it costs more than it buys.** The reason is in the distribution, not in the threshold: on the 5 opens this model dismisses, `P(open)` runs from 0.00007 to 0.00589. On the 597 it keeps, the median is 1.000.
+
+**There is no middle ground to threshold.** These are not candidates the model was unsure about — every one of them has `false_call` as its argmax with a probability above 0.94, and two of them put `P(open)` below 0.0001. They are cases it was confidently wrong about, and no veto on its own output can separate them, because its own output does not know.
+
+**Which moves the question off the operating point.** A per-class budget cannot be met by re-tuning this curve; the information a class-aware rule would need is absent from the only signal available to it. What helps when a model is confidently wrong is not a better threshold on that model — it is a second measurement that does not share its failure. WI-201 already names one, in a clause written for a different situation: *"Suspected open that measures continuous on electrical test."* An open is precisely the class a downstream ICT or flying-probe stage catches independently. **On a line that has one, these 5 are already covered and the aggregate budget is the right shape after all. On a line that does not, no threshold in this project closes them.** Which line it is, is a question about the customer's process and not about this model.
+
+**What this does not establish.** Six classes on one split, and the per-class counts are small enough that the intervals in the prevalence section apply here with more force, not less — 5 escapes in 602 opens has a 95% interval of 0.36% to 1.93%. The negative result about the veto is about *this* checkpoint: a model trained with a loss that penalised confident errors on critical classes might well carry the signal this one does not, and nothing here tries that.
+
+### Prevalence — what survives a line that is not this dataset
+
+The curve above was swept over 7,322 candidates of which **3,018 (41.2%) are genuine defects**. No line looks like that: an AOI tuned for recall over-calls by one to two orders of magnitude, so its candidates are a fraction of a percent genuine. The README concedes that DeepPCB is binarised and that its defects are partly augmented onto the boards; **this is a third thing, and until now the project had not said it.** `scripts/prevalence_report.py`, commit `ba2b445`.
+
+Everything below holds each group's score distribution exactly as measured and varies only the mixing ratio — the label-shift assumption. That isolates prevalence from everything else that differs between a dataset and a line, and it is the whole of what this section claims. A different AOI, board or illumination moves the distributions themselves and nothing here speaks to that.
+
+#### The escape rate does not move at all
+
+`sweep` computes it as `escapes / defects_total`. Re-weighting every defect by one factor scales numerator and denominator together, so the escape rate at a threshold is the same number at any prevalence. Asserted in a docstring that would be worth nothing; computed here.
+
+| escape budget | threshold | escape rate at 41.2% | at 1.0% | at 0.5% |
+|---|---|---|---|---|
+| ≤0.10% | 0.998 | 0.099% | 0.099% | 0.099% |
+| ≤0.25% | 0.994 | 0.232% | 0.232% | 0.232% |
+| ≤0.50% | 0.961 | 0.497% | 0.497% | 0.497% |
+| ≤1.00% | 0.581 | 0.994% | 0.994% | 0.994% |
+
+**Identical across the row, to every digit.** The threshold swept for a budget on this dataset is the threshold for that budget on any line whose score distributions match — which is the part of the operating point that transfers.
+
+#### Review reduction moves, and it moves in the project's favour
+
+That figure is `dismissed / total`, and lowering the prevalence adds false calls — which is the population the model is good at dismissing. The headline 52.8% at the ≤0.50% budget is a **floor** for any line cleaner than this dataset, not a ceiling.
+
+| escape budget | 41.2% | 20.0% | 10.0% | 5.0% | 2.0% | 1.0% | 0.5% |
+|---|---|---|---|---|---|---|---|
+| ≤0.10% | 24.5% | 33.4% | 37.5% | 39.6% | 40.9% | 41.3% | 41.5% |
+| ≤0.25% | 40.2% | 54.7% | 61.5% | 64.9% | 66.9% | 67.6% | 68.0% |
+| ≤0.50% | 52.8% | 71.7% | 80.6% | 85.0% | 87.7% | 88.6% | 89.0% |
+| ≤1.00% | 58.3% | 78.9% | 88.7% | 93.5% | 96.5% | 97.4% | 97.9% |
+
+Read the 41.2% column against the table above it: they agree, which is the check that this re-weighting is doing what it says.
+
+#### What does not transfer is the verification
+
+A 0.47% escape rate over 2,997 defects is a measurement. The same rate over the thirty defects a good line produces in a month is a coin. This is the table that should change how a pilot is planned, and it is the one the project was missing entirely.
+
+| defects observed | escapes at 0.47% | 95% interval on the rate | ≤0.5% budget |
+|---|---|---|---|
+| 2,997  ← this project's own measurement | 14 | 0.28% – 0.78% | not settled |
+| 1,000 | 5 | 0.21% – 1.17% | not settled |
+| 300 | 1 | 0.06% – 1.86% | not settled |
+| 100 | 0 | 0.00% – 3.70% | not settled |
+| 30 | 0 | 0.00% – 11.35% | not settled |
+
+
+**The first row is the uncomfortable one, and it is about this project rather than about a pilot.** 14 escapes in 2,997 defects is 0.47% exactly, on this split, and that number is not in doubt. Read as an estimate of the rate on *unseen* defects from the same distribution — which is the only reading that justifies deploying a threshold — the 95% interval runs to 0.78% and does not exclude exceeding the budget. The point estimate meets QP-110; the evidence does not establish that it is met. Every escape figure this project has published is a point estimate on 2,997 defects and none of them has carried an interval until now.
+
+**A pilot that sees a hundred defects cannot confirm this budget, and one that sees thirty cannot say anything at all.** The threshold carries over; the evidence for it does not, and it has to be rebuilt on the line at the line's own rate. On a line producing 30 defects a month, distinguishing 0.47% from 1% takes over a year of shadow running — which is an argument for shadow mode starting early, not for waiting.
+
+**What this does not establish.** Label shift is an assumption, not a finding: it says the model's scores on a defect are drawn from the same distribution here and on a line, and the binarised, pre-registered, partly-augmented character of this dataset is exactly the reason to doubt it. What the section buys is the separation — prevalence alone moves one of the three quantities, and it is not the threshold. Everything else that differs between a dataset and a line is untouched and unmeasured.
+

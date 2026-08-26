@@ -48,7 +48,6 @@ Usage::
 from __future__ import annotations
 
 import argparse
-import math
 import subprocess
 import sys
 from pathlib import Path
@@ -57,12 +56,22 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from aoi_agent.stats import wilson  # noqa: E402
 from aoi_agent.vision.operating_point import sweep  # noqa: E402
 
 #: Prevalences to report, as the share of AOI candidates that are genuine
-#: defects. The first is this dataset's own; the rest span what a line plausibly
-#: runs at, from a dirty process to a mature one.
-PREVALENCES = (0.368, 0.20, 0.10, 0.05, 0.02, 0.01, 0.005)
+#: defects. These span what a line plausibly runs at, from a dirty process to
+#: a mature one. **This dataset's own is not in the tuple** -- it is measured
+#: and prepended at render time by `prevalences()`. It was the literal 0.368
+#: until 2026-08-26, by which point the split measured 41.2%: the header
+#: sentence computed the real figure and every table below it was labelled
+#: with the old one, in a section whose entire subject is prevalence.
+PREVALENCES = (0.20, 0.10, 0.05, 0.02, 0.01, 0.005)
+
+
+def prevalences(measured: float) -> tuple[float, ...]:
+    """The split's own prevalence first, then the line it might run on."""
+    return (measured, *PREVALENCES)
 
 #: Escape budgets, matching the table this one sits beside.
 BUDGETS = (0.001, 0.0025, 0.005, 0.01)
@@ -94,26 +103,6 @@ def reweighted_review_reduction(
     defect_dismissed = float((dismissed & is_defect).sum()) / defects
     false_call_dismissed = float((dismissed & ~is_defect).sum()) / false_calls
     return prevalence * defect_dismissed + (1 - prevalence) * false_call_dismissed
-
-
-def wilson(successes: int, trials: int, z: float = 1.96) -> tuple[float, float]:
-    """A Wilson score interval, which stays inside [0, 1] at small counts.
-
-    The normal approximation is what a spreadsheet reaches for and it is wrong
-    in exactly the regime this table is about -- at 3 escapes in 100 it gives a
-    lower bound below zero.
-    """
-    if trials == 0:
-        return (0.0, 1.0)
-    phat = successes / trials
-    denominator = 1 + z * z / trials
-    centre = (phat + z * z / (2 * trials)) / denominator
-    spread = (
-        z
-        * math.sqrt(phat * (1 - phat) / trials + z * z / (4 * trials * trials))
-        / denominator
-    )
-    return (max(0.0, centre - spread), min(1.0, centre + spread))
 
 
 def commit() -> str:
@@ -186,7 +175,7 @@ def main() -> int:
         "Asserted in a docstring that would be worth nothing; computed here."
     )
     emit()
-    emit("| escape budget | threshold | escape rate at 36.8% | at 1.0% | at 0.5% |")
+    emit(f"| escape budget | threshold | escape rate at {measured:.1%} | at 1.0% | at 0.5% |")
     emit("|---|---|---|---|---|")
 
     chosen: dict[float, float] = {}
@@ -198,7 +187,7 @@ def main() -> int:
         chosen[budget] = best.threshold
         # The same quantity, recomputed from the reweighted population.
         rates = []
-        for prevalence in (0.368, 0.01, 0.005):
+        for prevalence in (measured, 0.01, 0.005):
             dismissed = p_false_call >= best.threshold
             escaped = float((dismissed & is_defect).sum()) / int(is_defect.sum())
             rates.append(escaped)  # prevalence cancels; shown to prove it
@@ -220,27 +209,36 @@ def main() -> int:
     emit()
     emit("#### Review reduction moves, and it moves in the project's favour")
     emit()
+    # The floor is this split's own cell at the budget the project ships at,
+    # so it is read out of the same sweep the table below is built from. It
+    # was the literal "56.2%" until 2026-08-26, one retrain after that ceased
+    # to be the number -- and a floor quoted from the wrong run is not a floor.
+    shipped = min(chosen, key=lambda b: abs(b - 0.005))
+    floor = reweighted_review_reduction(
+        p_false_call, is_defect, chosen[shipped], measured
+    )
     emit(
         "That figure is `dismissed / total`, and lowering the prevalence adds "
         "false calls — which is the population the model is good at dismissing. "
-        "The headline 56.2% is a **floor** for any line cleaner than this "
-        "dataset, not a ceiling."
+        f"The headline {floor:.1%} at the ≤{shipped:.2%} budget is a **floor** "
+        "for any line cleaner than this dataset, not a ceiling."
     )
     emit()
-    header = " | ".join(f"{p:.1%}" for p in PREVALENCES)
+    scale = prevalences(measured)
+    header = " | ".join(f"{p:.1%}" for p in scale)
     emit(f"| escape budget | {header} |")
-    emit("|---" * (len(PREVALENCES) + 1) + "|")
+    emit("|---" * (len(scale) + 1) + "|")
     for budget, threshold in chosen.items():
         cells = [
             f"{reweighted_review_reduction(p_false_call, is_defect, threshold, p):.1%}"
-            for p in PREVALENCES
+            for p in scale
         ]
         emit(f"| ≤{budget:.2%} | " + " | ".join(cells) + " |")
 
     emit()
     emit(
-        "Read the 36.8% column against the table above it: they agree, which is "
-        "the check that this re-weighting is doing what it says."
+        f"Read the {measured:.1%} column against the table above it: they agree, "
+        "which is the check that this re-weighting is doing what it says."
     )
 
     # ---- 3. what does not transfer ---------------------------------------
