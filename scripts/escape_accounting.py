@@ -180,11 +180,20 @@ def measure(
     config: DetectorConfig,
     threshold: float,
     limit: int | None = None,
+    pairs: list | None = None,
 ) -> Accounting:
-    """Run the detector and the model over a split and account for every defect."""
+    """Run the detector and the model over a split and account for every defect.
+
+    ``pairs`` lets a caller hand in a dataset that is not DeepPCB -- anything
+    with ``stem``, ``load_template``, ``load_test`` and ``load_annotations`` --
+    so the same accounting runs unchanged over a second population. Added
+    2026-08-26 for `scripts/transfer_report.py`; when it is None the DeepPCB
+    split named by ``split`` is loaded, as before.
+    """
     import torch
 
-    pairs = load_split(split)
+    if pairs is None:
+        pairs = load_split(split)
     if limit:
         pairs = pairs[:limit]
 

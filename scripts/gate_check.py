@@ -36,7 +36,8 @@ from aoi_agent.aoi.simulator import (  # noqa: E402
     Perturbation,
     detect,
 )
-from aoi_agent.data.deeppcb import CLASS_NAMES, load_split  # noqa: E402
+from aoi_agent.data import hripcb  # noqa: E402
+from aoi_agent.data.deeppcb import load_split  # noqa: E402
 
 RECALL_TARGET = 0.95
 FALSE_CALLS_TARGET = 2.0
@@ -92,19 +93,88 @@ def evaluate(pairs, config: DetectorConfig, perturbation: Perturbation | None):
         "max_false_calls": max(false_calls_per_image),
         "images_without_false_calls": sum(1 for n in false_calls_per_image if n == 0),
         "mean_candidates": statistics.mean(candidates_per_image),
+        # Keyed on the classes the pairs actually carry rather than on
+        # DeepPCB's table, so a second dataset with its own vocabulary reports
+        # its own classes instead of six n/a rows and a missing seventh.
         "recall_by_class": {
-            name: (detected_by_class[name] / total_by_class[name])
-            if total_by_class[name]
-            else None
-            for name in CLASS_NAMES.values()
+            name: detected_by_class[name] / total_by_class[name]
+            for name in sorted(total_by_class)
         },
         "count_by_class": dict(total_by_class),
     }
 
 
+def render_markdown(results: list[dict]) -> list[str]:
+    """One benchmarks section over several gate runs, from their result files.
+
+    Written 2026-08-26 when the gate was first run on a dataset it failed on.
+    Until then its verdict lived in a console line and a JSON under
+    `eval/results/`, which is gitignored -- so a failed gate left no trace a
+    reader could find. The table is built from the JSON, not retyped.
+    """
+    out: list[str] = []
+
+    def emit(text: str = "") -> None:
+        out.append(text)
+
+    emit("### S0 gate on HRIPCB — does template differencing produce a reviewable queue on photographs?")
+    emit()
+    emit(
+        f"The gate this project's differencing stage had to clear on DeepPCB before "
+        f"anything was built on it: recall ≥ {RECALL_TARGET:.0%} of annotated defects "
+        f"**and** ≥ {FALSE_CALLS_TARGET:.0f} false calls per image, over a sweep of "
+        f"grey-level thresholds. DeepPCB passed at threshold 60. The same script, "
+        f"the same criteria and the same opening kernel, on HRIPCB. `scripts/gate_check.py`."
+    )
+    emit()
+    emit("| run | perturbation | threshold | recall | false calls / image | median | images with none | verdict |")
+    emit("|---|---|---|---|---|---|---|---|")
+    for result in results:
+        pert = result["runs"][0].get("perturbation")
+        label = (
+            f"shift ±{pert['max_shift_px']}px, σ{pert['noise_sigma']:.0f}, gain {pert['gain']}"
+            if pert else "none"
+        )
+        for i, run in enumerate(result["runs"]):
+            passes = run["recall"] >= RECALL_TARGET and run["mean_false_calls"] >= FALSE_CALLS_TARGET
+            emit(
+                f"| {result['split'] if i == 0 else ''} | {label if i == 0 else ''} | "
+                f"{run['threshold']} | {run['recall']:.1%} | {run['mean_false_calls']:.1f} | "
+                f"{run['median_false_calls']:.0f} | {run['images_without_false_calls']}/{result['pairs']} | "
+                f"{'pass' if passes else '—'} |"
+            )
+    emit()
+    def label_of(result: dict) -> str:
+        pert = result["runs"][0].get("perturbation")
+        return result["split"] + (", perturbed" if pert else "")
+
+    passed = [r for r in results if any(
+        x["recall"] >= RECALL_TARGET and x["mean_false_calls"] >= FALSE_CALLS_TARGET
+        for x in r["runs"]
+    )]
+    verdicts = [(label_of(r), max(r["runs"], key=lambda x: x["recall"])) for r in results]
+    emit(
+        (f"**{len(passed)} of {len(results)} runs clear the gate.** " if passed
+         else "**None of these clears the gate.** ")
+        + " ".join(
+            f"`{label}` peaks at {best['recall']:.1%} recall (threshold {best['threshold']}, "
+            f"{best['mean_false_calls']:.1f} false calls/image)."
+            for label, best in verdicts
+        )
+    )
+    emit()
+    return out
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--split", default="trainval", choices=["trainval", "test"])
+    parser.add_argument("--split", default="trainval",
+                        choices=["trainval", "test", "aligned", "rotated"])
+    parser.add_argument(
+        "--dataset", default="deeppcb", choices=["deeppcb", "hripcb"],
+        help="hripcb runs the same gate over data/HRIPCB; --split then names "
+             "its subset, 'aligned' or 'rotated'",
+    )
     parser.add_argument("--limit", type=int, default=200, help="pairs to evaluate")
     parser.add_argument(
         "--thresholds",
@@ -122,9 +192,31 @@ def main() -> int:
     parser.add_argument("--noise", type=float, default=6.0, help="sensor noise sigma")
     parser.add_argument("--gain", type=float, default=1.03, help="illumination gain")
     parser.add_argument("--out", type=Path, default=Path("eval/results/gate_check.json"))
+    parser.add_argument(
+        "--publish", type=Path, nargs="+", default=None,
+        help="render these result files as one section and append it to --benchmarks; "
+             "runs nothing",
+    )
+    parser.add_argument("--benchmarks", type=Path, default=Path("docs/benchmarks.md"))
+    parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    pairs = load_split(args.split)[: args.limit]
+    if args.publish:
+        results = [json.loads(path.read_text()) for path in args.publish]
+        body = "\n".join(render_markdown(results))
+        print(body)
+        if not args.dry_run:
+            existing = args.benchmarks.read_text()
+            args.benchmarks.write_text(existing.rstrip() + "\n\n" + body + "\n")
+            print(f"\nappended to {args.benchmarks}", file=sys.stderr)
+        return 0
+
+    if args.dataset == "hripcb":
+        subset = args.split if args.split in hripcb.SETS else "aligned"
+        pairs = hripcb.load(subset)[: args.limit]
+        args.split = f"hripcb/{subset}"
+    else:
+        pairs = load_split(args.split)[: args.limit]
     perturbation = (
         Perturbation(max_shift_px=args.shift, noise_sigma=args.noise, gain=args.gain)
         if args.perturb

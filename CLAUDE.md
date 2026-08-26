@@ -13,6 +13,9 @@ the engineering has to hold up to an interviewer's questions, not just run.
 ```
 src/aoi_agent/
     data/deeppcb.py         dataset access, official splits
+    data/hripcb.py          the second dataset, as a view: same pair interface,
+                            its own class table, the rotated subset padded onto
+                            the template's frame
     aoi/registration.py     phase correlation, and the three things it refuses
     aoi/simulator.py        template differencing -- the "AOI"
     aoi/matching.py         label candidates against ground truth
@@ -62,6 +65,9 @@ an error.
 ```bash
 uv run pytest                                    # 1,181 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
+uv run python scripts/gate_check.py --dataset hripcb --split aligned --limit 693 --thresholds 10 15 20 30 45 60 \
+    --out eval/results/gate_check_hripcb_aligned.json   # the same gate on photographs (~2 min)
+uv run python scripts/transfer_report.py         # the shipped pipeline on HRIPCB, unchanged (~10 min)
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
 uv run python scripts/routing_report.py          # how much never reaches the LLM
@@ -345,12 +351,47 @@ plus five real ones, four of which were deleted as unreliable. That is the shape
 the detector project was killed for: a mechanism with nothing to run it on.
 
 What would make it buildable, in order: a line, or a second dataset with a
-different prevalence and its own registration problem. HRIPCB is the obvious
-candidate and was **blocked twice until 2026-08-24; it is now blocked once.**
-`aoi/registration.py` was built that day (commit `f1825d2`), and this paragraph
-went on saying "the registration stage this project does not have" for two more
-days -- pointing at the invariant above, which is the paragraph that contradicts
-it. What remains is a Kaggle account, which is free.
+different prevalence and its own registration problem. **HRIPCB is that
+dataset, it was run on 2026-08-26, and the shipped pipeline does not survive
+it -- one layer earlier than the question expected.** Ten photographed boards,
+one template each, 693 images with defects drawn onto the template, and the
+same 693 rotated by -10..+10 degrees. `data/hripcb.py` presents it as pairs
+without touching DeepPCB or `CLASS_NAMES` (its `missing_hole` is not
+`pin-hole` and has no work instruction). Three answers, all in
+docs/benchmarks.md under "S0 gate on HRIPCB" and "Transfer":
+
+- **The differencing front end does not transfer.** At the shipped grey
+  threshold of 60 it flags 16.9% of defects on aligned photographs; the S0
+  gate clears on no setting -- recall peaks at 92% with 1.8 false calls an
+  image, and the gate's own perturbation produces 860. DeepPCB passed because
+  binarisation makes a defect and a misaligned edge the same 255-level
+  difference; on a photograph the defect is a 36-level one and every edge is a
+  gradient. **The differencing stage's operating regime is binarised imagery**,
+  and nothing in this project said so until it was measured.
+- **The dismissal threshold does not transfer either, and it fails at the
+  model.** With the grey threshold set where the gate found best recall, the
+  stage flags 99.5% of defects and the re-verifier at `0.961` dismisses 1,387
+  of 2,953 -- a 46.97% escape rate against a 0.50% budget, on a queue that is
+  90% real defects. It dismisses defects at the rate it dismisses everything:
+  a model trained on 255-level differences reads a faint one as a false call
+  with confidence above 0.961, which is the class-escape section's finding
+  again -- confident errors, which no cut on the model's own output separates.
+- **The registration refusal holds, and now has a price.** Of 693 rotated
+  pairs it refused 563 (525 low confidence, 38 already aligned -- 35 of them
+  the dataset's own zero-angle images) and acted on 130 with a translation a
+  rotation cannot be undone by. 312 candidates a board at the shipped
+  threshold against 0.7 un-turned; 37% of defects never flagged.
+
+What this does not establish: one checkpoint never trained on a photograph,
+a grey threshold chosen after looking, and synthetic edits on a single
+photograph per board -- a real second acquisition sits between `aligned` and
+`aligned, perturbed` and is neither. What it does establish is that the next
+step is not "fine-tune on HRIPCB": the layer that failed first failed for a
+physical reason, and the detector front end the PCB-AoI inventory argued for
+(SMT has no template to difference against) is the same conclusion from the
+other side. `scripts/transfer_report.py` and `scripts/gate_check.py --dataset
+hripcb` rebuild every number; `tests/test_hripcb.py` holds the adapter's
+geometry and the class boundary.
 
 **Every decision the store held before 2026-08-23 reads `unrecorded`** -- 9,140
 of them, in `model_digest` and now in `reviewer_auth` too, stamped by the

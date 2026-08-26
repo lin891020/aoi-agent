@@ -3256,3 +3256,120 @@ The memory column is measured in a **fresh process per engine**, each one loadin
 
 **What this changes.** INT8 dynamic is the conversion that survives the curve. It takes the model off the disk from 42.7MB to 10.7MB, and -- the figure that matters more -- it takes a station's resident memory from 389MB to 74MB, 5.3x smaller, because most of the float32 process is the torch runtime rather than the weights. That is the honest case for quantising this model: not the milliseconds, which nothing was waiting on, but a box that can be sized in tens of megabytes instead of hundreds. It is not deployed here, because this station is a laptop with no memory problem; it is measured so that a box which does have one can be given a number rather than a hope. The deployed threshold stays with the float32 model it was swept for -- an engine change is a model change, and `DEFAULT_DISMISS_THRESHOLD` follows the model that produced it.
 
+### S0 gate on HRIPCB — does template differencing produce a reviewable queue on photographs?
+
+The gate this project's differencing stage had to clear on DeepPCB before anything was built on it: recall ≥ 95% of annotated defects **and** ≥ 2 false calls per image, over a sweep of grey-level thresholds. DeepPCB passed at threshold 60. The same script, the same criteria and the same opening kernel, on HRIPCB. `scripts/gate_check.py`.
+
+| run | perturbation | threshold | recall | false calls / image | median | images with none | verdict |
+|---|---|---|---|---|---|---|---|
+| hripcb/aligned | none | 10 | 92.3% | 1.8 | 0 | 573/693 | — |
+|  |  | 15 | 89.7% | 1.3 | 0 | 573/693 | — |
+|  |  | 20 | 83.0% | 1.3 | 0 | 576/693 | — |
+|  |  | 30 | 38.9% | 2.2 | 0 | 596/693 | — |
+|  |  | 45 | 16.5% | 1.6 | 0 | 685/693 | — |
+|  |  | 60 | 14.3% | 1.5 | 0 | 687/693 | — |
+| hripcb/aligned | shift ±2px, σ6, gain 1.03 | 10 | 90.5% | 860.5 | 828 | 16/693 | — |
+|  |  | 15 | 84.5% | 584.4 | 540 | 19/693 | — |
+|  |  | 20 | 69.0% | 391.7 | 405 | 19/693 | — |
+|  |  | 30 | 27.8% | 242.0 | 228 | 40/693 | — |
+|  |  | 45 | 16.6% | 83.8 | 43 | 126/693 | — |
+|  |  | 60 | 14.2% | 24.7 | 6 | 245/693 | — |
+| hripcb/rotated | none | 20 | 23.6% | 54.5 | 43 | 24/693 | — |
+|  |  | 30 | 49.4% | 282.0 | 280 | 25/693 | — |
+|  |  | 45 | 41.9% | 230.9 | 233 | 35/693 | — |
+|  |  | 60 | 29.2% | 297.7 | 306 | 35/693 | — |
+
+**None of these clears the gate.** `hripcb/aligned` peaks at 92.3% recall (threshold 10, 1.8 false calls/image). `hripcb/aligned, perturbed` peaks at 90.5% recall (threshold 10, 860.5 false calls/image). `hripcb/rotated` peaks at 49.4% recall (threshold 30, 282.0 false calls/image).
+
+## 2026-08-26 · commit 333037b
+
+### Transfer — the shipped pipeline on HRIPCB, a dataset it was never swept on
+
+Ten photographed bare boards, one template each, 693 images with defects drawn onto the template, and the same 693 rotated by -10..+10° in the dataset's own `rotation/` set. Images are downscaled by 0.5 so the median defect is 39 px long, which is what it is on DeepPCB and what the 64 px patch was sized against. Nothing else changes: differencing threshold, opening kernel, registration stage, checkpoint `reverifier.pt` and dismissal threshold 0.961 are the shipped values. `scripts/transfer_report.py`, commit `333037b`.
+
+**Read S0 before anything under it.** The re-verifier is asked only about candidates the differencing stage produces. On DeepPCB that stage was gated at recall ≥ 95% with ≥ 2 false calls per image (`scripts/gate_check.py`); the same gate was run on this data and its result is in the section that precedes this one. Whatever it found, every escape figure below is conditional on the queue that stage handed over, and a defect it never flagged is not an escape the model could have prevented.
+
+**What `prevalence` means here.** HRIPCB contains no false calls of its own -- every annotated box is a real defect -- so every false call in the queue was manufactured by differencing this photograph against its template. The figure is a property of the detector on this imagery, not of the dataset, and it is the other prevalence the project's notes asked to see the operating point under.
+
+#### `aligned` — 693 boards, 2953 defects
+
+| grey threshold | candidates / board | defects flagged | of which sub-cut IoU | never flagged | prevalence | escapes | escape rate | review removed |
+|---|---|---|---|---|---|---|---|---|
+| 60 (shipped) | 0.7 | 498/2953 = 16.9% | 77 | 2455 | 97.5% | 2457 | 83.20% | 0.6% |
+| 10 (best recall on this data, per the gate) | 4.7 | 2937/2953 = 99.5% | 48 | 16 | 90.0% | 1387 | 46.97% | 46.2% |
+
+#### `rotated` — 693 boards, 2953 defects
+
+**Registration acted on 130 of 693 pairs and refused 563**: `low_confidence` 525, `already_aligned` 38.
+Where it acted the rotation was 1–4°, median 2°; where it refused, 0–10°, median 6°. Phase correlation estimates a translation, so on a pure rotation it either finds a small spurious shift and applies it, or finds no peak and declines. Neither is a correction, and the candidate counts below are what the differencing stage sees either way.
+
+| grey threshold | candidates / board | defects flagged | of which sub-cut IoU | never flagged | prevalence | escapes | escape rate | review removed |
+|---|---|---|---|---|---|---|---|---|
+| 60 (shipped) | 312.0 | 1870/2953 = 63.3% | 952 | 1083 | 0.9% | 1171 | 39.65% | 8.9% |
+| 10 (best recall on this data, per the gate) | 99.7 | 750/2953 = 25.4% | 183 | 2203 | 1.1% | 2376 | 80.46% | 11.1% |
+
+**What this does not establish.** One checkpoint, trained on binarised 640 px pairs, read on colour photographs at half resolution; the grey threshold labelled *best recall here* was chosen after looking at this data and ships nowhere. `missing_hole` is a class the model has never seen and DeepPCB does not have, so its rows measure only whether the model will dismiss an unfamiliar defect. And the rotated subset's candidates are dominated by misregistration, which is the condition, not a confound: the queue a rotation produces is the queue a line would have to review.
+
+### Adjudication — three questions were asked of HRIPCB, and the answers arrived one layer earlier than expected
+
+Written 2026-08-26 against the two sections above, which are the script's own
+output; nothing here is a number the tables do not carry.
+
+**1. Does the dismissal threshold transfer?** No, and not by a little. On the
+aligned subset at the grey threshold the gate found best for recall, the
+differencing stage flags 99.5% of the 2,953 defects -- and the re-verifier at
+its shipped `0.961` then **dismisses 1,387 of them, a 46.97% escape rate**
+against a 0.50% budget. The queue there is 90% real defects and the model
+removes 46.2% of it, which is to say it dismisses defects at almost exactly the
+rate it dismisses everything: on photographs it is not discriminating at all.
+It was trained on binarised 640 px pairs where a defect is a 255-level
+difference; a photographed mouse bite is a 36-level one, and the network reads
+"barely any difference" as "false call" with a confidence above 0.961. That is
+the operating point failing to transfer, and it fails at the *model*, not at
+the threshold -- no threshold on this model's output separates these, for the
+same reason the class-escape section found no veto: the errors are confident.
+
+**2. Does the differencing stage transfer?** No, and this is the finding that
+sits *above* the one the question was aimed at. At the shipped grey threshold
+of 60 the stage flags 16.9% of defects on aligned photographs (2,455 of 2,953
+never flagged, 83% escaped before any model saw them). The S0 gate two sections
+up clears on no setting: at threshold 10 recall reaches 92% with 1.8 false
+calls an image, and adding the gate's own perturbation to make false calls
+appear produces 860 of them an image. DeepPCB passed because binarisation
+makes a defect and a misaligned edge the same 255-level difference and lets a
+3x3 opening tell them apart by shape; on a photograph the defect is faint and
+every edge is a gradient, and lowering the threshold to see the one floods
+the queue with the other. **The differencing front end's operating regime is
+binarised imagery.** That was true before this run and nothing in the project
+said it.
+
+**3. Does the registration stage's refusal hold on a rotation nobody here
+synthesised?** Yes, in the sense that matters and with one cost. Of 693 turned
+pairs it refused 563 -- 525 for low confidence, 38 as already aligned (35 of
+which are the zero-angle images the dataset includes) -- and acted on 130,
+applying a 1–4° rotation's worth of spurious translation that a translation
+cannot undo. Neither outcome corrects anything, which is the documented limit;
+what the run adds is the price on a real dataset: **312 candidates a board at
+the shipped threshold, against 0.7 on the same boards un-turned**, prevalence
+0.9%, and 37% of defects never flagged because the rotated edges swallow them.
+The 2026-08-24 measurement said rotation doubles the queue on DeepPCB; on
+photographs it multiplies it by four hundred.
+
+**What this does not establish.** One checkpoint, never trained on a
+photograph, so question 1 is an answer about *this* model and says nothing
+about a model trained on both. The grey threshold of 10 was chosen after
+looking at this data and ships nowhere. HRIPCB's defects are synthetic edits on
+a single photograph per board, so the aligned subset has no acquisition noise
+at all -- a real second acquisition would sit somewhere between `aligned` and
+`aligned, perturbed`, and neither of those is it. And `missing_hole` is a
+class the model has never seen, so its rows measure only whether an unfamiliar
+defect is dismissed, which on this run it was at the same rate as the familiar
+ones.
+
+What it does establish is the shape of the next step, and it is not "fine-tune
+on HRIPCB". The front end is the layer that failed first, and it failed for a
+reason that is physical rather than statistical: differencing needs two images
+that agree everywhere but the defect, and a photograph gives it two images
+that disagree faintly everywhere. The second front end the PCB-AoI inventory
+argued for -- a detector, because SMT has no template to difference against --
+is the same conclusion reached from the other side.
