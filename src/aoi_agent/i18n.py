@@ -196,6 +196,10 @@ STRINGS: dict[str, dict[str, str]] = {
             "會問的問題，都在這一頁：誰放行的、什麼時候、當時生效的是哪個模型"
             "和哪組門檻。",
         "board.none_yet": "尚未記錄板級處置。",
+        "board.live_basis":
+            "{count} 個旗標區域：{confirmed} 個確認為缺陷、{pending} 個仍等待人工、"
+            "{dismissed} 個已排除",
+        "board.handed_back": '退回，等待資深',
         "board.absences_note":
             "模型欄顯示 unrecorded，代表這筆判定寫在這個 store 有 provenance "
             "欄位之前；unavailable 是寫在之後、但仍無法指出權重的。兩種缺席不同，"
@@ -473,6 +477,10 @@ STRINGS: dict[str, dict[str, str]] = {
             "released it, when, and which model and thresholds were in force "
             "when they did.",
         "board.none_yet": "No board-level disposition recorded yet.",
+        "board.live_basis":
+            "{count} flagged regions: {confirmed} confirmed as defects, "
+            "{pending} still waiting on a person, {dismissed} dismissed",
+        "board.handed_back": 'handed back, waiting on a senior',
         "board.absences_note":
             "A model column reading unrecorded is a decision written before "
             "this store had provenance columns; unavailable is one written "

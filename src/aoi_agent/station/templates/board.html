@@ -42,7 +42,14 @@
   {% else %}
     <p class="empty">
       {{ t('board.none_yet') }}<br>
-      <span class="dim">{{ assessment.basis if assessment }}</span>
+      {# Computed at render time, not read off a row, so it is chrome and
+         follows the switch. A recorded row's basis is a record and does not. #}
+      {% if assessment %}
+      <span class="dim">{{ t('board.live_basis', count=assessment.candidate_count,
+                             confirmed=assessment.confirmed_count,
+                             pending=assessment.pending_count,
+                             dismissed=assessment.dismissed_count) }}</span>
+      {% endif %}
     </p>
   {% endif %}
 
@@ -67,10 +74,15 @@
         <td><span class="chip">{{ row.model_class }}</span></td>
         <td class="num">{{ '%.3f'|format(row.model_confidence) }}</td>
         <td>
-          {% if row.verdict %}
-            <span class="chip {{ 'warn' if row.verdict != 'false_call' else '' }}">{{ row.verdict }}</span>
-          {% elif row.queue_status == 'pending' %}
+          {# Queue state first, the way assess() reads it: a region on either
+             open queue is waiting on a person whatever row it carries, and a
+             deferred one showing the model's old verdict reads as decided. #}
+          {% if row.queue_status == 'pending' %}
             <span class="chip warn small">{{ t('board.waiting_on_person') }}</span>
+          {% elif row.queue_status == 'deferred' %}
+            <span class="chip warn small">{{ t('board.handed_back') }}</span>
+          {% elif row.verdict %}
+            <span class="chip {{ 'warn' if row.verdict != 'false_call' else '' }}">{{ row.verdict }}</span>
           {% else %}
             <span class="dim">&mdash;</span>
           {% endif %}

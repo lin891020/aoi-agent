@@ -531,3 +531,43 @@ def test_the_defer_button_posts_to_the_region_it_is_on(station):
     response = client.post(actions[0], follow_redirects=False)
     assert response.status_code == 303
     assert escalations.deferred_count() == 1
+
+
+def test_the_board_page_shows_a_deferred_region_as_waiting_not_decided(station, queued):
+    """The board page read `queue_status == 'pending'` and nothing else, so a
+    deferred region carrying the model's old row rendered that row's verdict
+    -- decided, by the model -- while `assess()` two lines up was counting the
+    same region as waiting. The page contradicted its own summary. Queue
+    state now comes first in the template, in the order `assess()` reads it."""
+    with queued() as session:
+        candidate = session.query(CandidateRecord).one()
+        session.add(
+            ReviewDecision(
+                candidate_id=candidate.id, verdict="false_call", source="model",
+                reviewer=None, reviewer_auth="automated",
+                model_digest="sha256:stub", code_version="test",
+                decided_at=datetime(2026, 8, 25, 8, 1),
+            )
+        )
+        session.commit()
+    client, _ = station
+    client.post(f"/c/{STEM}/0/defer", follow_redirects=False)
+
+    body = read_in(client, "en").get(f"/board/{STEM}").text
+
+    assert "handed back, waiting on a senior" in body
+    assert ">false_call<" not in body, "the model's superseded row must not read as the decision"
+    assert "1 still waiting on a person" in body
+
+
+def test_the_board_page_summary_follows_the_language_switch(station):
+    """The line under "no disposition yet" is computed when the page is drawn,
+    not read off a row, so it is chrome and moves with the switch. It was an
+    English f-string from the store, and read in English on the Chinese page."""
+    client, _ = station
+
+    zh = read_in(client, "zh-TW").get(f"/board/{STEM}").text
+    en = read_in(client, "en").get(f"/board/{STEM}").text
+
+    assert "個旗標區域" in zh and "flagged regions" not in zh
+    assert "flagged regions" in en
