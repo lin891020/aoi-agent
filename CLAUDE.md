@@ -13,6 +13,8 @@ the engineering has to hold up to an interviewer's questions, not just run.
 ```
 src/aoi_agent/
     data/deeppcb.py         dataset access, official splits
+    data/pcbaoi.py          PCB-AoI, the detector's dataset: VOC boxes, a split
+                            by base stem so no transform leaks, YOLO export
     data/hripcb.py          the second dataset, as a view: same pair interface,
                             its own class table, the rotated subset padded onto
                             the template's frame
@@ -20,7 +22,9 @@ src/aoi_agent/
     aoi/simulator.py        template differencing -- the "AOI"
     aoi/matching.py         label candidates against ground truth
     vision/                 patches, dataset, ResNet-18, inference, operating
-                            point, ONNX export and INT8 quantisation
+                            point, ONNX export and INT8 quantisation;
+                            detector.py is the second front end -- a YOLO box
+                            with P(false_call) = 1 - confidence, no template
     store/                  SQLAlchemy models, seeding, standards retrieval,
                             machine_events (the store's first non-board entity,
                             and its only writer, events.py),
@@ -70,6 +74,8 @@ uv run python scripts/gate_check.py              # S0: does differencing make fa
 uv run python scripts/gate_check.py --dataset hripcb --split aligned --limit 693 --thresholds 10 15 20 30 45 60 \
     --out eval/results/gate_check_hripcb_aligned.json   # the same gate on photographs (~2 min)
 uv run python scripts/transfer_report.py         # the shipped pipeline on HRIPCB, unchanged (~10 min)
+uv run python scripts/train_detector.py          # YOLO26n on PCB-AoI, refuses beside a busy GPU (~30 min)
+uv run python scripts/detector_report.py         # the detector at the escape budget, on 60 images
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
 uv run python scripts/routing_report.py          # how much never reaches the LLM

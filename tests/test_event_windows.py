@@ -41,7 +41,7 @@ def store(tmp_path, monkeypatch):
                           line_id="L3", machine_id="M32", shift="A", inspected_at=when)
             session.add(board)
             session.flush()
-            classes = ["open", "open", "open", "false_call"] if n < 5 else ["false_call"] * 3 + ["open"]
+            classes = ["open", "open", "short", "false_call"] if n < 5 else ["short", "short", "open", "false_call"]
             for i, klass in enumerate(classes):
                 session.add(CandidateRecord(
                     board_id=board.id, index_on_board=i, x1=0, y1=0, x2=10, y2=10, area=100,
@@ -73,23 +73,26 @@ def test_the_open_share_moves_the_way_the_boards_do_and_carries_an_interval(stor
     after = production.query_defect_history(machine_id="M32", relative_to="parameter_change", side="after")
 
     assert before["flagged_regions"] == 20 and after["flagged_regions"] == 20
-    assert before["open_share"]["value"] == pytest.approx(15 / 20)
-    assert after["open_share"]["value"] == pytest.approx(5 / 20)
+    assert before["open_share"]["value"] == pytest.approx(10 / 15, abs=1e-3)
+    assert after["open_share"]["value"] == pytest.approx(5 / 15, abs=1e-3)
     lo_b, hi_b = before["open_share"]["interval_95"]
     lo_a, hi_a = after["open_share"]["interval_95"]
-    assert lo_b <= 0.75 <= hi_b and lo_a <= 0.25 <= hi_a
+    assert lo_b <= 2 / 3 <= hi_b and lo_a <= 1 / 3 <= hi_a
     assert "Wilson" in before["open_share"]["basis"]
     # The tool does not say "improved". It says two intervals.
     assert not any(k in before for k in ("improved", "verdict", "conclusion"))
 
 
-def test_the_denominator_is_every_flagged_region_not_only_defects(store):
-    """False calls are in the denominator on purpose: the planted signal moves
-    which boards a machine gets, and a person comparing two windows counts
-    everything the AOI flagged."""
+def test_the_denominator_is_defects_not_every_flagged_region(store):
+    """False calls are *not* in the denominator. The first draft had them there
+    and the planted effect on the real store diluted into overlapping
+    intervals -- by the false-call rate, which is the AOI's property and not
+    the parameter's. The flagged count is still returned for context."""
     after = production.query_defect_history(machine_id="M32", relative_to="parameter_change", side="after")
-    assert after["defects_total"] == 5            # the opens
-    assert after["flagged_regions"] == 20         # opens + false calls
+    assert after["defects_total"] == 15           # shorts and opens
+    assert after["flagged_regions"] == 20         # plus the false calls
+    assert after["open_share"]["value"] == pytest.approx(5 / 15, abs=1e-3)
+    assert "false calls are not in the denominator" in after["open_share"]["basis"]
 
 
 @pytest.mark.parametrize("kwargs, needle", [

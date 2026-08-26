@@ -127,12 +127,16 @@ def query_defect_history(
         counts = dict(session.execute(query).all())
         boards = session.execute(boards_query.join(CandidateRecord).distinct()).scalar() or 0
 
-        # The share of *all* flagged regions in the window the model called
-        # `open`, with an interval. The denominator is every candidate the
-        # detector produced, false calls included, because that is what the
-        # planted signal moves and what a person comparing two windows of the
-        # same machine would count. Only computed for a windowed query: a
-        # seven-day unanchored slice already answers a different question.
+        # The share of the window's *defects* the model called `open`, with an
+        # interval. The denominator is defects, not every flagged region: the
+        # first draft divided by all candidates and the planted effect on the
+        # real store came back with overlapping intervals -- not because it was
+        # absent but because sixteen candidates a board, nine of them false
+        # calls, diluted it by the false-call rate, which is a property of the
+        # AOI and not of the parameter that was changed. "Did the change reduce
+        # opens" is a question about the defects that were found. The flagged
+        # count is still returned, for context. Only computed for a windowed
+        # query: an unanchored slice already answers a different question.
         flagged = 0
         if anchor is not None:
             flagged_query = select(func.count(CandidateRecord.id)).join(Board).where(*in_window)
@@ -161,17 +165,18 @@ def query_defect_history(
         from aoi_agent.stats import wilson
 
         opens = int(counts.get("open", 0))
-        low, high = wilson(opens, flagged)
+        low, high = wilson(opens, total)
         out["event_at"] = anchor.isoformat()
         out["flagged_regions"] = flagged
         out["open_share"] = {
-            "value": round(opens / flagged, 4) if flagged else None,
+            "value": round(opens / total, 4) if total else None,
             "interval_95": [round(low, 4), round(high, 4)],
             "basis": (
-                "share of every region the AOI flagged in this window that the "
-                "re-verifier classified as open; the interval is a Wilson "
-                "interval on that count, and two windows whose intervals "
-                "overlap have not been shown to differ"
+                "share of the defects the re-verifier confirmed in this window "
+                "that it classified as open (false calls are not in the "
+                "denominator); the interval is a Wilson interval on that "
+                "count, and two windows whose intervals overlap have not been "
+                "shown to differ"
             ),
         }
     return out

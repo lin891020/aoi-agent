@@ -127,6 +127,23 @@ def _other_machines() -> list[tuple[str, str]]:
     ]
 
 
+def board_order(count: int, rng: random.Random) -> list[int]:
+    """Which pair occupies which position on the simulated time axis.
+
+    Shuffled, deliberately. The split file lists boards design by design --
+    every board of one layout, then every board of the next -- so taking file
+    order as time order gives the line a trend it never had: the defect mix
+    drifts as the layouts change, and after the events were planted every
+    *control* machine read as an effect, with non-overlapping intervals, in
+    the same direction as the real one. The time axis here is simulated and
+    the only structure it may carry is the two signals the seeder says it
+    plants. Deterministic for a seed, so a reseed is the same store.
+    """
+    order = list(range(count))
+    rng.shuffle(order)
+    return order
+
+
 def _effect_event(events) -> PlantedEvent | None:
     effects = [e for e in events if e.effect]
     if len(effects) > 1:
@@ -226,6 +243,7 @@ def seed(
     pairs = load_split(split)
     if limit:
         pairs = pairs[:limit]
+    pairs = [pairs[i] for i in board_order(len(pairs), rng)]
 
     counts = {"boards": 0, "candidates": 0, "decisions": 0, "events": 0}
 
