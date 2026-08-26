@@ -211,6 +211,58 @@ SCORED_ARGS = ("defect_type", "line_id", "machine_id", "board")
 #: already scores as a miss rather than as a refusal.
 EVAL_TIMEOUT_S = EXPLANATION_DEADLINE_S
 
+#: Above this share of questions with no plan at all, the run is not a
+#: measurement of the planner and is not appended. Set 2026-08-26, after a run
+#: shared Ollama with a hung job from another session: 34 of the first 39
+#: questions timed out, the last 31 scored 25/31, and the section went into
+#: docs/benchmarks.md as if 20/42 were what the planner does. Timeouts were
+#: already scored as misses -- that is why the damage read as a collapse and
+#: not as calibration -- but nothing between the score and the file asked
+#: whether the run was worth publishing. A tenth is generous: the previous
+#: five runs had none.
+PUBLISH_FAILURE_LIMIT = 0.10
+
+
+def publishable(no_plan: int, total: int) -> bool:
+    """Whether a run with this many unplanned questions may be appended."""
+    return total > 0 and no_plan / total <= PUBLISH_FAILURE_LIMIT
+
+
+def _resident_models() -> list[str]:
+    try:
+        from reverifier_latency import ollama_ps, resident_models
+
+        return resident_models(ollama_ps())
+    except Exception:  # pragma: no cover - best effort on a machine without ollama
+        return []
+
+
+def _competing_processes() -> list[str]:
+    try:
+        import os
+
+        from reverifier_latency import competing_processes, process_table
+
+        return competing_processes(process_table(), os.getpid())
+    except Exception:  # pragma: no cover
+        return []
+
+
+def machine_state(model: str) -> list[str]:
+    """What else is on the GPU when the run starts. The eval's own model is
+    the run, not a rival, so its residency is not reported."""
+    return [m for m in _resident_models() if model not in m] + _competing_processes()
+
+
+def machine_line(state: list[str]) -> str:
+    """One derived line for the section header, in place of a note somebody
+    remembers to type. The latency skill's rule is that a timing number taken
+    beside a busy GPU is not a number; a *score* taken there is not one
+    either, and this is where the run says so."""
+    if not state:
+        return "Machine at start: quiet -- no other model resident, no competing torch process."
+    return "Machine at start: **busy** -- " + "; ".join(state) + "."
+
 
 def load_questions(path: Path = QUESTIONS) -> list[dict]:
     return json.loads(Path(path).read_text())
@@ -350,6 +402,9 @@ def main() -> int:
                              "default, so the published run stays the one the "
                              "full graph produces")
     args = parser.parse_args()
+
+    state = machine_state(args.model)
+    print(machine_line(state))
 
     questions = load_questions(args.questions)
     domains = store_domains()
@@ -523,6 +578,8 @@ def main() -> int:
         f"the time of the run.",
         *(["", args.note] if args.note else []),
         "",
+        machine_line(state),
+        "",
         "| | questions | correct |",
         "|---|---|---|",
         f"| should answer | {len(answerable)} | {rate(hit(answerable), len(answerable))} |",
@@ -625,6 +682,15 @@ def main() -> int:
     if args.raw:
         args.raw.write_text(json.dumps(scored, indent=2, ensure_ascii=False))
         print(f"\nper-question plans -> {args.raw}")
+    if not publishable(len(no_plan), len(scored)):
+        print(
+            f"\nNOT appended: {len(no_plan)} of {len(scored)} questions produced no "
+            f"plan, above the {PUBLISH_FAILURE_LIMIT:.0%} limit. That is a run the "
+            "machine ruined, not a measurement of the planner -- check `ollama ps` "
+            "and the process table, and run again.",
+            file=sys.stderr,
+        )
+        return 3
     if not args.dry_run:
         with args.out.open("a") as handle:
             handle.write(report + "\n")
