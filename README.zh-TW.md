@@ -289,8 +289,12 @@ Escalation 進 queue，作業員有空再回。
 
 ```bash
 uv run python -m aoi_agent board 20085294 --queue   # 跑一片板子，收不掉的丟進 queue
-uv run python -m aoi_agent station                  # http://127.0.0.1:8110
+uv run python -m aoi_agent station                  # http://aoi.test
 ```
+
+`aoi.test` 由本機的 Caddy 代理（設定在 `~/Projects/Caddyfile`），
+`http://127.0.0.1:8110` 一樣可以用。站沒開的時候打 `aoi.test`
+會看到啟動指令，而不是一片空白的錯誤頁。
 
 站上顯示的就是 agent 當時看到的證據，多的沒有：
 

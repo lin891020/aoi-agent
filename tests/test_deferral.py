@@ -512,3 +512,22 @@ def test_a_deferred_region_still_counts_as_owing_an_answer(queued):
     service.defer_review(REFERENCE, MIKE)
 
     assert dispositions.assess(STEM)["pending_count"] == 1
+
+
+def test_the_defer_button_posts_to_the_region_it_is_on(station):
+    """The form's action, read off the rendered page rather than typed into
+    the test. Every other test here posts to ``/c/<stem>/0/defer`` directly,
+    and the template rendered ``/c/<stem>//defer`` for a day without any of
+    them noticing: the dict the page is drawn from has no ``index_on_board``
+    key, and Jinja renders a missing attribute as nothing at all."""
+    import re
+
+    client, _ = station
+    body = read_in(client, "en").get(f"/c/{STEM}/0").text
+
+    actions = re.findall(r'action="([^"]*/defer)"', body)
+    assert actions == [f"/c/{STEM}/0/defer"]
+
+    response = client.post(actions[0], follow_redirects=False)
+    assert response.status_code == 303
+    assert escalations.deferred_count() == 1

@@ -348,8 +348,12 @@ answers them when they get to it.
 
 ```bash
 uv run python -m aoi_agent board 20085294 --queue   # run a board, queue what it cannot settle
-uv run python -m aoi_agent station                  # http://127.0.0.1:8110
+uv run python -m aoi_agent station                  # http://aoi.test
 ```
+
+`aoi.test` is served by the local Caddy on port 80 (see `~/Projects/Caddyfile`);
+`http://127.0.0.1:8110` keeps working either way. If the station is not running,
+`aoi.test` shows the start command instead of a blank error.
 
 The station shows the operator exactly the evidence the agent had, and nothing
 else:
