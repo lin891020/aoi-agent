@@ -31,11 +31,15 @@ DOMAINS = {
     "defect_class": {"open", "short", "mousebite", "spur", "copper", "pin-hole",
                      "false_call"},
     "max_days": 9,
+    "group_by": {"machine", "line", "defect_type"},
+    "relative_to": {"parameter_change", "maintenance", "lamp_replaced",
+                    "nozzle_cleaned"},
+    "side": {"before", "after"},
 }
 
 
-def test_there_are_six_examples():
-    assert len(FEW_SHOT) == 6
+def test_there_are_seven_examples():
+    assert len(FEW_SHOT) == 7
 
 
 def test_every_example_plan_would_pass_validation():
@@ -48,7 +52,7 @@ def test_every_example_plan_would_pass_validation():
         assert validate_plan(plan, DOMAINS) == [], example["question"]
 
 
-def test_the_examples_cover_the_six_shapes():
+def test_the_examples_cover_the_seven_shapes():
     shapes = {example["shape"] for example in FEW_SHOT}
     assert shapes == {
         "cross_tool",
@@ -57,6 +61,7 @@ def test_the_examples_cover_the_six_shapes():
         "out_of_range",
         "too_vague",
         "action_request",
+        "event_window",
     }
 
 
@@ -130,3 +135,53 @@ def test_a_tool_without_a_docstring_does_not_take_the_catalogue_down(monkeypatch
     messages = build_planning_messages("anything", DOMAINS)
 
     assert "- search_standards(query" in messages[0]["content"]
+
+
+def test_the_catalogue_tells_the_model_what_relative_to_and_side_mean():
+    """The first before/after question asked at the station was refused with
+    "neither tool allows filtering by a time boundary relative to an event".
+    The tool did; the catalogue showed one sentence per tool and the two
+    parameters reached the model as bare names. The docstring's own paragraph
+    -- call it twice, once per side -- has to be in the prompt, not only in
+    the source."""
+    messages = build_planning_messages("M32 參數變更前後有差嗎", DOMAINS)
+    blob = "\n".join(m["content"] for m in messages)
+
+    assert 'side="before"' in blob and 'side="after"' in blob
+    assert "relative_to: The kind of machine event" in blob
+
+
+def test_the_rules_do_not_name_before_and_after_as_a_missing_dimension():
+    """The rule listing dimensions no tool expresses used "a before/after
+    boundary" as its example, written before the event tool existed. Left in
+    place beside a tool that expresses exactly that, it read as an instruction
+    to refuse the questions the tool was added to answer."""
+    messages = build_planning_messages("M32 參數變更前後有差嗎", DOMAINS)
+    system = messages[0]["content"]
+
+    assert "before/after boundary" not in system
+    assert "relative_to" in system and "one call per side" in system
+
+
+def test_the_event_window_example_is_the_two_call_shape():
+    example = next(e for e in FEW_SHOT if e["shape"] == "event_window")
+    calls = example["plan"]["calls"]
+    sides = [c["args"].get("side") for c in calls if c["tool"] == "query_defect_history"]
+
+    assert sorted(sides) == ["after", "before"]
+    assert {c["args"].get("relative_to") for c in calls
+            if c["tool"] == "query_defect_history"} == {"parameter_change"}
+    assert any(c["tool"] == "query_machine_events" for c in calls)
+    assert validate_plan(example["plan"], DOMAINS) == []
+
+
+def test_the_prompt_lists_the_event_kinds_the_store_holds():
+    """Asked about a lamp replacement on M31, the planner anchored on
+    `parameter_change` -- the one kind its example names -- because nothing
+    told it `lamp_replaced` existed. The kinds are a value domain like the
+    machines are, and the model has to be shown the domain to stay inside it."""
+    messages = build_planning_messages("M31 換燈前後有差嗎", DOMAINS)
+    blob = "\n".join(m["content"] for m in messages)
+
+    assert "lamp_replaced" in blob
+    assert "nozzle_cleaned" in blob

@@ -1,11 +1,14 @@
-"""What the model is told, and the five examples that show it the edges.
+"""What the model is told, and the seven examples that show it the edges.
 
 Diversity matters more than count in few-shot, and the useful examples are the
 boundaries rather than the happy path: a question with no stated baseline, a
 causal question the data cannot answer, a window outside the data, a question
-too vague to act on. Four of the five here are refusals or hedges, which is the
-intended lesson. A system that answers everything is more dangerous on a factory
-floor than one that says it cannot.
+too vague to act on, a request to act. Four of the seven are refusals or
+hedges, which is the intended lesson. A system that answers everything is more
+dangerous on a factory floor than one that says it cannot. The seventh is the
+opposite lesson, added after the first before/after question asked at the
+station was refused: a comparison across a recorded machine event *is*
+answerable, and the example shows the two-call shape that answers it.
 
 Whether this actually helps is a measurement, not an assumption -- see
 `scripts/analysis_eval.py`.
@@ -59,11 +62,17 @@ Rules that matter more than completeness:
   rider, plan the question and state in "assumptions" that the action is
   outside what this system does.
 - Only filter or group by what a tool's parameters actually express. If the
-  question's key dimension -- a shift, a before/after boundary, a trend over
-  time -- has no parameter on any tool, do not substitute a neighbouring
-  dimension: a plan filtered by the wrong axis answers a different question
-  while looking like it answered this one. Return no calls and name the
-  dimension that is missing.
+  question's key dimension -- a shift, an operator, a trend over time -- has
+  no parameter on any tool, do not substitute a neighbouring dimension: a plan
+  filtered by the wrong axis answers a different question while looking like
+  it answered this one. Return no calls and name the dimension that is
+  missing.
+- Before and after something done to one machine *is* expressible: a
+  `parameter_change`, `maintenance` or similar is a recorded event, and
+  `query_defect_history` takes `relative_to` (the event kind) with `side`
+  (`before` or `after`). Plan one call per side on the same `machine_id`, and
+  `query_machine_events` to say what the event was and when. Only when no
+  event of that kind is recorded on that machine is the boundary missing.
 
 A plan with no calls is a valid answer. Guessing arguments to avoid returning
 one is not."""
@@ -198,10 +207,56 @@ FEW_SHOT: list[dict[str, Any]] = [
             "calls": [],
         },
     },
+    {
+        "shape": "event_window",
+        "question": "M32 參數變更前後，open 的比例有沒有變？",
+        "plan": {
+            "interpretation": "Whether the share of M32's defects that are opens "
+            "differs between the boards inspected before its most recent "
+            "parameter change and those inspected after it.",
+            "assumptions": [
+                "Before means strictly before M32's newest parameter_change "
+                "event and after means from that instant on; the two windows "
+                "partition every board M32 inspected.",
+                "A difference between the two windows is an association with "
+                "the change, not evidence that the change caused it.",
+            ],
+            "calls": [
+                {
+                    "tool": "query_machine_events",
+                    "args": {"machine_id": "M32", "kind": "parameter_change"},
+                    "why": "what was changed and when, so the boundary is named",
+                },
+                {
+                    "tool": "query_defect_history",
+                    "args": {"machine_id": "M32", "relative_to": "parameter_change",
+                             "side": "before"},
+                    "why": "M32's defect mix and open share before the change",
+                },
+                {
+                    "tool": "query_defect_history",
+                    "args": {"machine_id": "M32", "relative_to": "parameter_change",
+                             "side": "after"},
+                    "why": "the same, after it, to compare the two intervals",
+                },
+            ],
+        },
+    },
 ]
 
 
 def _tool_catalogue() -> str:
+    """Each tool as the planner sees it: signature, then its own docstring.
+
+    The whole docstring, not its first line. Until 2026-08-27 the model was
+    shown one sentence per tool, so `relative_to` and `side` reached it as two
+    bare names in a signature with nothing saying what they meant -- and the
+    first real before/after question asked at the station was refused with
+    "neither tool allows filtering by a time boundary relative to an event",
+    which was true of the catalogue and false of the tool. The paragraph that
+    says "call this twice, once per side" was in the docstring the whole time;
+    it was written for the model and never shown to it.
+    """
     import inspect
 
     lines = []
@@ -211,16 +266,25 @@ def _tool_catalogue() -> str:
         # Indexing a bare [0] here cost it every plan: the catalogue is
         # built for each one, so one docstring-less tool raised through
         # the planner for every question asked.
-        summary = next(iter((function.__doc__ or "").strip().splitlines()), "")
-        lines.append(f"- {name}{signature}\n    {summary}")
-    return "\n".join(lines)
+        doc = inspect.cleandoc(function.__doc__ or "") or "(undocumented)"
+        body = "\n".join(f"    {line}" if line else "" for line in doc.splitlines())
+        lines.append(f"- {name}{signature}\n{body}")
+    return "\n\n".join(lines)
 
 
 def _domain_note(domains: Domains) -> str:
+    # The event kinds are listed for the same reason the machines are: they
+    # are the only values `relative_to` accepts, and a model that is not shown
+    # them maps "換燈" to the one kind the examples happen to name. The store
+    # answers whether an event of that kind exists on *that* machine; this
+    # line only says which kinds exist at all.
+    kinds = sorted(domains.get("relative_to") or ())
     return (
         f"Lines: {', '.join(sorted(domains['line_id']))}\n"
         f"Machines: {', '.join(sorted(domains['machine_id']))}\n"
         f"Defect classes: {', '.join(sorted(domains['defect_type']))}\n"
+        f"Machine event kinds recorded (the only values `relative_to` and "
+        f"`kind` take): {', '.join(kinds) if kinds else 'none'}\n"
         f"The store holds {domains['max_days']} days of inspection data. "
         f"`days` must not exceed that; a larger window silently returns the "
         f"same span and would report two different periods as identical."

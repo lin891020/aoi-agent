@@ -54,7 +54,7 @@ src/aoi_agent/
 scripts/                    gate_check, build_patches, train, report, seed_store,
                             analysis_eval, add_operator,
                             mark_unattributed_resolutions, ...
-tests/                      1,264 tests; dataset-dependent ones behind `-m dataset`
+tests/                      1,268 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -69,7 +69,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 1,264 tests, no GPU needed, no model called
+uv run pytest                                    # 1,268 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/gate_check.py --dataset hripcb --split aligned --limit 693 --thresholds 10 15 20 30 45 60 \
     --out eval/results/gate_check_hripcb_aligned.json   # the same gate on photographs (~2 min)
@@ -349,6 +349,27 @@ board is back under the unscoped reading.
   gitignored and rebuilt by scripts.
 
 ## Still open
+
+**The planner's prompt changed on 2026-08-27 and every `analysis_eval.py`
+figure in docs/benchmarks.md predates it.** The first before/after question
+asked at the station was refused -- "neither tool allows filtering by a time
+boundary relative to an event" -- which was true of what the planner was shown
+and false of the tool: the catalogue gave it one docstring line per tool, so
+`relative_to` and `side` reached it as bare names, and the rule listing
+dimensions no tool expresses still used "a before/after boundary" as its
+example, written before the event tool existed. Three changes, each held by
+`tests/test_analysis_prompts.py`: the whole docstring is in the catalogue,
+the rule names the event window as expressible, and the domain note lists the
+event kinds the store holds (without it, "換燈" was anchored on
+`parameter_change`). A seventh few-shot shows the two-call shape. Two real
+planning calls compose it now, on both the effect machine and a control. What
+is not yet known is what the change cost elsewhere: a re-worded measured
+constraint invalidates the measurement, and the machine was not quiet enough
+to take it again (an ffmpeg job at 700% CPU). Re-run both question sets before
+quoting any planner figure, and expect S25 in the independent set to flip from
+its authors' refusal to an answer -- the fixture stays unedited and the row is
+adjudicated, as on 2026-08-26.
+
 
 Retraining from operator corrections -- now selectable by who made them, which
 is what `reviewer_auth` bought -- deploying the quantised model, demo video.
