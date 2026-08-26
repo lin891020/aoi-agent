@@ -10,6 +10,7 @@ data/*
 
 # Derived artefacts, trained weights, evaluation output -- all rebuilt by scripts
 models/
+runs/               # ultralytics writes its training runs here, under its own prefix
 eval/results/
 
 __pycache__/

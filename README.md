@@ -134,6 +134,19 @@ The set also found two real defects that the score does not contain:
   both readings are in benchmarks; the rate the tool reports is labelled in
   its own payload as the re-verifier's judgement, never ground truth.
 
+- **A second tool was added the same way, and half-answered the question it
+  was built for.** The independent set asked twice about change over time on
+  one machine; the store had no time axis. `machine_events` and a
+  `relative_to`/`side` pair on `query_defect_history` give it one, seeded as
+  one effect and three controls so the tool can be wrong. Re-run against the
+  unedited fixture on a quiet machine: 28/42 answered (from 26), 22/28
+  refused (from 23), and the target question planned the event lookup and the
+  machine's history **without composing the two windows** -- reachable, not
+  yet composed. The design predicted the other time-axis question would stay
+  unanswered, and it did. The run before it, taken beside a hung job from
+  another session, timed out on 34 of 70 and is kept in `docs/benchmarks.md`
+  as what it was; the script now refuses to publish such a run.
+
 What it does not establish: the questions were written by LLM authors working
 from different briefs, not by a real shift supervisor, so this bounds the shapes
 those briefs produce and nothing else. Plans are scored, not prose — the
