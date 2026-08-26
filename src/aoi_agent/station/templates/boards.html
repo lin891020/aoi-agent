@@ -14,6 +14,11 @@
     <a href="/boards?status=held"{% if status == 'held' %} class="on"{% endif %}>{{ t('boards.held', count=counts.held) }}</a>
     &middot;
     <a href="/boards?status=released"{% if status == 'released' %} class="on"{% endif %}>{{ t('boards.released', count=counts.released) }}</a>
+    &middot;
+    {# Not a disposition and not inside the total: boards that have been run
+       and have a region on the queue, so no row yet. Without this the reader
+       who ran fifty boards and counts twenty-nine has nowhere to look. #}
+    <a href="/boards?status=waiting"{% if status == 'waiting' %} class="on"{% endif %}>{{ t('boards.waiting', count=counts.waiting) }}</a>
   </p>
 
   {% if not_shown %}
@@ -49,15 +54,17 @@
       <tr>
         <td class="mono">{{ row.board_stem }}</td>
         <td>
-          <span class="chip {{ 'warn' if row.disposition == 'held' else 'done' }}">
-            {{ row.disposition }}
+          <span class="chip {{ 'done' if row.disposition == 'released' else 'warn' }}{{ ' small' if row.disposition == 'waiting' else '' }}">
+            {{ t('boards.waiting_chip') if row.disposition == 'waiting' else row.disposition }}
           </span>
         </td>
         <td class="num">{{ row.candidate_count }}</td>
         <td class="num">{{ row.confirmed_count }}</td>
         <td class="num">{{ row.pending_count }}</td>
-        <td>{{ row.decided_by }}</td>
-        <td class="dim mono">{{ (row.decided_at or '')[:19]|replace('T', ' ') }}</td>
+        <td>{{ row.decided_by or '&mdash;'|safe }}</td>
+        {# A waiting board has no decided_at; the honest time is how long its
+           oldest queue entry has been waiting, which is the queue's own clock. #}
+        <td class="dim mono">{{ (row.decided_at or row.waiting_since or '')[:19]|replace('T', ' ') }}</td>
         <td><a href="/board/{{ row.board_stem }}">{{ t('boards.open') }}</a></td>
       </tr>
       {% endfor %}

@@ -506,7 +506,13 @@ On the station itself:
   opening this station read the failures and took them for the system.
   `/boards` is the index, and it carries the denominator the queue cannot --
   held and released as `COUNT(*)` over the standing rows, never the length of
-  the page, which is the queue badge's own defect written down.
+  the page, which is the queue badge's own defect written down. A third count
+  sits beside those two and not inside them, since 2026-08-26: **waiting**,
+  the boards that have been run and have a region on either open queue, so no
+  row yet. Fifty boards run showed twenty-nine on the index and nothing said
+  where the rest were; "someone is still looking" is a state, and an index
+  without it has no denominator. It reads `OPEN_STATUSES`, so a deferred
+  region keeps its board waiting -- the same rule `assess` applies.
   **"This board's disposition" is a rule, not a column** -- rows accumulate, so
   a board held on Monday and released on Tuesday is two rows -- and the rule
   lives once, in `dispositions._standing_ids`, because two expressions of it

@@ -274,7 +274,10 @@ def board_counts() -> dict[str, int]:
 
     Boards with no disposition row are in neither count and in no total here.
     That is not an oversight: a board nobody has run is not a released board,
-    and the fleet size lives in ``boards``, not in this table.
+    and the fleet size lives in ``boards``, not in this table. The one
+    exception is reported beside the total rather than inside it: ``waiting``
+    counts the boards that have been run and have a region on the queue, so
+    no row yet -- see ``WAITING``.
     """
     with session_factory()() as session:
         rows = session.execute(
@@ -285,7 +288,89 @@ def board_counts() -> dict[str, int]:
     counts = {HELD: 0, RELEASED: 0}
     counts.update({disposition: count for disposition, count in rows})
     counts["total"] = sum(count for _disposition, count in rows)
+    with session_factory()() as session:
+        counts[WAITING] = session.execute(
+            select(func.count()).select_from(_waiting_board_ids().subquery())
+        ).scalar_one()
     return counts
+
+
+#: Not a disposition -- nothing is written under this name -- but the third
+#: state a board can be in once it has been run, and the one the index could
+#: not show. Fifty boards run, twenty-nine on the page, and the reader's next
+#: question was where the other twenty-one had gone: they had a region on the
+#: queue, so no row, so no line. "Someone is still looking" is a state, and the
+#: index needs it beside held and released to have a denominator at all.
+WAITING = "waiting"
+
+
+def _waiting_board_ids():
+    """Boards with a region on either open queue and no standing disposition.
+
+    Exclusive of the two counts above by construction: a board with a standing
+    row is held or released whatever its queue holds, and a board with neither
+    a row nor an open entry has not been run. Reads ``OPEN_STATUSES`` rather
+    than ``pending`` -- a deferred region is still a region waiting on a
+    person, which is the rule ``assess`` applies and the one the deferral
+    path shipped without.
+    """
+    return (
+        select(CandidateRecord.board_id)
+        .join(Escalation, Escalation.candidate_id == CandidateRecord.id)
+        .where(
+            Escalation.status.in_(OPEN_STATUSES),
+            CandidateRecord.board_id.notin_(
+                select(BoardDisposition.board_id).where(
+                    BoardDisposition.id.in_(_standing_ids())
+                )
+            ),
+        )
+        .group_by(CandidateRecord.board_id)
+    )
+
+
+def waiting(limit: int = 50) -> list[dict]:
+    """The boards still waiting on a person, longest wait first.
+
+    Shaped like ``recent``'s rows so one template lists both, with the fields
+    a disposition would carry left ``None`` rather than invented: nothing has
+    decided these boards yet. The counts come from ``assess`` -- the same
+    computation the board page shows -- so the index and the page agree here
+    for the same reason they agree on standing rows.
+    """
+    with session_factory()() as session:
+        rows = session.execute(
+            select(Board.stem, func.min(Escalation.raised_at))
+            .join(CandidateRecord, CandidateRecord.board_id == Board.id)
+            .join(Escalation, Escalation.candidate_id == CandidateRecord.id)
+            .where(
+                Escalation.status.in_(OPEN_STATUSES),
+                Board.id.in_(_waiting_board_ids()),
+            )
+            .group_by(Board.stem)
+            .order_by(func.min(Escalation.raised_at).asc())
+            .limit(limit)
+        ).all()
+    out = []
+    for stem, since in rows:
+        assessment = assess(stem) or {}
+        out.append(
+            {
+                "board_stem": stem,
+                "disposition": WAITING,
+                "decided_by": None,
+                "basis": None,
+                "candidate_count": assessment.get("candidate_count"),
+                "confirmed_count": assessment.get("confirmed_count"),
+                "pending_count": assessment.get("pending_count"),
+                "model_digest": None,
+                "thresholds_json": None,
+                "code_version": None,
+                "decided_at": None,
+                "waiting_since": since.isoformat() if since else None,
+            }
+        )
+    return out
 
 
 def recent(limit: int = 50, status: str | None = None) -> list[dict]:

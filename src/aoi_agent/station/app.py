@@ -680,14 +680,21 @@ def boards_page(request: Request, status: str | None = None, limit: int = 50):
     page for a typed URL, and the count above it would then be a true number
     answering a question nobody asked.
     """
-    if status is not None and status not in (dispositions.HELD, dispositions.RELEASED):
+    known = (dispositions.HELD, dispositions.RELEASED, dispositions.WAITING)
+    if status is not None and status not in known:
         raise HTTPException(
             400,
-            f"unknown disposition {status!r}; "
-            f"expected {dispositions.HELD} or {dispositions.RELEASED}",
+            f"unknown disposition {status!r}; expected one of {', '.join(known)}",
         )
     counts = dispositions.board_counts()
-    rows = dispositions.recent(limit=limit, status=status)
+    if status == dispositions.WAITING:
+        # Not a disposition: these boards have no row, and the list is the
+        # boards with a region on the queue. Beside the two counts rather
+        # than inside them, so the reader who ran fifty and sees twenty-nine
+        # is told where the rest are instead of left to wonder.
+        rows = dispositions.waiting(limit=limit)
+    else:
+        rows = dispositions.recent(limit=limit, status=status)
     total = counts[status] if status else counts["total"]
     return templates.TemplateResponse(
         request,

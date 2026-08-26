@@ -175,9 +175,11 @@ STRINGS: dict[str, dict[str, str]] = {
             "佇列上的是 agent 無法定案的區域，也就是失敗的那一小塊。這一頁是另一邊："
             "已經有板級處置的每一片板，往哪一邊倒，以及底下有多少區域支撐它。"
             "只讀——這裡不判定任何東西，只是已經做過的判定的紀錄。",
-        "boards.all": '全部 {count}',
+        "boards.all": '已定案 {count}',
         "boards.held": '扣住 {count}',
         "boards.released": '放行 {count}',
+        "boards.waiting": '等待中 {count}',
+        "boards.waiting_chip": '等待人工',
         "boards.truncated":
             "顯示最新 {shown} 片，共 {total} 片；另外 {hidden} 片不在這一頁上。"
             "上面的計數是對整張表數的，不是對這一頁數的。",
@@ -454,9 +456,11 @@ STRINGS: dict[str, dict[str, str]] = {
             "with a standing disposition, which way it went, and how many "
             "regions are behind that. Read-only -- nothing here dispositions "
             "anything, it is the record of dispositions already made.",
-        "boards.all": 'all {count}',
+        "boards.all": 'dispositioned {count}',
         "boards.held": 'held {count}',
         "boards.released": 'released {count}',
+        "boards.waiting": 'waiting {count}',
+        "boards.waiting_chip": 'waiting on a person',
         "boards.truncated":
             "Showing the {shown} most recent of {total}; {hidden} are not on "
             "this page. The counts above are taken over the whole table, not "

@@ -38,6 +38,7 @@ from aoi_agent.store import boards, dispositions
 from aoi_agent.store.models import (
     Board,
     CandidateRecord,
+    Escalation,
     create_all,
     make_session_factory,
 )
@@ -152,7 +153,7 @@ def test_the_counts_are_taken_over_the_table_and_not_over_the_page(store):
     _disposition_all()
 
     counts = dispositions.board_counts()
-    assert counts == {"held": 2, "released": 2, "total": 4}
+    assert counts == {"held": 2, "released": 2, "total": 4, "waiting": 0}
     assert len(dispositions.recent(limit=1)) == 1
     assert dispositions.board_counts()["total"] == 4
 
@@ -203,8 +204,11 @@ def test_a_board_nobody_has_run_is_in_neither_count(store):
     A board nobody has looked at is not a released board, and the fleet size is
     a fact about `boards`, not about this table.
     """
-    assert dispositions.board_counts() == {"held": 0, "released": 0, "total": 0}
+    assert dispositions.board_counts() == {
+        "held": 0, "released": 0, "total": 0, "waiting": 0
+    }
     assert dispositions.recent() == []
+    assert dispositions.waiting() == []
 
 
 # ---- filtering and truncation -------------------------------------------
@@ -298,3 +302,98 @@ def test_the_page_needs_a_signed_in_operator(store, monkeypatch, operators):
     response = TestClient(station_app.app).get("/boards", follow_redirects=False)
     assert response.status_code in (302, 303, 307)
     assert "/login" in response.headers["location"]
+
+
+# ---- the third state: run, and still waiting on a person ----------------
+
+
+def _queue(store, stem: str, index: int = 0, status: str = "pending") -> None:
+    """Put one of a board's regions on the queue, the way a run does."""
+    with store() as session:
+        candidate = (
+            session.query(CandidateRecord)
+            .join(Board, CandidateRecord.board_id == Board.id)
+            .filter(Board.stem == stem, CandidateRecord.index_on_board == index)
+            .one()
+        )
+        session.add(
+            Escalation(
+                candidate_id=candidate.id, thread_id=f"{stem}#{index}",
+                reason="below the escalation threshold", status=status,
+                raised_at=datetime(2026, 8, 26, 13, 21),
+            )
+        )
+        session.commit()
+
+
+def test_a_board_with_a_region_on_the_queue_is_waiting_not_missing(store):
+    """Fifty boards run, twenty-nine on the index. The other twenty-one had a
+    region on the queue, so no row, so no line, and the reader's next question
+    was where they had gone. They are a third state beside held and released,
+    counted next to the total rather than inside it."""
+    _queue(store, STEMS[0])
+
+    counts = dispositions.board_counts()
+    assert counts["waiting"] == 1
+    assert counts["total"] == 0, "waiting is not a disposition and not in the total"
+    assert [row["board_stem"] for row in dispositions.waiting()] == [STEMS[0]]
+    assert dispositions.recent() == []
+
+
+def test_a_waiting_board_carries_the_page_s_own_counts_and_no_invented_ones(store):
+    _queue(store, STEMS[0])
+
+    row = dispositions.waiting()[0]
+    assert row["pending_count"] == dispositions.assess(STEMS[0])["pending_count"]
+    assert row["decided_by"] is None and row["decided_at"] is None
+    assert row["waiting_since"] == "2026-08-26T13:21:00"
+    assert "ground_truth" not in row
+
+
+def test_a_dispositioned_board_with_a_new_queue_entry_is_counted_once(store):
+    """Exclusive buckets. A board with a standing row is held or released
+    whatever its queue holds; counting it under waiting as well would make the
+    three numbers sum to more boards than were run."""
+    _disposition_all()
+    _queue(store, STEMS[2])
+
+    counts = dispositions.board_counts()
+    assert counts["waiting"] == 0
+    assert counts["held"] + counts["released"] == 4
+
+
+def test_a_deferred_region_keeps_its_board_waiting(store):
+    """The deferral path's defect, checked against this reader too: a region
+    handed back is still a region waiting on a person."""
+    _queue(store, STEMS[1], status="deferred")
+
+    assert dispositions.board_counts()["waiting"] == 1
+
+
+def test_the_page_lists_the_waiting_boards_under_their_own_filter(client, store):
+    _disposition_all()
+    _queue(store, STEMS[3])  # a held board with a new entry: not waiting
+    with store() as session:
+        # a fifth board, run and queued, never dispositioned
+        board = Board(
+            stem="20085299", split="test", lot_id="LOT-2201", line_id="L2",
+            machine_id="M22", shift="A", inspected_at=datetime(2026, 8, 26, 9, 0),
+        )
+        session.add(board)
+        session.flush()
+        session.add(CandidateRecord(
+            board_id=board.id, index_on_board=0, x1=1, y1=1, x2=9, y2=9, area=64,
+            predicted_class="open", confidence=0.5, false_call_probability=0.5,
+            ground_truth="open",
+        ))
+        session.commit()
+    _queue(store, "20085299")
+
+    index = client.get("/boards").text
+    assert 'href="/boards?status=waiting"' in index
+
+    body = client.get("/boards?status=waiting").text
+    assert "20085299" in body
+    for stem in STEMS:
+        assert f'href="/board/{stem}"' not in body
+    assert "ground_truth" not in body
