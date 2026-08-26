@@ -515,26 +515,33 @@ reads a model: **manual review removed at an escape budget**.
 
 | at the ≤0.5% escape budget | review removed | on disk | resident | p50 |
 |---|---|---|---|---|
-| FP32 torch | **56.2%** | 42.7 MB | 389 MB | 2.52 ms |
-| INT8 dynamic | 54.9% | 10.7 MB | 74 MB | 2.01 ms |
-| INT8 static | **56.0%** | 10.8 MB | 81 MB | 0.72 ms |
+| FP32 torch | **52.8%** | 42.7 MB | 389 MB | 2.53 ms |
+| INT8 dynamic | 52.5% | 10.7 MB | 74 MB | 1.93 ms |
+| INT8 static | **53.0%** | 10.8 MB | 81 MB | 0.65 ms |
 
-> **These four cells are on the superseded 8,143-candidate basis and are being re-measured** (2026-08-26). The registration stage changed the candidate population after this table was taken; what it does *not* change is the comparison between engines, which is the finding here — all four columns were scored on one array in one run.
+**Both INT8 engines hold the curve on this checkpoint**, within the 1-point
+tolerance the report was written with, and the rule then picks the one that
+saves the most disk: INT8 dynamic, by 0.1 MB. That is a coin, and it should be
+read as one -- the two engines are 0.5 points apart at the deployed budget,
+which is 15 against 12 disagreements out of 7,322 candidates. The finding that
+survives is not *which* INT8, it is that INT8 holds the operating point at all.
 
-**INT8 dynamic is refused.** It gives up 1.3 points of review reduction —
-roughly eighty regions a shift back in front of an operator — to buy a smaller
-file. Being 1.25× faster does not purchase that back, because nothing was
-waiting on the milliseconds.
+**The verdict flipped, and the flip is the interesting part.** Until
+2026-08-26 this section refused INT8 dynamic: on the previous checkpoint it
+gave up 1.3 points, roughly eighty regions a shift back in front of an
+operator, and a smaller file did not buy that back. That loss did not survive
+the 2026-08-24 retrain -- it was one checkpoint's quantisation error, not a
+property of dynamic quantisation -- which is why `scripts/quantisation_report.py`
+is now in the retraining chain: a quantisation verdict is a verdict about one
+set of weights, and the next set has to be priced again.
 
-**INT8 static holds the curve**, at 0.2 points, and is the one worth having.
-What it buys is not latency: at 16.3 candidates on the average board, FP32
+What INT8 buys is not latency: at 16.1 candidates on the average board, FP32
 re-verification is 41 ms of a board's cycle, so inference was never the
-constraint and quantising it saves 29 ms of a ten-second budget. What it buys
-is **memory** — 389 MB resident down to 81 MB, 4.8× — because most of the
-float32 process is the torch runtime rather than the weights, and an edge box is
-sized on what it has to hold. It is measured, not deployed: this station is a
-laptop with no memory problem, and the deployed threshold stays with the float32
-model it was swept for.
+constraint. What it buys is **memory** -- 389 MB resident down to 74-81 MB,
+around 5x -- because most of the float32 process is the torch runtime rather
+than the weights, and an edge box is sized on what it has to hold. It is
+measured, not deployed: this station is a laptop with no memory problem, and
+the deployed threshold stays with the float32 model it was swept for.
 
 → [the run](docs/benchmarks.md#quantisation--what-int8-costs-at-the-escape-budget)
 

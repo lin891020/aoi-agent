@@ -365,20 +365,24 @@ checkpoint's SHA-256, the thresholds that routed them and the commit that ran
 `tests/test_provenance.py` is the guard. Reseeding the store is what makes the
 figure move; nothing else will.
 
-INT8/ONNX is measured, and the answer was not a speed-up. **INT8 static holds
-the operating point** -- 56.0% review removed at the ≤0.5% escape budget
-against FP32's 56.2% (both on the superseded 8,143-candidate basis, being
-re-measured 2026-08-26; what does not move is the *comparison*, which is the
-finding), calibrated on 512 trainval patches, never test -- and
-what it buys is **memory: 389MB resident down to 81MB, 4.8x**, because most of
-the float32 process is the torch runtime rather than the weights. **INT8
-dynamic is refused**: it gives up 1.3 points of review reduction, which is
-around eighty regions a shift back in front of an operator, and being faster
-does not buy that back. Latency was never the problem -- 41ms of a board's
-cycle before, 12ms after, on a budget of ten seconds. Nothing is deployed on
-it; the station keeps the float32 checkpoint and its swept threshold. See
-docs/benchmarks.md, and `scripts/quantisation_report.py` rebuilds every
-artefact.
+INT8/ONNX is measured, and the answer was not a speed-up. **Both INT8 engines
+hold the operating point on the shipped checkpoint** -- 52.5% (dynamic) and
+53.0% (static) review removed at the ≤0.5% escape budget against FP32's 52.8%,
+calibration on 512 trainval patches, never test -- and what they buy is
+**memory: 389MB resident down to 74-81MB, around 5x**, because most of the
+float32 process is the torch runtime rather than the weights. The report's
+rule picks the survivor that saves the most disk, which is dynamic by 0.1MB: a
+coin, and the two are 15 against 12 disagreements out of 7,322. **This
+paragraph refused INT8 dynamic until 2026-08-26** -- on the previous
+checkpoint it gave up 1.3 points, around eighty regions a shift -- and that
+loss did not survive the 2026-08-24 retrain. A quantisation verdict is about
+one set of weights, so `quantisation_report.py` is now in the retraining
+chain, and `models/onnx/` had been the previous checkpoint's export for two
+days before anyone noticed. Latency was never the problem -- 41ms of a
+board's cycle before, 12ms after, on a budget of ten seconds. Nothing is
+deployed on it; the station keeps the float32 checkpoint and its swept
+threshold. See docs/benchmarks.md, and `scripts/quantisation_report.py`
+rebuilds every artefact.
 
 The re-verifier costs **2.5ms per candidate on CPU** (p50, single-shot) and the
 43MB checkpoint fits anywhere. A re-verification station does not need a GPU --

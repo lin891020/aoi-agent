@@ -3136,3 +3136,123 @@ A 0.47% escape rate over 2,997 defects is a measurement. The same rate over the 
 
 **What this does not establish.** Label shift is an assumption, not a finding: it says the model's scores on a defect are drawn from the same distribution here and on a line, and the binarised, pre-registered, partly-augmented character of this dataset is exactly the reason to doubt it. What the section buys is the separation — prevalence alone moves one of the three quantities, and it is not the threshold. Everything else that differs between a dataset and a line is untouched and unmeasured.
 
+## 2026-08-26 · commit 12c96df
+
+### Quantisation — what INT8 costs at the escape budget
+
+ResNet-18 re-verifier, 42.7MB float32 checkpoint, 11.2M parameters, 3x64x64 input, exported to ONNX and quantised to INT8 two ways. Every engine below is scored on all 7322 candidates of the official DeepPCB test split and timed on the same machine in the same run, on CPU, at 4 threads.
+
+The static quantiser's calibration set is 512 patches drawn from `data/patches/trainval.npz` with seed 20260823 -- the **training** split, never test. Calibrating activation ranges on the split the operating point is then reported on is threshold-tuning against the test set with an extra step in front of it.
+
+Contention was checked the way `reverifier_latency.py` checks it, before and after. That check gained its CPU claimants on the day this ran: it found four `ffmpeg` transcodes from a neighbouring project holding roughly 800% CPU while `ollama ps` and the process sweep both came back clean, because the sweep's list had been written for a GPU benchmark. INT8 is a CPU result end to end, so that hole had to close before any number here was worth writing down.
+
+```
+ollama ps before the run
+NAME    ID    SIZE    PROCESSOR    CONTEXT    UNTIL
+
+busy processes before the run
+(none)
+
+ollama ps after the run
+NAME    ID    SIZE    PROCESSOR    CONTEXT    UNTIL
+
+busy processes after the run
+(none)
+```
+
+#### Manual review removed at an escape budget — FP32 against INT8
+
+This is the comparison. Everything below it is detail.
+
+| escape budget | FP32 torch | FP32 ONNX | INT8 dynamic | INT8 static |
+|---|---|---|---|---|
+| ≤0.10% | **24.5%** (0.10%, 3/3018) | **24.5%** (0.10%, 3/3018) | **26.0%** (0.10%, 3/3018) | **27.2%** (0.10%, 3/3018) |
+| ≤0.25% | **40.2%** (0.23%, 7/3018) | **40.2%** (0.23%, 7/3018) | **40.2%** (0.23%, 7/3018) | **40.6%** (0.23%, 7/3018) |
+| ≤0.50% | **52.8%** (0.50%, 15/3018) | **52.8%** (0.50%, 15/3018) | **52.5%** (0.50%, 15/3018) | **53.0%** (0.50%, 15/3018) |
+| ≤1.00% | **58.3%** (0.99%, 30/3018) | **58.3%** (0.99%, 30/3018) | **58.4%** (0.99%, 30/3018) | **58.3%** (0.99%, 30/3018) |
+| ≤2.00% | **59.5%** (1.99%, 60/3018) | **59.5%** (1.99%, 60/3018) | **59.5%** (1.99%, 60/3018) | **59.5%** (1.99%, 60/3018) |
+| ≤5.00% | **60.8%** (4.97%, 150/3018) | **60.8%** (4.97%, 150/3018) | **60.8%** (4.97%, 150/3018) | **60.8%** (4.97%, 150/3018) |
+
+Each cell is the review reduction, with the escape rate it achieved and the escapes behind it in brackets. The thresholds differ between columns: each engine is given the best threshold *it* can reach inside the budget, which is the fairest reading and the one that makes a column's loss unambiguous.
+
+**Read the tightest budgets with the escape count beside them.** At ≤0.10% the whole column is decided by two escapes out of 3018 defects, so a swing of several points there is a handful of candidates landing the other side of a cut, not an engine being better. The ≤0.50% row is the one the deployed threshold comes from and the one every verdict below is decided on.
+
+**FP32 ONNX: the curve holds.** Review reduction at the ≤0.50% budget is unchanged (52.8% against 52.8%), and it buys 1.0x smaller on disk and 1.38x the speed.
+**INT8 dynamic: the curve holds.** Review reduction at the ≤0.50% budget is -0.3 points (52.8% against 52.5%), and it buys 4.0x smaller on disk and 1.31x the speed.
+**INT8 static: the curve holds.** Review reduction at the ≤0.50% budget is +0.2 points (52.8% against 53.0%), and it buys 4.0x smaller on disk and 3.87x the speed.
+
+#### How far each engine drifted from the float model
+
+Class agreement is what an operator would notice. The probability deltas are what the *threshold* notices, and the threshold is what this project reports on -- a model can agree on every class and still move every dismissal by sitting a hair the other side of the cut.
+
+| engine | class agreement | disagreements | mean Δp | max Δp |
+|---|---|---|---|---|
+| FP32 ONNX | 100.000% | 0/7322 | 3.96e-08 | 1.14e-05 |
+| INT8 dynamic | 99.795% | 15/7322 | 9.84e-04 | 3.05e-01 |
+| INT8 static | 99.836% | 12/7322 | 7.15e-04 | 2.38e-01 |
+
+#### Single candidate, warm — CPU
+
+| engine | calls | p50 | p90 | p99 | max | mean |
+|---|---|---|---|---|---|---|
+| FP32 torch | 300 | 2.53ms | 2.65ms | 5.02ms | 9.00ms | 2.63ms |
+| FP32 ONNX | 300 | 1.84ms | 1.92ms | 2.27ms | 2.43ms | 1.86ms |
+| INT8 dynamic | 300 | 1.93ms | 2.07ms | 2.27ms | 2.35ms | 1.93ms |
+| INT8 static | 300 | 0.65ms | 0.66ms | 0.71ms | 0.72ms | 0.65ms |
+
+Against FP32 torch at 2.53ms: FP32 ONNX 1.84ms (1.38x faster); INT8 dynamic 1.93ms (1.31x faster); INT8 static 0.65ms (3.87x faster). Read these as the answer to "does INT8 cost latency" rather than as a reason to ship it: the FP32 figure was already 0.03% of a board's cycle and nothing downstream was waiting on it.
+
+#### Batched throughput — CPU
+
+| batch | FP32 torch | FP32 ONNX | INT8 dynamic | INT8 static |
+|---|---|---|---|---|
+| 1 | 2.52ms/cand, 396/s | 1.83ms/cand, 548/s | 2.02ms/cand, 495/s | 0.64ms/cand, 1,569/s |
+| 2 | 1.81ms/cand, 554/s | 2.19ms/cand, 457/s | 1.85ms/cand, 542/s | 0.58ms/cand, 1,711/s |
+| 4 | 1.17ms/cand, 853/s | 1.84ms/cand, 544/s | 1.85ms/cand, 541/s | 0.56ms/cand, 1,801/s |
+| 8 ← | 1.02ms/cand, 977/s | 1.81ms/cand, 551/s | 1.80ms/cand, 556/s | 0.54ms/cand, 1,848/s |
+| 16 | 4.26ms/cand, 235/s | 1.77ms/cand, 564/s | 1.73ms/cand, 580/s | 0.53ms/cand, 1,899/s |
+
+The arrow marks the bucket nearest the pipeline's real batch (8 candidates on the median board).
+
+#### Cold against warm
+
+A station restarting mid-shift pays the load and the first inference.
+
+| engine | load | first inference | warm p50 | cold penalty |
+|---|---|---|---|---|
+| FP32 torch | 87.1ms | 3.00ms | 2.53ms | 1x |
+| FP32 ONNX | 7.51ms | 1.94ms | 1.84ms | 1x |
+| INT8 dynamic | 12.4ms | 2.14ms | 1.93ms | 1x |
+| INT8 static | 12.6ms | 0.75ms | 0.65ms | 1x |
+
+#### Thermal — first 60s against steady state
+
+150s of sustained batched inference per engine on a fanless M5 Air.
+
+| engine | first 60s (n, p50) | steady state (n, p50) |
+|---|---|---|
+| FP32 torch | 6818, 8.37ms | 9413, 8.92ms |
+| FP32 ONNX | 3915, 14.6ms | 5045, 17.8ms |
+| INT8 dynamic | 4583, 12.7ms | 7351, 12.2ms |
+| INT8 static | 13096, 4.42ms | 19088, 4.86ms |
+
+- FP32 torch: **No throttle observed.** Median 8.37ms in the first 60s against 8.92ms in steady state, +7% -- inside the 10% band this run calls noise.
+- FP32 ONNX: **Throttled.** Median went from 14.6ms in the first 60s to 17.8ms in steady state, +22%. Size an edge box on the steady-state figure, not the first minute of it.
+- INT8 dynamic: **No throttle observed.** Median 12.7ms in the first 60s against 12.2ms in steady state, -4% -- inside the 10% band this run calls noise.
+- INT8 static: **Throttled.** Median went from 4.42ms in the first 60s to 4.86ms in steady state, +10%. Size an edge box on the steady-state figure, not the first minute of it.
+
+#### Footprint
+
+| engine | on disk | of FP32 | peak RSS, serving it alone |
+|---|---|---|---|
+| FP32 torch | 42.7MB | 100% | 389MB |
+| FP32 ONNX | 42.6MB | 100% | 119MB |
+| INT8 dynamic | 10.7MB | 25% | 74MB |
+| INT8 static | 10.8MB | 25% | 81MB |
+
+The memory column is measured in a **fresh process per engine**, each one loading only that engine and classifying one board's worth of candidates. Taken in the process that produced everything above it, the figure was 1153MB for all four alike -- four sets of weights and an allocator arena that never shrank, describing no station anyone would build. This column is what a box serving one engine actually holds, and it is the reason the FP32 row is so much larger than its checkpoint: torch itself is most of it.
+
+**Was inference ever the constraint?** No, and the arithmetic is not close. The test split is 500 boards carrying 14.6 candidates each on average, so one board's re-verification is 37ms of FP32 inference. Against a board every 10 seconds -- fast for a line that has an AOI stage and a conveyor in front of it -- that is 0.37% of the cycle. The best INT8 engine here takes it to 10ms, a saving of 27ms per board on a budget of 10000ms. There is no queue to drain and no operator waiting on it. Latency is not what this conversion is for, and a report that sold it as one would be selling a rounding error.
+
+**What this changes.** INT8 dynamic is the conversion that survives the curve. It takes the model off the disk from 42.7MB to 10.7MB, and -- the figure that matters more -- it takes a station's resident memory from 389MB to 74MB, 5.3x smaller, because most of the float32 process is the torch runtime rather than the weights. That is the honest case for quantising this model: not the milliseconds, which nothing was waiting on, but a box that can be sized in tens of megabytes instead of hundreds. It is not deployed here, because this station is a laptop with no memory problem; it is measured so that a box which does have one can be given a number rather than a hope. The deployed threshold stays with the float32 model it was swept for -- an engine change is a model change, and `DEFAULT_DISMISS_THRESHOLD` follows the model that produced it.
+

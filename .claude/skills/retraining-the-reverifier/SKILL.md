@@ -32,6 +32,8 @@ uv run python scripts/report.py                           # reads test_predictio
 # --- THRESHOLD GATE: see below, do not skip ---
 uv run python scripts/routing_report.py                   # imports the threshold constant
 uv run python scripts/escape_accounting.py                # the whole-line escape rate
+uv run python scripts/quantisation_report.py              # re-exports models/onnx/ and re-prices
+                                                          # INT8 on the new weights (~20 min)
 uv run pytest
 ```
 
@@ -108,3 +110,5 @@ differencing stage: changing it invalidates the gate check too.
 | Quote "96.5% accuracy" as the headline | Violates the operating-point invariant. |
 | Benchmark LLM latency while training runs | `train.py` holds MPS. See the `measuring-llm-latency` skill. |
 | Quote an IoU miss rate as an escape rate | Off by 8x. A defect whose candidate drew a looser box is reviewed, not escaped. |
+| Retrain and leave `models/onnx/` alone | The ONNX files are the *previous* checkpoint's export. Anything scoring them against the new patches -- the quantisation table, a floor baseline -- measures old weights on a new population and nothing errors. This happened 2026-08-24 to 2026-08-26. |
+| Carry the INT8 verdict across a retrain | It is a verdict about one set of weights. INT8 dynamic was refused on one checkpoint (-1.3 points) and held on the next (-0.3); the report re-derives it, the prose does not. |
