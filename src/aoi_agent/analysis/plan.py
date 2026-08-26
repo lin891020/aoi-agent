@@ -34,9 +34,11 @@ from sqlalchemy import func, select
 
 from aoi_agent.mcp_servers.production import (
     GROUP_BY,
+    SIDES,
     query_board_context,
     query_defect_history,
     query_false_call_rate,
+    query_machine_events,
     query_machine_stats,
 )
 from aoi_agent.mcp_servers.standards import search_standards
@@ -62,6 +64,8 @@ class Domains(TypedDict):
     defect_type: set[str]
     defect_class: set[str]
     group_by: set[str]
+    relative_to: set[str]
+    side: set[str]
     max_days: int
 
 
@@ -80,6 +84,16 @@ DOMAIN_OF = {
     #: fact about the tool, not the store) and the validator reads it from the
     #: tool's module, so the two cannot drift.
     "group_by": "group_by",
+    #: `query_defect_history`'s anchor and which side of it. `relative_to` is
+    #: read off the `machine_events` table -- the kinds actually recorded, not
+    #: the seeder's tuple -- so an event kind nobody has recorded is refused
+    #: before it runs, the same way an unknown machine is. `side` is the
+    #: tool's own two-word vocabulary. Both share `query_machine_events`'s
+    #: `kind` with `relative_to`, which is the same domain under the name the
+    #: tool's signature uses.
+    "relative_to": "relative_to",
+    "kind": "relative_to",
+    "side": "side",
 }
 
 
@@ -337,6 +351,7 @@ REGISTRATIONS: tuple[Registration, ...] = (
     Registration(query_defect_history, identifiers=frozenset({"lot_id"})),
     Registration(query_machine_stats),
     Registration(query_false_call_rate),
+    Registration(query_machine_events),
     Registration(query_board_context, identifiers=frozenset({"board"})),
     #: The one free-text parameter in the system, and the reason this check is
     #: a declaration rather than a rule about types: it is the same `str` as a
@@ -425,6 +440,8 @@ def store_domains() -> Domains:
         "defect_type": {"open", "short", "mousebite", "spur", "copper", "pin-hole"},
         "defect_class": set(SCOPES),
         "group_by": set(GROUP_BY),
+        "relative_to": set(),
+        "side": set(SIDES),
         "max_days": 1,
     }
 
@@ -438,6 +455,9 @@ def store_domains() -> Domains:
             lo, hi = session.execute(
                 select(func.min(Board.inspected_at), func.max(Board.inspected_at))
             ).first()
+        from aoi_agent.store.events import kinds_present
+
+        kinds = kinds_present()
     except Exception:
         return empty
 
@@ -448,6 +468,8 @@ def store_domains() -> Domains:
         "defect_type": empty["defect_type"],
         "defect_class": empty["defect_class"],
         "group_by": empty["group_by"],
+        "relative_to": kinds,
+        "side": empty["side"],
         "max_days": span,
     }
 

@@ -15,12 +15,14 @@ draws from it can be checked against what was planted.
 from __future__ import annotations
 
 import random
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from aoi_agent.aoi.matching import match
 from aoi_agent.aoi.simulator import DetectorConfig, detect
 from aoi_agent.data.deeppcb import load_split
 from aoi_agent.provenance import DecisionProvenance, code_version
+from aoi_agent.store import events as machine_events
 from aoi_agent.store.models import Board, CandidateRecord, ReviewDecision
 from aoi_agent.vision.inference import DEFAULT_DISMISS_THRESHOLD, ReVerifier
 
@@ -43,6 +45,71 @@ SUSPECT_TOP_SHARE = 0.20
 """Fraction of boards, most open-weighted first, sent to the suspect machine."""
 
 START = datetime(2026, 8, 1, 6, 0)
+BOARD_INTERVAL = timedelta(hours=0.4)
+"""One board every 24 minutes, so 500 boards span about nine days."""
+
+
+@dataclass(frozen=True)
+class PlantedEvent:
+    """Something the seeder says happened to a machine, at board ``position``.
+
+    ``effect`` is whether the assignment changes at that point. Exactly one
+    event has one; the other three are controls, and they are the reason the
+    tool that reads this table can be wrong -- without them it would be
+    scored on "is there an event", not on "did the event matter".
+    """
+
+    line: str
+    machine: str
+    kind: str
+    position: int
+    effect: bool
+    note: str
+
+    @property
+    def happened_at(self) -> datetime:
+        return START + BOARD_INTERVAL * self.position
+
+
+#: The second planted signal, and the three that are not signals. M22 carries
+#: the first (above) and gets no event: splitting its boards in time would
+#: weaken every measurement that already depends on it.
+#:
+#: The effect is implemented through the seeder's one lever -- which board
+#: goes to which machine -- and nothing else. Before its event M32 receives
+#: the open-heavy boards among those not already sent to M22; after it, the
+#: open-light ones. The defects themselves are DeepPCB's and are not touched.
+EVENTS: tuple[PlantedEvent, ...] = (
+    PlantedEvent("L3", "M32", "parameter_change", 250, True,
+                 "etch pressure re-set after C-shift handover"),
+    PlantedEvent("L3", "M31", "lamp_replaced", 200, False,
+                 "ring light replaced at scheduled hours"),
+    PlantedEvent("L2", "M21", "maintenance", 300, False,
+                 "quarterly PM"),
+    PlantedEvent("L1", "M12", "nozzle_cleaned", 350, False,
+                 "nozzle cleaned, no parameter change"),
+)
+
+#: What share of the non-suspect boards the effect machine receives on each
+#: side of its event. One machine out of the five that are not M22, so this
+#: is the share a uniform draw would give it -- the effect moves *which*
+#: boards it gets, never how many.
+EFFECT_SHARE = 1 / 5
+
+#: The machine that absorbs the effect's mirror image, so the controls do not.
+#:
+#: Boards are conserved: if M32 takes the open-heavy fifth of the boards
+#: inspected before its event, the boards left for everyone else are
+#: open-light before the event and open-heavy after it -- the effect's mirror,
+#: smeared over four machines. The first draft did exactly that and the
+#: control tests caught it: every control read as an effect. So the mirror is
+#: given to one named machine with no event of its own. It takes the
+#: open-*light* fifth before and the open-heavy fifth after, which trims the
+#: pool symmetrically and leaves the three controls unbiased in both windows.
+#: M11 will therefore look like it changed at M32's date. It has no event, so
+#: the tool must refuse to anchor on it -- which is a fourth thing the tool
+#: can be wrong about, and is tested as one.
+MIRROR_MACHINE = ("L1", "M11")
 
 
 def _open_share(annotations) -> float:
@@ -60,23 +127,77 @@ def _other_machines() -> list[tuple[str, str]]:
     ]
 
 
-def _plan_assignments(all_annotations, rng: random.Random) -> list[tuple[str, str]]:
-    """Decide every board's machine up front, so the ranking is global."""
-    ranked = sorted(
-        range(len(all_annotations)),
-        key=lambda i: _open_share(all_annotations[i]),
-        reverse=True,
-    )
-    suspect_count = int(len(ranked) * SUSPECT_TOP_SHARE)
-    suspect = set(ranked[:suspect_count])
+def _effect_event(events) -> PlantedEvent | None:
+    effects = [e for e in events if e.effect]
+    if len(effects) > 1:
+        raise ValueError("one planted effect, not several: a second one would be "
+                         "indistinguishable from the first in any measurement")
+    return effects[0] if effects else None
 
+
+def _plan_assignments(
+    all_annotations, rng: random.Random, events=EVENTS
+) -> list[tuple[str, str]]:
+    """Decide every board's machine up front, so the ranking is global.
+
+    Two planted signals, both by assignment. The first is M22: the top
+    ``SUSPECT_TOP_SHARE`` of boards by open share, ranked globally. The second
+    is the effect event's machine: among the boards M22 did not take, the ones
+    inspected *before* the event are ranked by open share and it receives the
+    top ``EFFECT_SHARE`` of them; the ones inspected after are ranked the same
+    way and it receives the *bottom* ``EFFECT_SHARE``. Every other board goes
+    to a uniform draw over the remaining machines. Controls change nothing.
+    """
+    # Ties are broken at random, not by position. Open share is a coarse
+    # quantity -- a board with three defects can only be 0, 1/3, 2/3 or 1 --
+    # so a stable sort over board order would hand every tie to the earlier
+    # board, and the top fifth would lean towards the start of the run. That
+    # is a time trend in a seed that claims to plant none, and it was found
+    # because the control machines drifted upward across every event date.
+    order = list(range(len(all_annotations)))
+    rng.shuffle(order)
+    share = {i: _open_share(all_annotations[i]) for i in order}
+    ranked = sorted(order, key=share.__getitem__, reverse=True)
+    suspect = set(ranked[: int(len(ranked) * SUSPECT_TOP_SHARE)])
+
+    assignments: dict[int, tuple[str, str]] = {i: SUSPECT_MACHINE for i in suspect}
+    rest = {i for i in range(len(all_annotations)) if i not in suspect}
+
+    effect = _effect_event(events)
     others = _other_machines()
-    assignments: list[tuple[str, str]] = []
-    for index in range(len(all_annotations)):
-        assignments.append(
-            SUSPECT_MACHINE if index in suspect else rng.choice(others)
+    if effect is not None:
+        target = (effect.line, effect.machine)
+        if MIRROR_MACHINE in (target, SUSPECT_MACHINE):
+            raise ValueError("the mirror machine must be neither the effect nor M22")
+        others = [m for m in others if m not in (target, MIRROR_MACHINE)]
+        before = sorted((i for i in ranked if i in rest and i < effect.position),
+                        key=share.__getitem__, reverse=True)
+        after = sorted((i for i in ranked if i in rest and i >= effect.position),
+                       key=share.__getitem__, reverse=True)
+        # Before: the effect machine takes the open-heavy end, the mirror the
+        # open-light end. After: the reverse. Each takes the same count.
+        for side in (before, after):
+            take = int(len(side) * EFFECT_SHARE)
+            heavy, light = side[:take], side[len(side) - take:]
+            for i in (heavy if side is before else light):
+                assignments[i] = target
+            for i in (light if side is before else heavy):
+                assignments[i] = MIRROR_MACHINE
+
+    for i in sorted(rest):
+        if i not in assignments:
+            assignments[i] = rng.choice(others)
+    return [assignments[i] for i in range(len(all_annotations))]
+
+
+def plant_events(session, events=EVENTS) -> int:
+    """Write the planted events. Call after the boards, since the guard reads them."""
+    for event in events:
+        machine_events.record(
+            event.machine, event.kind, event.happened_at,
+            note=event.note, recorded_by=machine_events.SEEDED, session=session,
         )
-    return assignments
+    return len(events)
 
 
 def seed(
@@ -106,7 +227,7 @@ def seed(
     if limit:
         pairs = pairs[:limit]
 
-    counts = {"boards": 0, "candidates": 0, "decisions": 0}
+    counts = {"boards": 0, "candidates": 0, "decisions": 0, "events": 0}
 
     assignments = _plan_assignments([p.load_annotations() for p in pairs], rng)
 
@@ -127,7 +248,7 @@ def seed(
             line_id=line,
             machine_id=machine,
             shift=SHIFTS[(position // 8) % len(SHIFTS)],
-            inspected_at=START + timedelta(hours=position * 0.4),
+            inspected_at=START + BOARD_INTERVAL * position,
         )
         session.add(board)
         counts["boards"] += 1
@@ -165,5 +286,7 @@ def seed(
             session.commit()
             print(f"  {position + 1}/{len(pairs)} boards, {counts['candidates']} candidates")
 
+    # After the boards, because the write guard reads the machines off them.
+    counts["events"] = plant_events(session)
     session.commit()
     return counts

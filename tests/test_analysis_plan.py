@@ -29,6 +29,8 @@ DOMAINS = {
                      "false_call"},
     # The tool's own axis vocabulary, not a store fact -- see plan.DOMAIN_OF.
     "group_by": {"machine", "line", "shift"},
+    "relative_to": {"parameter_change"},
+    "side": {"before", "after"},
     "max_days": 9,
 }
 

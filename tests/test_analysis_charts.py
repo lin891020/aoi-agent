@@ -228,3 +228,52 @@ def test_labels_are_stored_as_keys_so_a_stored_chart_can_be_redrawn_translated()
     assert spec["series"][0]["name_key"] and "name" not in spec["series"][0]
     assert spec["series"][0]["name_args"] == {"line_id": "L1"}
     assert {p["x"] for p in spec["series"][0]["points"]} == set(BY_LINE["L1"])
+
+
+
+# ---- two windows around a machine event ---------------------------------
+
+
+def _window(side, value, low, high, machine="M32"):
+    return {
+        "filters": {"machine_id": machine, "relative_to": "parameter_change", "side": side},
+        "open_share": {"value": value, "interval_95": [low, high]},
+        "by_class": {"open": 3},
+    }
+
+
+def test_two_event_windows_become_a_before_after_pair_in_that_order():
+    """The branches may return after-then-before; the chart never does."""
+    from aoi_agent.analysis.charts import chart_spec_for
+
+    spec = chart_spec_for([
+        {"tool": "query_defect_history", "ok": True, "data": _window("after", 0.25, 0.1, 0.45)},
+        {"tool": "query_defect_history", "ok": True, "data": _window("before", 0.75, 0.55, 0.9)},
+    ])
+    assert spec["title_key"] == "chart.title.open_share_around_event"
+    (series,) = spec["series"]
+    assert [p["x"] for p in series["points"]] == ["before", "after"]
+    assert [p["y"] for p in series["points"]] == [0.75, 0.25]
+    assert series["points"][0]["y_low"] == 0.55 and series["points"][0]["y_high"] == 0.9
+    assert series["name_args"] == {"machine_id": "M32", "kind": "parameter_change"}
+
+
+def test_an_unanchored_history_lookup_is_still_a_class_breakdown():
+    from aoi_agent.analysis.charts import chart_spec_for
+
+    spec = chart_spec_for([{
+        "tool": "query_defect_history", "ok": True,
+        "data": {"filters": {"machine_id": "M32"}, "by_class": {"open": 3, "short": 1}},
+    }])
+    assert spec["title_key"] == "chart.title.defects_by_class"
+
+
+def test_a_window_with_no_flagged_regions_is_left_out_not_drawn_at_zero():
+    from aoi_agent.analysis.charts import chart_spec_for
+
+    spec = chart_spec_for([
+        {"tool": "query_defect_history", "ok": True, "data": _window("before", 0.5, 0.3, 0.7)},
+        {"tool": "query_defect_history", "ok": True, "data": _window("after", None, 0.0, 1.0)},
+    ])
+    (series,) = spec["series"]
+    assert [p["x"] for p in series["points"]] == ["before"]

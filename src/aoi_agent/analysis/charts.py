@@ -61,6 +61,12 @@ def _defect_breakdown(payloads: list[dict]) -> dict | None:
     result, one level down. "No spurs on L2" and "L2's spurs were not counted"
     are different statements and a zero bar makes the second one.
     """
+    # Two lookups anchored on a machine event are a different question from
+    # "which classes": the reader wants one number on each side of a date.
+    # The shape of the payload says which question was asked, not the tool.
+    if payloads and all(p.get("open_share") and p.get("filters", {}).get("side") for p in payloads):
+        return _event_windows(payloads)
+
     counted = [(p, p.get("by_class") or {}) for p in payloads]
     counted = [(p, counts) for p, counts in counted if counts]
     if not counted:
@@ -179,6 +185,55 @@ def _false_call_rates(payloads: list[dict]) -> dict | None:
         "title_key": "chart.title.false_call_rate",
         "x_label_key": "chart.axis.group",
         "y_label_key": "chart.axis.dismissal_rate",
+        "series": series,
+    }
+
+
+def _event_windows(payloads: list[dict]) -> dict | None:
+    """A machine's open share before and after an event, as two bars.
+
+    One series per machine, one point per side, always in the order before
+    then after -- the order the branches returned in carries no meaning and
+    a chart that read "after, before" would be read as a reversal. The
+    interval is carried on the point as ``y_low``/``y_high`` and the renderer
+    may draw it or not; the value is never drawn without it being available,
+    because two bars with overlapping intervals are the whole finding and a
+    chart of two bare heights would hide it.
+    """
+    order = {"before": 0, "after": 1}
+    by_machine: dict[str, list[dict]] = {}
+    for payload in payloads:
+        filters = payload.get("filters", {})
+        by_machine.setdefault(filters.get("machine_id") or "", []).append(payload)
+
+    series: list[dict[str, Any]] = []
+    for machine, group in by_machine.items():
+        group = sorted(group, key=lambda p: order.get(p["filters"]["side"], 9))
+        points = []
+        for payload in group:
+            share = payload["open_share"]
+            if share.get("value") is None:
+                continue
+            low, high = share.get("interval_95", (None, None))
+            points.append({
+                "x": payload["filters"]["side"],
+                "y": round(float(share["value"]), 4),
+                "y_low": low, "y_high": high,
+            })
+        if points:
+            series.append({
+                "name_key": "chart.series.machine_around_event",
+                "name_args": {"machine_id": machine,
+                              "kind": group[0]["filters"].get("relative_to", "")},
+                "points": points,
+            })
+    if not series:
+        return None
+    return {
+        "kind": "bar",
+        "title_key": "chart.title.open_share_around_event",
+        "x_label_key": "chart.axis.side_of_event",
+        "y_label_key": "chart.axis.open_share",
         "series": series,
     }
 

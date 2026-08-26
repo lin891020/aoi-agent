@@ -20,6 +20,7 @@ dependencies = [
     "sqlalchemy>=2.0.52",
     "torch>=2.13.0",
     "torchvision>=0.28.0",
+    "ultralytics>=8.4.129",
 ]
 
 [project.scripts]

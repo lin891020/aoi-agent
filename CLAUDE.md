@@ -22,6 +22,8 @@ src/aoi_agent/
     vision/                 patches, dataset, ResNet-18, inference, operating
                             point, ONNX export and INT8 quantisation
     store/                  SQLAlchemy models, seeding, standards retrieval,
+                            machine_events (the store's first non-board entity,
+                            and its only writer, events.py),
                             the analysis_runs log, and the provenance every
                             automated decision carries -- dispositions.py is
                             the board-level record
@@ -304,9 +306,20 @@ board is back under the unscoped reading.
   report**: a figure written from one surface reads as a claim about the system
   and is a claim about half of it. Held by `tests/test_i18n.py` and
   `tests/test_analysis_run_languages.py`.
-- **Say what is simulated.** Production metadata is generated with one planted
-  signal; acceptance criteria are original documents, not IPC-A-610 (copyrighted,
-  must stay out).
+- **Say what is simulated.** Production metadata is generated with **two
+  planted signals, both by assignment** -- the seeder never writes a defect,
+  it decides which DeepPCB board went to which machine. The first is M22,
+  which receives the open-heaviest fifth of boards. The second, added
+  2026-08-26, is a `parameter_change` on M32: before it M32 receives the
+  open-heavy fifth of the remaining boards, after it the open-light fifth.
+  Three other machines carry events with **no** effect, because a tool read
+  against a seed with no controls is scored on "is there an event" and not
+  on "did it matter"; and one machine, M11, carries the effect's mirror
+  image with no event at all -- boards are conserved, so the mirror has to
+  land somewhere, and it lands on one named machine rather than smeared
+  over the controls. `tests/test_machine_events.py` holds all four
+  properties on the assignment planner. Acceptance criteria are original
+  documents, not IPC-A-610 (copyrighted, must stay out).
 
 ## Environment gotchas
 

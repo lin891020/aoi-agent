@@ -376,6 +376,35 @@ class BoardDisposition(Base):
     board: Mapped[Board] = relationship()
 
 
+class MachineEvent(Base):
+    """Something that happened to a machine, at a time.
+
+    The first entity in this store that is not a board or a judgement about
+    one. It exists because the independent question set asked twice about
+    change over time on one machine -- "M32 動過參數，動完之後有沒有差" -- and
+    every dimension the store had was a bare string on ``boards`` with no
+    time axis of its own.
+
+    ``machine_id`` is a string and not a foreign key, on purpose: there is no
+    ``machines`` table, and adding one is a non-additive migration this store's
+    migration mechanism refuses to become. The write path in ``store.events``
+    guards the value against the machines ``boards`` actually names instead.
+
+    Seeded rows say ``recorded_by='seeded'``; the column is there so the day a
+    signed-in operator records one needs no migration, and so the two are never
+    the same row.
+    """
+
+    __tablename__ = "machine_events"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    machine_id: Mapped[str] = mapped_column(String(16), index=True)
+    kind: Mapped[str] = mapped_column(String(32), index=True)
+    happened_at: Mapped[datetime] = mapped_column(DateTime, index=True)
+    note: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    recorded_by: Mapped[str] = mapped_column(String(64))
+
+
 class AnalysisRun(Base):
     """One natural-language question, and everything needed to redraw it.
 

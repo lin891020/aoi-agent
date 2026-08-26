@@ -17,12 +17,18 @@ from datetime import timedelta
 from mcp.server.mcpserver import MCPServer
 from sqlalchemy import func, select
 
+from aoi_agent.store import events as machine_events
 from aoi_agent.store.boards import session_factory
 from aoi_agent.store.models import Board, CandidateRecord
 
 mcp = MCPServer("aoi-production")
 
 DEFECT_CLASSES = ["open", "short", "mousebite", "spur", "copper", "pin-hole"]
+
+#: The two sides of a machine event. A window is *before* an event or *after*
+#: it; there is no "around", because a window that straddles the anchor is
+#: the question with the answer averaged out of it.
+SIDES = ("before", "after")
 
 
 @mcp.tool()
@@ -32,11 +38,16 @@ def query_defect_history(
     machine_id: str | None = None,
     defect_type: str | None = None,
     days: int = 7,
+    relative_to: str | None = None,
+    side: str | None = None,
 ) -> dict:
     """Count defects by class over a slice of recent production.
 
     Use this to judge whether a defect on one board is isolated or part of a
-    pattern. Leave a filter unset to include everything.
+    pattern. Leave a filter unset to include everything. To compare a machine
+    before and after something happened to it, call this twice with the same
+    ``machine_id`` and ``relative_to`` -- once with ``side="before"`` and once
+    with ``side="after"`` -- and read the two ``open_share`` intervals.
 
     Args:
         lot_id: Restrict to one lot, for example ``LOT-2608003``.
@@ -44,27 +55,63 @@ def query_defect_history(
         machine_id: Restrict to one machine, for example ``M22``.
         defect_type: Restrict to one class: open, short, mousebite, spur,
             copper or pin-hole.
-        days: How far back to look from the most recent inspection.
+        days: How far back to look from the most recent inspection. Ignored
+            when ``relative_to`` is set: the window is then bounded by the
+            event instead.
+        relative_to: The kind of machine event to anchor on, for example
+            ``parameter_change``; needs ``machine_id`` and ``side``. The
+            anchor is that machine's newest event of the kind.
+        side: ``before`` (strictly) or ``after`` (from the event's instant on)
+            the anchor. The two windows partition the machine's boards.
     """
     if defect_type and defect_type not in DEFECT_CLASSES:
         return {"error": f"unknown defect_type {defect_type!r}; expected one of {DEFECT_CLASSES}"}
+
+    # An event belongs to one machine; there is no fleet-wide "after". And a
+    # side without an anchor, or an anchor without a side, is half a question.
+    if (relative_to is None) != (side is None):
+        return {"error": "relative_to and side go together: name the event kind and which side of it"}
+    if relative_to is not None and not machine_id:
+        return {"error": "relative_to needs machine_id: an event happened to one machine"}
+    if side is not None and side not in SIDES:
+        return {"error": f"unknown side {side!r}; expected one of {SIDES}"}
+
+    anchor = None
+    if relative_to is not None:
+        anchor = machine_events.anchor_for(machine_id, relative_to)
+        if anchor is None:
+            return {
+                "error": f"no {relative_to!r} event is recorded for {machine_id}; "
+                         f"query_machine_events(machine_id={machine_id!r}) lists what is",
+            }
 
     with session_factory()() as session:
         latest = session.execute(select(func.max(Board.inspected_at))).scalar()
         if latest is None:
             return {"error": "the store is empty; run scripts/seed_store.py"}
-        since = latest - timedelta(days=days)
+        earliest = session.execute(select(func.min(Board.inspected_at))).scalar()
+
+        # "Before" is strictly before: a board inspected at the event's own
+        # instant is the first board *after* it, so the two windows partition
+        # the machine's boards and no board is counted on both sides.
+        if anchor is None:
+            since, until = latest - timedelta(days=days), latest
+            in_window = (Board.inspected_at >= since, Board.inspected_at <= until)
+        elif side == "before":
+            since, until = earliest, anchor
+            in_window = (Board.inspected_at >= since, Board.inspected_at < until)
+        else:
+            since, until = anchor, latest
+            in_window = (Board.inspected_at >= since, Board.inspected_at <= until)
 
         query = (
             select(CandidateRecord.predicted_class, func.count())
             .join(Board)
-            .where(Board.inspected_at >= since)
+            .where(*in_window)
             .where(CandidateRecord.predicted_class != "false_call")
             .group_by(CandidateRecord.predicted_class)
         )
-        boards_query = select(func.count(func.distinct(Board.id))).where(
-            Board.inspected_at >= since
-        )
+        boards_query = select(func.count(func.distinct(Board.id))).where(*in_window)
 
         for column, value in (
             (Board.lot_id, lot_id),
@@ -80,17 +127,77 @@ def query_defect_history(
         counts = dict(session.execute(query).all())
         boards = session.execute(boards_query.join(CandidateRecord).distinct()).scalar() or 0
 
+        # The share of *all* flagged regions in the window the model called
+        # `open`, with an interval. The denominator is every candidate the
+        # detector produced, false calls included, because that is what the
+        # planted signal moves and what a person comparing two windows of the
+        # same machine would count. Only computed for a windowed query: a
+        # seven-day unanchored slice already answers a different question.
+        flagged = 0
+        if anchor is not None:
+            flagged_query = select(func.count(CandidateRecord.id)).join(Board).where(*in_window)
+            for column, value in (
+                (Board.lot_id, lot_id), (Board.line_id, line_id), (Board.machine_id, machine_id),
+            ):
+                if value:
+                    flagged_query = flagged_query.where(column == value)
+            flagged = int(session.execute(flagged_query).scalar() or 0)
+
     total = sum(counts.values())
-    return {
+    out = {
         "filters": {
             "lot_id": lot_id, "line_id": line_id, "machine_id": machine_id,
             "defect_type": defect_type, "days": days,
+            "relative_to": relative_to, "side": side,
         },
-        "window_end": latest.isoformat(),
+        "window_start": since.isoformat(),
+        "window_end": until.isoformat(),
         "boards_inspected": boards,
         "defects_total": total,
         "defects_per_board": round(total / boards, 2) if boards else 0.0,
         "by_class": counts,
+    }
+    if anchor is not None:
+        from aoi_agent.stats import wilson
+
+        opens = int(counts.get("open", 0))
+        low, high = wilson(opens, flagged)
+        out["event_at"] = anchor.isoformat()
+        out["flagged_regions"] = flagged
+        out["open_share"] = {
+            "value": round(opens / flagged, 4) if flagged else None,
+            "interval_95": [round(low, 4), round(high, 4)],
+            "basis": (
+                "share of every region the AOI flagged in this window that the "
+                "re-verifier classified as open; the interval is a Wilson "
+                "interval on that count, and two windows whose intervals "
+                "overlap have not been shown to differ"
+            ),
+        }
+    return out
+
+
+@mcp.tool()
+def query_machine_events(machine_id: str | None = None, kind: str | None = None) -> dict:
+    """List what has happened to a machine: parameter changes, maintenance.
+
+    Use this before comparing a machine's output before and after something
+    was done to it, to find out what was done and when. Newest first.
+
+    Args:
+        machine_id: Restrict to one machine, for example ``M32``.
+        kind: Restrict to one kind of event, for example ``parameter_change``.
+    """
+    rows = machine_events.events_for(machine_id, kind)
+    return {
+        "filters": {"machine_id": machine_id, "kind": kind},
+        "events": rows,
+        "count": len(rows),
+        "basis": (
+            "events are recorded by a person or planted by the seed and say "
+            "what was done and when; whether the output changed afterwards is "
+            "a separate lookup, query_defect_history with relative_to and side"
+        ),
     }
 
 
