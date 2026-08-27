@@ -302,6 +302,14 @@ call 機率，所以這個前端目前沒有複判階段。兩份資料集從相
 **在偵測器的框上接一個複判器**——已經有的架構，拿掉範本那個通道。
 → [偵測器](docs/benchmarks.md#detector-front-end--yolo26n-on-pcb-aoi-read-at-the-escape-budget)
 
+**2026-08-28：那個複判器做出來了，它也排不了序。** 同一個 ResNet-18 訓練在偵測器框的
+64 px RGB 裁切上（11,928 個訓練 patch，CPU 一次訓練，seed 0），在 ≤0.5% 預算下對同
+樣 578 個測試 candidate 省掉 **2.8%**，同一基準上偵測器是 0.3%——而這條佇列 77.7% 是
+真 defect，任何排序最多只能省 22.3%。兩種前端現在從相反的方向同意一件事：在這份資料
+上，false call 和 defect 光看外觀分不開，這就是為什麼相減前端的範本通道從來不是為了
+方便。訓練用的 candidate 來自一個看過訓練影像的偵測器，六十張圖讓每個區間都很寬；兩
+點都寫在那一節上。→ [裁切複判器](docs/benchmarks.md#crop-re-verifier--the-resnet-18-over-the-detectors-boxes-against-the-detectors-own-ordering)
+
 兩者都不能證明的：一個從沒訓練過照片的 checkpoint、一個看過結果才選的灰階
 threshold、六十張測試圖和很寬的區間、一次訓練一個種子。`scripts/transfer_report.py`、
 `scripts/gate_check.py --dataset hripcb` 和 `scripts/detector_report.py` 重建每一個數字。
@@ -709,10 +717,10 @@ wheel。什麼都不 mount 直接跑，會得到一個對著空 queue 起來的 
 
 ## 還沒做的
 
-- **在偵測器的框上接一個複判器。** 兩份 transfer 資料集都指向這一步：已經有的
-  ResNet-18、拿掉範本通道、訓練在 YOLO 前端畫出來的框上，用 escape budget 來讀。它存
-  在之前，偵測器前端有佇列、沒有排序。偵測器用 `imgsz=1280`（它的小目標設計就是為這
-  個尺寸）也還沒試過。
+- **給偵測器前端一個排序。** 框上的複判器 2026-08-28 做出來了，在預算下省 2.8%，
+  而那條佇列的上限是 22.3%——還不是排序。沒試過的：偵測器用 `imgsz=1280` 訓練（它的
+  小目標設計就是為這個尺寸）；用一個*沒看過*訓練影像的偵測器產生裁切（在留出的 fold
+  上訓第二個偵測器）；以及同一片板的第二次拍攝——那是唯一能給這條線一張範本的東西。
 - **2026-08-27 改了 prompt 之後重跑 planner 的評測。** prompt 現在給規劃模型每個工
   具的整份說明書、把事件前後列為可表達、列出事件種類；已發布的 planner 分數早於它。
   兩組題庫、安靜的機器，在任何一個數字被當成現值引用之前。

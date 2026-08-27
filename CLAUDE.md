@@ -52,9 +52,10 @@ src/aoi_agent/
                             scheme does not protect against
     cli.py
 scripts/                    gate_check, build_patches, train, report, seed_store,
-                            analysis_eval, add_operator,
+                            analysis_eval, add_operator, render_diagrams,
+                            build_detector_patches, crop_reverifier_report,
                             mark_unattributed_resolutions, ...
-tests/                      1,268 tests; dataset-dependent ones behind `-m dataset`
+tests/                      1,271 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -69,13 +70,18 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 1,268 tests, no GPU needed, no model called
+uv run pytest                                    # 1,271 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/gate_check.py --dataset hripcb --split aligned --limit 693 --thresholds 10 15 20 30 45 60 \
     --out eval/results/gate_check_hripcb_aligned.json   # the same gate on photographs (~2 min)
 uv run python scripts/transfer_report.py         # the shipped pipeline on HRIPCB, unchanged (~10 min)
 uv run python scripts/train_detector.py          # YOLO26n on PCB-AoI, refuses beside a busy GPU (~30 min)
 uv run python scripts/detector_report.py         # the detector at the escape budget, on 60 images
+uv run python scripts/build_detector_patches.py  # RGB crops of the detector's boxes, in train.py's schema
+uv run python scripts/train.py --patches data/patches_pcbaoi --out models/pcbaoi_reverifier
+                                                 # the same ResNet-18, minus the template channel
+uv run python scripts/crop_reverifier_report.py  # its ordering against the detector's, same boxes
+uv run python scripts/render_diagrams.py         # the two README flow diagrams, from the graphs' constants
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
 uv run python scripts/routing_report.py          # how much never reaches the LLM
@@ -451,6 +457,20 @@ detector crops -- the architecture already here, minus the template channel
 refuses to run beside a busy GPU; `scripts/detector_report.py` prints the
 sixty-image basis in its first line. Held by `tests/test_detector.py` and
 `tests/test_pcbaoi.py`.
+
+**The crop re-verifier exists since 2026-08-28 and does not order either.**
+`scripts/build_detector_patches.py` turns the detector's boxes into 64 px RGB
+patches in `train.py`'s own schema (grouped by base stem, so the augmentation
+set cannot leak across the by-image split; fragments held out; the detector's
+own P(false call) kept in a sidecar), and `scripts/crop_reverifier_report.py`
+reads both orderings over the identical 578 test candidates. Result: 2.8%
+review removed at ≤0.5% against the detector's 0.3% on that basis, on a queue
+that is 77.7% genuine defects with a 22.3% ceiling. Trained on CPU beside a
+translation job holding the GPU, one seed, and on candidates from a detector
+that had seen the training images -- all stated in the entry. What it
+establishes is that on this data appearance alone does not separate a false
+call from a defect at the budget, from either front end; the template channel
+was never a convenience. Held by `tests/test_detector_patches.py`.
 
 **Every decision the store held before 2026-08-23 reads `unrecorded`** -- 9,140
 of them, in `model_digest` and now in `reviewer_auth` too, stamped by the

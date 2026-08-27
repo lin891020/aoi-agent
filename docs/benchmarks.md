@@ -4172,3 +4172,28 @@ detector was trained at the dataset's native 600 px, so a 17 px box is a
 target assignment is written for, and nothing here tries that. No CPU timing.
 And the 8.4% never flagged is a floor no threshold touches, the same shape as
 the seven sub-3 px notches the opening kernel erases on DeepPCB.
+
+### Crop re-verifier — the ResNet-18 over the detector's boxes, against the detector's own ordering
+
+**Basis: 60 test images, 332 annotated defects, of which 28 were never boxed by the detector and are outside every figure below.** 578 candidates at the detector's floor (449 covering a defect, 129 false calls). One training run, 10 epochs in 1920 s on the M5 Air, seed 0, RGB crops with no template channel; the training candidates come from a detector that had seen the training images (see `scripts/build_detector_patches.py`). 2026-08-28, commit `75f909c`.
+
+The queue is **77.7% genuine defects**, so review removed cannot exceed 22.3% on any ordering; read every figure below against that ceiling. The detector's row differs from its own entry above because this basis holds out the 85 boxes that split a defect (neither class, so not trainable); both orderings are read over the identical 578 candidates.
+
+| escape budget | ordering | achieved escape | review removed | 95% on escape |
+|---|---|---|---|---|
+| ≤0.10% | detector 1 − confidence | 0.00% | **0.0%** | 0.00%–0.85% |
+| ≤0.25% | detector 1 − confidence | 0.22% | **0.2%** | 0.04%–1.25% |
+| ≤0.50% | detector 1 − confidence | 0.45% | **0.3%** | 0.12%–1.61% |
+| ≤1.00% | detector 1 − confidence | 0.89% | **0.9%** | 0.35%–2.27% |
+| ≤2.00% | detector 1 − confidence | 1.78% | **2.1%** | 0.91%–3.48% |
+| ≤5.00% | detector 1 − confidence | 4.90% | **5.4%** | 3.26%–7.31% |
+| ≤0.10% | crop re-verifier P(false call) | 0.00% | **1.6%** | 0.00%–0.85% |
+| ≤0.25% | crop re-verifier P(false call) | 0.22% | **2.1%** | 0.04%–1.25% |
+| ≤0.50% | crop re-verifier P(false call) | 0.45% | **2.8%** | 0.12%–1.61% |
+| ≤1.00% | crop re-verifier P(false call) | 0.89% | **3.3%** | 0.35%–2.27% |
+| ≤2.00% | crop re-verifier P(false call) | 1.78% | **4.2%** | 0.91%–3.48% |
+| ≤5.00% | crop re-verifier P(false call) | 4.90% | **9.2%** | 3.26%–7.31% |
+
+At the ≤0.5% budget the detector's confidence removes **0.3%** of the same queue and the crop re-verifier removes **2.8%**. That is 12% of the false calls the queue holds, and the gap between the two is inside what sixty images can resolve: a re-verifier over RGB crops with no template channel is not yet an ordering either. What both front ends now agree on is that on this data the false calls are not separable from the defects on appearance alone at this budget -- which is the finding, and the reason the differencing front end's template channel was never a convenience.
+
+What this does not establish: one seed, sixty test images and wide intervals; a re-verifier trained on in-sample detector boxes; and no template channel, so nothing here transfers to DeepPCB or says anything about the differencing front end. `scripts/build_detector_patches.py`, `scripts/train.py --patches data/patches_pcbaoi` and this script rebuild every number.

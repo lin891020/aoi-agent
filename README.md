@@ -377,6 +377,18 @@ the same next step: **a re-verifier over detector crops**, the architecture
 already here minus the template channel.
 → [the detector](docs/benchmarks.md#detector-front-end--yolo26n-on-pcb-aoi-read-at-the-escape-budget)
 
+**2026-08-28: that re-verifier was built and it does not order either.** The
+same ResNet-18 trained on 64 px RGB crops of the detector's boxes (11,928
+training patches, one run on CPU, seed 0) removes **2.8%** of the same 578
+test candidates at the ≤0.5% budget, against the detector's 0.3% on that
+basis — and the queue is 77.7% genuine defects, so 22.3% is the most any
+ordering could remove. Two front ends now agree from opposite sides: on this
+data the false calls are not separable from the defects on appearance alone,
+which is why the differencing front end's template channel was never a
+convenience. The training candidates come from a detector that had seen the
+training images, and sixty images leave every interval wide; both are stated
+on the entry. → [the crop re-verifier](docs/benchmarks.md#crop-re-verifier--the-resnet-18-over-the-detectors-boxes-against-the-detectors-own-ordering)
+
 What neither establishes: one checkpoint never trained on a photograph, a grey
 threshold chosen after looking, sixty test images with wide intervals, and one
 training run at one seed. `scripts/transfer_report.py`,
@@ -870,12 +882,13 @@ explanation step needs the container to be able to reach it.
 
 ## Not yet done
 
-- **A re-verifier over detector crops.** The one step both transfer datasets
-  point at: the ResNet-18 already here, minus the template channel, trained on
-  the boxes the YOLO front end draws, and read at the escape budget. Until it
-  exists the detector front end has a queue and no ordering. `imgsz=1280` on
-  the detector, which its small-target design is sized for, has also not been
-  tried.
+- **An ordering for the detector front end.** The re-verifier over detector
+  crops exists since 2026-08-28 and removes 2.8% at the budget on a queue
+  whose ceiling is 22.3% — not an ordering. What has not been tried: a
+  detector trained at `imgsz=1280`, which its small-target design is sized
+  for; crops from a detector that had *not* seen the training images (a
+  second detector on a held-out fold); and a second acquisition of the same
+  board, which is the only thing that would give this line a template.
 - **Re-running the planner evals after the 2026-08-27 prompt change.** The
   prompt now shows the planner each tool's whole docstring, names the event
   window as expressible and lists the event kinds; the published planner
