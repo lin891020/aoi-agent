@@ -62,3 +62,14 @@ def test_the_machine_line_is_derived_into_the_section():
     busy = analysis_eval.machine_line(["llama3:8b"])
     assert quiet.startswith("Machine at start:") and "quiet" in quiet
     assert busy.startswith("Machine at start:") and "llama3:8b" in busy and "busy" in busy
+
+
+def test_the_machine_line_refuses_a_graph_state():
+    """The header once rendered a question's graph state -- its dict keys --
+    as the list of processes competing for the machine, under **busy**, on a
+    quiet run. The line takes the list captured before the first question and
+    nothing else."""
+    assert "quiet" in analysis_eval.machine_line([])
+    assert "12 90% python train.py" in analysis_eval.machine_line(["12 90% python train.py"])
+    with pytest.raises(TypeError):
+        analysis_eval.machine_line({"question": "x", "plan": None})

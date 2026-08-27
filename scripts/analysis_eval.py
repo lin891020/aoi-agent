@@ -258,7 +258,17 @@ def machine_line(state: list[str]) -> str:
     """One derived line for the section header, in place of a note somebody
     remembers to type. The latency skill's rule is that a timing number taken
     beside a busy GPU is not a number; a *score* taken there is not one
-    either, and this is where the run says so."""
+    either, and this is where the run says so.
+
+    Refuses a mapping. Until 2026-08-28 ``main`` kept the machine state in a
+    variable named ``state`` and then reused that name for each question's
+    graph state, so the header rendered the *last graph state's keys* --
+    "question; plan; plan_errors; ..." -- under the word **busy**, on a run
+    that had been taken on a quiet machine. A header that cannot tell a list
+    of rivals from a dict of results is how that gets published twice.
+    """
+    if isinstance(state, dict):
+        raise TypeError("machine state is the list of rivals at start, not a graph state")
     if not state:
         return "Machine at start: quiet -- no other model resident, no competing torch process."
     return "Machine at start: **busy** -- " + "; ".join(state) + "."
@@ -403,8 +413,8 @@ def main() -> int:
                              "full graph produces")
     args = parser.parse_args()
 
-    state = machine_state(args.model)
-    print(machine_line(state))
+    machine = machine_state(args.model)
+    print(machine_line(machine))
 
     questions = load_questions(args.questions)
     domains = store_domains()
@@ -578,7 +588,7 @@ def main() -> int:
         f"the time of the run.",
         *(["", args.note] if args.note else []),
         "",
-        machine_line(state),
+        machine_line(machine),
         "",
         "| | questions | correct |",
         "|---|---|---|",

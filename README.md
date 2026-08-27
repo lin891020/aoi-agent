@@ -207,9 +207,16 @@ The set also found two real defects that the score does not contain:
   before the event tool existed; and nothing listed the event kinds, so
   "換燈" was anchored on `parameter_change`. All three are fixed and held by
   tests, and two real planning calls now compose the two-window shape on the
-  effect machine and on a control. **The figures above predate that prompt**
-  and are not quoted as current until both question sets are re-run on a
-  quiet machine; a re-worded measured constraint invalidates the measurement.
+  effect machine and on a control. **Re-run on 2026-08-28 on a quiet
+  machine, fixture unedited, no timeouts:** independent set 28/42 answered
+  (unchanged), 21/28 refused (from 22), 66/70 stable; adjudicated refusals
+  24/28 against 25/28 before, with the three false-call-rate rows still the
+  fixture's staleness. S25 -- the question the event tool exists for -- now
+  plans the two-window shape on every repeat, and is kept out of the score
+  for the same reason as before. One row went the other way and is named:
+  S32 was refused and now plans a false-call rate for a question about
+  confidence over time. Everything else is inside the three-row drift
+  baseline. The in-house twenty read 18/20 (11/13 answered, 7/7 refused).
 
 What it does not establish: the questions were written by LLM authors working
 from different briefs, not by a real shift supervisor, so this bounds the shapes
@@ -889,11 +896,6 @@ explanation step needs the container to be able to reach it.
   for; crops from a detector that had *not* seen the training images (a
   second detector on a held-out fold); and a second acquisition of the same
   board, which is the only thing that would give this line a template.
-- **Re-running the planner evals after the 2026-08-27 prompt change.** The
-  prompt now shows the planner each tool's whole docstring, names the event
-  window as expressible and lists the event kinds; the published planner
-  figures predate it. Both question sets, on a quiet machine, before any of
-  them is quoted as current.
 - **Retraining from operator corrections.** The decision history records them
   (`uv run python -m aoi_agent corrections`) and every row names who made it
   and how that name was established, so a round can take `signed_in` labels

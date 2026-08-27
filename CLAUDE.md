@@ -55,7 +55,7 @@ scripts/                    gate_check, build_patches, train, report, seed_store
                             analysis_eval, add_operator, render_diagrams,
                             build_detector_patches, crop_reverifier_report,
                             mark_unattributed_resolutions, ...
-tests/                      1,271 tests; dataset-dependent ones behind `-m dataset`
+tests/                      1,272 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -70,7 +70,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 1,271 tests, no GPU needed, no model called
+uv run pytest                                    # 1,272 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/gate_check.py --dataset hripcb --split aligned --limit 693 --thresholds 10 15 20 30 45 60 \
     --out eval/results/gate_check_hripcb_aligned.json   # the same gate on photographs (~2 min)
@@ -368,13 +368,15 @@ example, written before the event tool existed. Three changes, each held by
 the rule names the event window as expressible, and the domain note lists the
 event kinds the store holds (without it, "換燈" was anchored on
 `parameter_change`). A seventh few-shot shows the two-call shape. Two real
-planning calls compose it now, on both the effect machine and a control. What
-is not yet known is what the change cost elsewhere: a re-worded measured
-constraint invalidates the measurement, and the machine was not quiet enough
-to take it again (an ffmpeg job at 700% CPU). Re-run both question sets before
-quoting any planner figure, and expect S25 in the independent set to flip from
-its authors' refusal to an answer -- the fixture stays unedited and the row is
-adjudicated, as on 2026-08-26.
+planning calls compose it now, on both the effect machine and a control.
+**Re-run 2026-08-28** on a quiet machine, fixture unedited, no timeouts:
+independent 28/42 answered (unchanged), 21/28 refused (from 22), adjudicated
+24/28; S25 composes the two windows on every repeat and stays out of the score
+as before; S32 flipped from a refusal to planning a false-call rate and is
+named in the adjudication; in-house 18/20. Inside the drift baseline except
+for the row the change was made to move. The eval's header had rendered the
+machine state as the graph state's field names under **busy** -- a variable
+reused inside `main` -- and `machine_line` now refuses a dict.
 
 
 Retraining from operator corrections -- now selectable by who made them, which
