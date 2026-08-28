@@ -71,9 +71,9 @@ STRINGS: dict[str, dict[str, str]] = {
             "這套系統可以回答的是：",
 
         "station.name": '複判站',
-        "nav.queue": '佇列',
+        "nav.queue": '待複判',
         "nav.corrections": '修正紀錄',
-        "nav.ask": '提問',
+        "nav.ask": '產線查詢',
         "nav.sign_out": '登出',
         "locale.switch": '切換語言',
         "common.region": '區域',
@@ -81,7 +81,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "common.confidence": '信心',
         "common.when_utc": '時間（UTC）',
         "common.none": '—',
-        "queue.title": '等待人工判定的區域',
+        "queue.title": '待人工複判的區域',
         "queue.waiting": '件待處理',
         "queue.sub": '每一列都是視覺模型無法定案、agent 也不願臆測的區域。最舊的在前。',
         "queue.unexplained":
@@ -100,7 +100,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "region.declined_before": '已經有 {count} 個人看過這一區並表示無法判斷：',
         "region.declined_by": '{operator} 於 {when} UTC',
         "region.declined_no_note": '（未說明原因）',
-        "deferred.title": '沒有人能判斷的區域',
+        "deferred.title": '待資深複判的區域',
         "deferred.sub": '每一列都是至少一個人看過、並且說看不出來的區域。被越多人退回的排越前面 —— 那是這裡唯一帶資訊的排序。',
         "deferred.no_senior": '目前沒有任何人被設為 senior，所以這一頁上的區域沒有人可以回答。用 scripts/add_operator.py --role senior 指定一個。',
         "deferred.needs_senior": '你的權限是 operator，看得到但不能回答這裡的區域 —— 這些是別人已經判不出來的。',
@@ -111,8 +111,8 @@ STRINGS: dict[str, dict[str, str]] = {
             '這一頁只是清單，不是派工。誰答得了寫在下面一行，由憑證檔決定；'
             '但這裡沒有任何東西會把某一區指給某個人，也沒有人會收到通知。'
             '要有人來清這份清單，得靠交接，不靠這個站台。',
-        "nav.boards": '板',
-        "nav.deferred": '無法判斷',
+        "nav.boards": 'PCB 處置',
+        "nav.deferred": '待資深複判',
         "queue.deferred_link": '另外有 {count} 區沒有人能判斷 →',
         "queue.empty": '沒有待處理項目。',
         "queue.empty_hint": '用下列指令餵入佇列：',
@@ -128,7 +128,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "region.line": '產線',
         "region.machine": '機台',
         "region.shift": '班別',
-        "region.board_record": '板級紀錄',
+        "region.board_record": 'PCB 紀錄',
         "region.waiting_on_you": '等你判定',
         "region.already_answered": '已判定',
         "region.handed_over_because": 'agent 交出來的理由',
@@ -136,7 +136,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "region.no_explanation": '沒有書面說明',
         "region.triptych_alt": '旗標區域周圍的樣板、待測與差異影像',
         "region.template": '黃金樣板',
-        "region.under_test": '待測板',
+        "region.under_test": '待測 PCB',
         "region.difference": '差異',
         "region.what_model_read": '模型讀到什麼',
         "region.class": '類別',
@@ -145,7 +145,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "region.patch_caption": '模型實際分類的 64 px 視窗——如果它偏離了區域，分歧在於裁切而不是分類器',
         "region.production_context": '產線脈絡',
         "region.lot_average": '批平均',
-        "region.this_board": '這片板',
+        "region.this_board": '本片 PCB',
         "region.inspected": '檢測時間',
         "region.by_machine": '{defect_type} 各機台佔比，最近 {days} 天',
         "region.fleet": '全廠',
@@ -160,7 +160,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "region.measure.within": "{ratio}% — 在允收範圍內（需 ≥{limit}%）",
         "region.measure.outside": "{ratio}% — 超出允收範圍（需 ≥{limit}%）",
         "region.measure.incomparable":
-            "兩段量在不同格：那是拿樣板的長度去比待測板的長度，不能相除。",
+            "兩段量在不同格：那是拿樣板的長度去比待測 PCB的長度，不能相除。",
         "region.verdict_note":
             "你的答案會喚醒暫停中的執行，並以你的名義記為人工判定。"
             "它會成為下一輪訓練的標註——這也是這一頁不顯示 ground truth 的原因。",
@@ -170,10 +170,10 @@ STRINGS: dict[str, dict[str, str]] = {
         "region.back_to_queue": '回到佇列 →',
         "region.path": '路徑',
         "region.timings": '耗時',
-        "boards.title": '這個系統判過的板',
+        "boards.title": 'PCB 處置紀錄',
         "boards.sub":
             "佇列上的是 agent 無法定案的區域，也就是失敗的那一小塊。這一頁是另一邊："
-            "已經有板級處置的每一片板，往哪一邊倒，以及底下有多少區域支撐它。"
+            "已經有PCB 處置的每一片 PCB，往哪一邊倒，以及底下有多少區域支撐它。"
             "只讀——這裡不判定任何東西，只是已經做過的判定的紀錄。",
         "boards.all": '已定案 {count}',
         "boards.held": '扣住 {count}',
@@ -183,21 +183,21 @@ STRINGS: dict[str, dict[str, str]] = {
         "boards.truncated":
             "顯示最新 {shown} 片，共 {total} 片；另外 {hidden} 片不在這一頁上。"
             "上面的計數是對整張表數的，不是對這一頁數的。",
-        "boards.empty": '還沒有任何板級處置。',
-        "boards.empty_hint": '跑一片板就會有：',
-        "boards.board": '板',
+        "boards.empty": '尚無 PCB 處置紀錄。',
+        "boards.empty_hint": '執行一片 PCB 即會產生：',
+        "boards.board": 'PCB 編號',
         "boards.disposition": '處置',
         "boards.regions": '旗標區域',
         "boards.confirmed": '確認為缺陷',
         "boards.still_waiting": '等待人工',
         "boards.open": '看紀錄 →',
-        "board.title": '板 {stem}',
-        "board.disposition": '板級處置',
+        "board.title": 'PCB {stem}',
+        "board.disposition": 'PCB 處置',
         "board.sub":
-            "這片板被判定了什麼，以及在什麼條件下判定的。一整批退回來時稽核員"
+            "本片 PCB被判定了什麼，以及在什麼條件下判定的。一整批退回來時稽核員"
             "會問的問題，都在這一頁：誰放行的、什麼時候、當時生效的是哪個模型"
             "和哪組門檻。",
-        "board.none_yet": "尚未記錄板級處置。",
+        "board.none_yet": "尚未記錄 PCB 處置。",
         "board.live_basis":
             "{count} 個旗標區域：{confirmed} 個確認為缺陷、{pending} 個仍等待人工、"
             "{dismissed} 個已排除",
@@ -220,7 +220,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "board.absence_unavailable": 'unavailable：寫入時仍無法指出模型',
         "board.absence_null": 'null：不應出現，出現即為缺陷',
         "board.regions_count": '{count} 個旗標區域',
-        "board.not_dispositioned": '尚未有板級處置——仍有區域等待判定',
+        "board.not_dispositioned": '尚未有 PCB 處置——仍有區域待複判',
         "corrections.title": '作業員推翻模型的紀錄',
         "corrections.sub":
             "每一列都是 agent 交出來、由人判定過的區域。標記為「推翻」的，"
@@ -256,7 +256,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "login.no_operators": '尚未設定任何作業員。用下列指令新增：',
         "login.secret_hint": 'session 簽章金鑰來自 AOI_AGENT_SESSION_SECRET。',
         "login.failed": '姓名或通行碼錯誤。',
-        "analysis.title": '問一個關於產線的問題',
+        "analysis.title": '產線查詢',
         "analysis.ask": '問',
         "analysis.placeholder": "例如：L2-M22 的 open 是不是不尋常？",
         "analysis.s4_timings":
@@ -311,9 +311,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "tool.query_machine_stats": "機台比較",
         "tool.query_false_call_rate": "誤判駁回率",
         "tool.query_machine_events": '機台事件紀錄',
-        "tool.query_board_context": "單板脈絡",
+        "tool.query_board_context": "PCB 脈絡",
         "tool.search_standards": "驗收標準檢索",
-        "tool.list_candidates": "單板區域清單",
+        "tool.list_candidates": "PCB 區域清單",
     },
     "en": {
         # -- charts ---------------------------------------------------------
@@ -345,17 +345,17 @@ STRINGS: dict[str, dict[str, str]] = {
             "What it can answer:",
 
         "station.name": 're-verification station',
-        "nav.queue": 'queue',
-        "nav.corrections": 'corrections',
-        "nav.ask": 'ask',
-        "nav.sign_out": 'sign out',
+        "nav.queue": 'Review queue',
+        "nav.corrections": 'Corrections',
+        "nav.ask": 'Line analytics',
+        "nav.sign_out": 'Sign out',
         "locale.switch": 'switch language',
         "common.region": 'region',
         "common.model_said": 'model said',
         "common.confidence": 'conf',
         "common.when_utc": 'when (UTC)',
         "common.none": '—',
-        "queue.title": 'Regions waiting for a person',
+        "queue.title": 'Regions awaiting review',
         "queue.waiting": 'waiting',
         "queue.sub":
             'Every row is a region the vision model could not settle and the agent declined to guess at. Oldest first.',
@@ -372,7 +372,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "region.declined_before": "{count} people have looked at this region and said they could not judge it:",
         "region.declined_by": "{operator} at {when} UTC",
         "region.declined_no_note": "(no reason given)",
-        "deferred.title": "Regions nobody could judge",
+        "deferred.title": "Regions awaiting senior review",
         "deferred.sub": "Every row is a region at least one person looked at and could not read. The ones the most people handed back are first — that is the only ranking here that carries information.",
         "deferred.no_senior": "Nobody is configured as senior, so nothing on this page can be answered by anyone. Give one operator --role senior with scripts/add_operator.py.",
         "deferred.needs_senior": "You are an operator: you can see these but not answer them — they are the ones somebody else already could not read.",
@@ -384,8 +384,8 @@ STRINGS: dict[str, dict[str, str]] = {
             "line below, and it comes from the credential file; but nothing "
             "here hands a particular region to a particular person and nobody "
             "is notified. Emptying this list happens at handover, not here.",
-        "nav.boards": 'boards',
-        "nav.deferred": "Can't tell",
+        "nav.boards": 'PCB dispositions',
+        "nav.deferred": "Senior review",
         "queue.deferred_link": "{count} more that nobody could judge →",
         "queue.empty": 'Nothing waiting.',
         "queue.empty_hint": 'Feed the queue with',
@@ -401,7 +401,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "region.line": 'line',
         "region.machine": 'machine',
         "region.shift": 'shift',
-        "region.board_record": 'board record',
+        "region.board_record": 'PCB record',
         "region.waiting_on_you": 'waiting on you',
         "region.already_answered": 'already answered',
         "region.handed_over_because": 'the agent handed this over because',
@@ -410,7 +410,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "region.triptych_alt":
             'template, test and difference around the flagged region',
         "region.template": 'golden template',
-        "region.under_test": 'board under test',
+        "region.under_test": 'PCB under test',
         "region.difference": 'difference',
         "region.what_model_read": 'What the model read',
         "region.class": 'class',
@@ -420,7 +420,7 @@ STRINGS: dict[str, dict[str, str]] = {
             'the 64 px window the model actually classified — if it is off the region, the disagreement is the crop, not the classifier',
         "region.production_context": 'Production context',
         "region.lot_average": 'lot average',
-        "region.this_board": 'this board',
+        "region.this_board": 'this PCB',
         "region.inspected": 'inspected',
         "region.by_machine": '{defect_type} by machine, last {days} days',
         "region.fleet": 'fleet',
@@ -449,7 +449,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "region.back_to_queue": 'Back to the queue →',
         "region.path": 'path',
         "region.timings": 'timings',
-        "boards.title": 'Boards this system has judged',
+        "boards.title": 'PCB dispositions',
         "boards.sub":
             "The queue holds the regions the agent could not settle -- the "
             "small part that failed. This page is the other side: every board "
@@ -465,22 +465,22 @@ STRINGS: dict[str, dict[str, str]] = {
             "Showing the {shown} most recent of {total}; {hidden} are not on "
             "this page. The counts above are taken over the whole table, not "
             "over this page.",
-        "boards.empty": 'No board has been dispositioned yet.',
-        "boards.empty_hint": 'Running one board is all it takes:',
-        "boards.board": 'board',
+        "boards.empty": 'No PCB has been dispositioned yet.',
+        "boards.empty_hint": 'Run one PCB to populate this page:',
+        "boards.board": 'PCB',
         "boards.disposition": 'disposition',
         "boards.regions": 'flagged',
         "boards.confirmed": 'confirmed',
         "boards.still_waiting": 'waiting on a person',
         "boards.open": 'record →',
-        "board.title": 'board {stem}',
-        "board.disposition": 'Board disposition',
+        "board.title": 'PCB {stem}',
+        "board.disposition": 'PCB disposition',
         "board.sub":
             "What was decided about this board, and under what. One page for "
             "the question an auditor asks after a batch comes back: who "
             "released it, when, and which model and thresholds were in force "
             "when they did.",
-        "board.none_yet": "No board-level disposition recorded yet.",
+        "board.none_yet": "No PCB-level disposition recorded yet.",
         "board.live_basis":
             "{count} flagged regions: {confirmed} confirmed as defects, "
             "{pending} still waiting on a person, {dismissed} dismissed",
@@ -548,7 +548,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "login.secret_hint":
             'The session signing key comes from AOI_AGENT_SESSION_SECRET.',
         "login.failed": 'That name and passphrase do not match.',
-        "analysis.title": 'Ask a question about the line',
+        "analysis.title": 'Line analytics',
         "analysis.ask": 'Ask',
         "analysis.placeholder": "e.g. is L2-M22's open rate unusual?",
         "analysis.s4_timings":

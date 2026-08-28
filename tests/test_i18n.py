@@ -108,7 +108,7 @@ def test_the_station_opens_in_the_language_the_line_reads(client):
     page = client.get("/").text
 
     assert 'lang="zh-TW"' in page
-    assert "等待人工判定的區域" in page
+    assert "待人工複判的區域" in page
 
 
 def test_the_switch_changes_the_language_and_comes_back_to_the_page(client):
