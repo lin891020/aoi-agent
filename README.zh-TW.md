@@ -43,7 +43,7 @@ defect，false call 也是用真的演算法跑出來的，不是編的。
   （PCB-AoI）上 YOLO26n 偵測器找得到 92% 的 defect，但它的信心在同一個預算下只省
   得掉 1.2% 的複判。兩個都是發現，不是缺口——見
   [它在哪裡失效](#它在哪裡失效兩份新資料集兩個不)。
-- **1,274 個測試**，沒有一個呼叫模型或需要 GPU；25 個要磁碟上有資料集，有標記。
+- **1,276 個測試**，沒有一個呼叫模型或需要 GPU；25 個要磁碟上有資料集，有標記。
 
 ## Demo
 
@@ -75,7 +75,7 @@ uv run python -m aoi_agent board 20085294 --queue        # 一片板走整條 fl
 uv run python -m aoi_agent station                       # http://127.0.0.1:8110
 ```
 
-`uv run pytest` 跑 1,274 個測試，不需要模型、GPU 或資料集。所有量測腳本、容器、
+`uv run pytest` 跑 1,276 個測試，不需要模型、GPU 或資料集。所有量測腳本、容器、
 每個指令寫出什麼，在[怎麼跑](#怎麼跑)。
 
 ## 結果
@@ -483,7 +483,7 @@ uv run python -m aoi_agent corrections                   # 作業員推翻 model
 `gpt-oss:20b`）。全部在本機跑，沒有任何東西離開這台機器 —— 在產線上這是要求，不是
 偏好。
 
-**1,274 個測試。** 其中 1,249 個在乾淨 checkout 上就能在 CI 跑完 —— 它們自己在
+**1,276 個測試。** 其中 1,249 個在乾淨 checkout 上就能在 CI 跑完 —— 它們自己在
 tmpdir 裡建 store、建 Chroma collection、建板子，model 是 stub 掉的。另外 25 個要磁碟
 上有資料集，帶 `dataset` marker；CI job 每次跑完都會把它們列出來，因為「測試
 數量默默變少但綠燈照亮」正是那個 job 要防的事。

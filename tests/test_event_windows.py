@@ -137,3 +137,47 @@ def test_the_planners_domain_for_relative_to_is_the_recorded_kinds(store):
     domains = store_domains()
     assert domains["relative_to"] == {"parameter_change"}
     assert domains["side"] == set(production.SIDES)
+
+
+def test_a_window_filtered_to_one_class_reports_no_open_share(store):
+    """The share of opens inside a window filtered to `open` is 1 by
+    construction, and inside one filtered to `short` it is 0. A planner that
+    split the question into "opens before" and "all defects before" got a
+    chart of two full bars from exactly this on 2026-08-28. The filtered
+    window keeps its counts and says why the share is not there."""
+    filtered = production.query_defect_history(
+        machine_id="M32", relative_to="parameter_change", side="before", defect_type="open"
+    )
+    unfiltered = production.query_defect_history(
+        machine_id="M32", relative_to="parameter_change", side="before"
+    )
+
+    assert filtered["open_share"]["value"] is None
+    assert "by construction" in filtered["open_share"]["basis"]
+    assert filtered["defects_total"] == filtered["by_class"]["open"]
+    assert 0 < unfiltered["open_share"]["value"] < 1
+
+
+def test_the_chart_draws_only_the_unfiltered_windows(store):
+    """Five-call plans -- events, then opens and all-defects on each side --
+    must still chart as two bars, before and after, from the unfiltered pair."""
+    from aoi_agent.analysis.charts import chart_spec_for
+
+    calls = [
+        dict(machine_id="M32", relative_to="parameter_change", side="before", defect_type="open"),
+        dict(machine_id="M32", relative_to="parameter_change", side="before"),
+        dict(machine_id="M32", relative_to="parameter_change", side="after", defect_type="open"),
+        dict(machine_id="M32", relative_to="parameter_change", side="after"),
+    ]
+    results = [
+        {"tool": "query_defect_history", "args": c, "ok": True,
+         "data": production.query_defect_history(**c)}
+        for c in calls
+    ]
+
+    spec = chart_spec_for(results)
+
+    assert spec and spec["title_key"] == "chart.title.open_share_around_event"
+    points = spec["series"][0]["points"]
+    assert [p["x"] for p in points] == ["before", "after"]
+    assert points[0]["y"] > points[1]["y"], "opens fall after the event in this store"

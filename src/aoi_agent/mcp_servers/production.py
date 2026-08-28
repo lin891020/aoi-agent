@@ -168,17 +168,33 @@ def query_defect_history(
         low, high = wilson(opens, total)
         out["event_at"] = anchor.isoformat()
         out["flagged_regions"] = flagged
-        out["open_share"] = {
-            "value": round(opens / total, 4) if total else None,
-            "interval_95": [round(low, 4), round(high, 4)],
-            "basis": (
-                "share of the defects the re-verifier confirmed in this window "
-                "that it classified as open (false calls are not in the "
-                "denominator); the interval is a Wilson interval on that "
-                "count, and two windows whose intervals overlap have not been "
-                "shown to differ"
-            ),
-        }
+        if defect_type:
+            # A window filtered to one class has a share of opens that is 1 or
+            # 0 by construction, and a planner that splits the question into
+            # "opens before" and "all defects before" would otherwise get a
+            # chart of two full bars. The number is not reported; the reason
+            # is, so the prose can say why and the chart draws only the
+            # unfiltered windows.
+            out["open_share"] = {
+                "value": None, "interval_95": None,
+                "basis": (
+                    f"not reported: this window is filtered to {defect_type!r}, "
+                    "so the share of opens in it is 1 or 0 by construction; "
+                    "the share is on the unfiltered window for the same side"
+                ),
+            }
+        else:
+            out["open_share"] = {
+                "value": round(opens / total, 4) if total else None,
+                "interval_95": [round(low, 4), round(high, 4)],
+                "basis": (
+                    "share of the defects the re-verifier confirmed in this window "
+                    "that it classified as open (false calls are not in the "
+                    "denominator); the interval is a Wilson interval on that "
+                    "count, and two windows whose intervals overlap have not been "
+                    "shown to differ"
+                ),
+            }
     return out
 
 
