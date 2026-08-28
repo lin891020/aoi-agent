@@ -1,13 +1,27 @@
 # AOI-Agent
 
-[![tests](https://github.com/lin891020/aoi-agent/actions/workflows/tests.yml/badge.svg)](https://github.com/lin891020/aoi-agent/actions/workflows/tests.yml)
-&nbsp;·&nbsp; [English](README.md)
-
 **AOI 標出來的每一個點都要再看一次 —— 但先看的是 model，不是人。**
 
-PCB 產線上的 AOI 是照 recall 去調的，所以一定 over-flag。標出來的每一個區域現在
-都要送到複判站給人看，而人看完大部分都是沒事的 false call。這個專案在那條 queue
-前面放一個 vision model，後面再放一個 agent，接手 model 自己收不掉的那些。
+[![tests](https://github.com/lin891020/aoi-agent/actions/workflows/tests.yml/badge.svg)](https://github.com/lin891020/aoi-agent/actions/workflows/tests.yml)
+![python 3.12](https://img.shields.io/badge/python-3.12-3776AB)
+![PyTorch · LangGraph · MCP · FastAPI](https://img.shields.io/badge/PyTorch%20%C2%B7%20LangGraph%20%C2%B7%20MCP%20%C2%B7%20FastAPI-2d3142)
+![licence MIT](https://img.shields.io/badge/licence-MIT-0B6455)
+&nbsp; **[English version →](README.md)**
+
+PCB 產線上的 AOI 是照 recall 去調的，所以一定 over-flag：標出來的每一個區域都要送
+給人看，而人看完大部分是沒事的。這個專案在那條 queue 前面放一個 ResNet-18 複判模型
+——**在 ≤0.5% 的 escape budget 下省掉 52.8% 的人工複判**——後面放一個 LangGraph
+agent 接手模型收不掉的，最後透過可持久化的 hand-off 交給作業員。第二個入口 `/ask`
+用一份經過驗證的查詢計畫和從資料畫出來的圖，回答領班的白話問題。全部在本機跑；底
+下每個數字都指得到產生它的腳本。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/disposition-flow-dark.svg">
+  <img alt="一個被標出的區域怎麼被處置：複判模型先分類；有把握的 false call 直接排除、有把握的 defect 直接確認，都不經過語言模型；其餘的撈脈絡、由 LLM 寫理由，再依分類器的信心決定，或透過可持久化的 interrupt 交給作業員。" src="docs/diagrams/disposition-flow-light.svg" width="100%">
+</picture>
+
+<sub>一個被標出的區域，從頭到尾。圖由 `scripts/render_diagrams.py` 讀 graph 的 node 名和程
+式裡的門檻畫出來。`/ask` 的流程圖在[下面](#問產線問題--ask)。</sub>
 
 資料是 [DeepPCB](https://github.com/tangsanli5201/DeepPCB)：真的板子掃描、真的
 defect，false call 也是用真的演算法跑出來的，不是編的。
@@ -320,10 +334,8 @@ threshold、六十張測試圖和很寬的區間、一次訓練一個種子。`s
 
 ## 怎麼運作的
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/disposition-flow-dark.svg">
-  <img alt="一個被標出的區域怎麼被處置：複判模型先分類；有把握的 false call 直接排除、有把握的 defect 直接確認，都不經過語言模型；其餘的撈脈絡、由 LLM 寫理由，再依分類器的信心決定，或透過可持久化的 interrupt 交給作業員。" src="docs/diagrams/disposition-flow-light.svg" width="100%">
-</picture>
+處置流程就是這一頁最上面那張圖。底下是同一條 flow 的文字版，然後是圖上看不出來
+的那幾件事。
 
 <details>
 <summary>同一條 flow 的文字版</summary>
