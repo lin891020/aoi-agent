@@ -236,8 +236,7 @@ training on them would have taught the model to dismiss real defects.
 
 ### Why a graph and not a loop
 
-The confidence gate alone would fit in a `while` loop. The human hand-off is
-what does not: an escalated candidate has to suspend mid-run, persist
+A confidence gate alone fits in a loop. The human hand-off does not: an escalated candidate has to suspend mid-run, persist
 everything, and resume whenever an operator gets to it — possibly days later,
 without re-running any tools. That is what LangGraph's checkpointer and
 `interrupt` provide.
@@ -249,9 +248,8 @@ instead.
 
 ## The review station
 
-The escalation edge has to end somewhere, and a CLI prompt is not it — the line
-does not stop to ask a question. Escalations go to a queue, and an operator
-answers them when they get to it.
+Escalations go to a queue; an operator answers them when available. The line
+does not stop for a prompt.
 
 ```bash
 uv run python -m aoi_agent board 20085294 --queue   # run a board, queue what it cannot settle
@@ -262,8 +260,7 @@ uv run python -m aoi_agent station                  # http://aoi.test
 `http://127.0.0.1:8110` keeps working either way. If the station is not running,
 `aoi.test` shows the start command instead of a blank error.
 
-The station shows the operator exactly the evidence the agent had, and nothing
-else:
+The station shows the operator the evidence the agent had:
 
 - **the golden template, the board under test, and their difference**, side by
   side at a legible scale with the flagged region marked. The difference alone
@@ -340,10 +337,10 @@ that then exits, and finishes it from a second one.
 
 ## Asking the line a question — `/ask`
 
-A second entrance, for a different person. The queue answers "what do I do with
-this region"; `/ask` answers what a shift supervisor walks up with — "is M22
-drifting, and does that matter". It reads the same MCP tools the disposition
-path uses, and it dispositions nothing.
+A second entrance for a different user. The queue answers "what do I do with
+this region"; `/ask` answers a shift supervisor's question — "is M22 drifting,
+and does it matter". It reads the same MCP tools as the disposition path and
+dispositions nothing.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/analysis-flow-dark.svg">
@@ -378,7 +375,7 @@ reports "no difference" on the controls.
 The production tools expose typed parameters over a fixed query set. The model
 fills parameters; it does not write SQL.
 
-This is a judgement about the failure mode, not the difficulty. A generated
+The reason is the failure mode, not the difficulty. A generated
 query that is syntactically valid but semantically wrong returns a
 plausible-looking number with no error, and in a disposition context a plausible
 wrong number is worse than a crash, because it gets acted on. Parameter filling
@@ -452,8 +449,8 @@ cost gets *worse* past batch 8 by several-fold — a property of the model's CPU
 convolution path, not of this machine's core count, checked across thread
 counts. Batch at 8 on CPU.
 
-This section used to read "tens of milliseconds" with no run behind it. It was
-wrong by more than an order of magnitude, in the pessimistic direction.
+An earlier version of this section stated "tens of milliseconds" without a
+measurement; the measured figure is an order of magnitude lower.
 → [the run](docs/benchmarks.md#re-verifier-latency--what-one-candidate-costs-and-on-what-hardware)
 
 ### Quantising it, priced at the escape budget

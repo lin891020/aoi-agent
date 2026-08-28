@@ -212,8 +212,7 @@ model 夠強。把 escalate 這條邊拿掉，同樣的 budget 就得用複判�
 
 ## 複判站
 
-Escalate 這條邊總得有個終點，而 CLI prompt 不是 —— 產線不會停下來等人回答問題。
-Escalation 進 queue，作業員有空再回。
+Escalation 進入 queue，作業員有空時處理；產線不會為了一個 prompt 停下來。
 
 ```bash
 uv run python -m aoi_agent board 20085294 --queue   # 跑一片板子，收不掉的丟進 queue
@@ -224,7 +223,7 @@ uv run python -m aoi_agent station                  # http://aoi.test
 `http://127.0.0.1:8110` 一樣可以用。站沒開的時候打 `aoi.test`
 會看到啟動指令，而不是一片空白的錯誤頁。
 
-站上顯示的就是 agent 當時看到的證據，多的沒有：
+站台顯示 agent 當時看到的證據：
 
 - **golden template、待測板、以及兩者的 difference**，並排、放到看得清楚的比例，被標
   的區域框起來。只看 difference 就是 AOI 看到的東西，而只憑 difference 判斷正是
@@ -283,9 +282,9 @@ uv run python scripts/add_operator.py --list
 
 ## 問產線問題 —— `/ask`
 
-第二個入口，給另一種人用。Queue 回答的是「這個區域我要怎麼處理」；`/ask` 回答的是領
-班走過來會問的那種 —— 「M22 是不是在飄，這件事要不要緊」。它讀的是 disposition path
-同一組 MCP tool，而且它什麼都不 disposition。
+第二個入口，給另一種使用者。Queue 回答「這個區域怎麼處理」；`/ask` 回答主管的問題
+——「M22 是不是在飄、要不要緊」。它讀取與 disposition path 相同的 MCP tool，且不做
+任何 disposition。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/analysis-flow-dark.zh-TW.svg">
@@ -312,7 +311,7 @@ Wilson 區間。種子種了一個有效果的事件和三個沒效果的，讓�
 
 生產相關的 tool 都是固定 query set 上的 typed 參數。Model 填參數，它不寫 SQL。
 
-這是對失效模式的判斷，不是難度問題。一句語法正確但語意錯的 query 會回一個看起來很
+原因在失效模式，不在難度。一句語法正確但語意錯的 query 會回一個看起來很
 合理的數字，而且不會報錯；在判定的情境下，一個貌似合理的錯數字比 crash 還糟 ——
 因為它會被拿去用。填參數一樣考得到 tool calling 的能力，而 query set 還留得住人工
 review。這也是 `/ask` 要驗參數**值**的原因：`line_id="L4"` 不會噴錯也不會回東西，
@@ -378,8 +377,7 @@ MPS 上不是免費的。
 數確認過，那是 model 在 CPU 上 convolution 路徑的性質，不是這台筆電核心數的問題。
 CPU 就 batch 8。
 
-這一節以前寫的是「數十毫秒」，底下沒有任何一次 run。它錯了超過一個數量級，而且錯在
-悲觀的方向。
+這一節先前寫「數十毫秒」，沒有量測依據；實測低了一個數量級。
 → [這次的 run](docs/benchmarks.md#re-verifier-latency--what-one-candidate-costs-and-on-what-hardware)
 
 ### 量化它，並且用 escape budget 的價格來算
