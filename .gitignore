@@ -20,4 +20,4 @@ __pycache__/
 .pytest_cache/
 
 # demo recordings are produced locally (scratch demo_record.py) and published to YouTube
-docs/demo/*.mp4
+docs/demo/

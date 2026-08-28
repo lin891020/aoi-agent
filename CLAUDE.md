@@ -52,7 +52,7 @@ src/aoi_agent/
                             scheme does not protect against
     cli.py
 scripts/                    gate_check, build_patches, train, report, seed_store,
-                            analysis_eval, add_operator, render_diagrams,
+                            analysis_eval, add_operator, render_diagrams, demo_record,
                             build_detector_patches, crop_reverifier_report,
                             mark_unattributed_resolutions, ...
 tests/                      1,278 tests; dataset-dependent ones behind `-m dataset`
@@ -82,6 +82,8 @@ uv run python scripts/train.py --patches data/patches_pcbaoi --out models/pcbaoi
                                                  # the same ResNet-18, minus the template channel
 uv run python scripts/crop_reverifier_report.py  # its ordering against the detector's, same boxes
 uv run python scripts/render_diagrams.py         # the two README flow diagrams, from the graphs' constants
+uv run --with playwright python scripts/demo_record.py --lang zh-TW --stem <stem>
+                                                 # the demo video: Playwright + say + ffmpeg, ~5 min, macOS only
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
 uv run python scripts/routing_report.py          # how much never reaches the LLM
