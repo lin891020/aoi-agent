@@ -113,7 +113,7 @@ STRINGS: dict[str, dict[str, str]] = {
             '要有人來清這份清單，得靠交接，不靠這個站台。',
         "nav.boards": 'PCB 處置',
         "nav.deferred": '待資深複判',
-        "queue.deferred_link": '另外有 {count} 區沒有人能判斷 →',
+        "queue.deferred_link": '另外有 {count} 區待資深複判 →',
         "queue.empty": '沒有待處理項目。',
         "queue.empty_hint": '用下列指令餵入佇列：',
         "queue.false_call_probability": 'P(誤判)',
