@@ -26,8 +26,8 @@ from aoi_agent.graph.flow import CONFIDENT, ESCALATE_BELOW  # noqa: E402
 
 OUT = Path(__file__).resolve().parents[1] / "docs" / "diagrams"
 
-SANS = "'Geist', -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif"
-MONO = "'Geist Mono', 'SF Mono', Menlo, Consolas, monospace"
+SANS = "'Geist', -apple-system, 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei', 'Segoe UI', Helvetica, Arial, sans-serif"
+MONO = "'Geist Mono', 'SF Mono', Menlo, Consolas, 'PingFang TC', 'Noto Sans TC', monospace"
 
 THEMES = {
     "light": {
@@ -43,6 +43,11 @@ THEMES = {
         "accent_tint": "rgba(240,138,89,0.10)", "node": "#393e53",
     },
 }
+
+
+def _cells(text: str) -> float:
+    """Width in latin-character cells: a CJK glyph takes about two."""
+    return sum(1.9 if ord(ch) > 0x2E7F else 1.0 for ch in text)
 
 
 class Canvas:
@@ -67,7 +72,7 @@ class Canvas:
 
     def label(self, x: int, y: int, text: str, anchor: str = "middle") -> None:
         """A masked arrow label whose mask bottom sits 8 px above ``y``."""
-        width = 8 + len(text) * 6.2
+        width = 8 + _cells(text) * 6.2
         left = x - width / 2 if anchor == "middle" else x
         self.arrows.append(
             f'<rect x="{left:.0f}" y="{y - 24}" width="{width:.0f}" height="14" rx="2" fill="{self.t["paper"]}"/>'
@@ -77,7 +82,7 @@ class Canvas:
 
     def side_label(self, x: int, y: int, text: str, left: bool = False) -> None:
         """A label beside a vertical segment, 8 px clear of it on either side."""
-        width = 8 + len(text) * 6.2
+        width = 8 + _cells(text) * 6.2
         if left:
             rect_x, text_x, anchor = x - 8 - width, x - 12, "end"
         else:
@@ -168,7 +173,7 @@ class Canvas:
             elif kind == "dot":
                 parts.append(f'<circle cx="{x + 8}" cy="{y + 5}" r="4" fill="{t["ink"]}"/>')
             parts.append(f'<text x="{x + 24}" y="{y + 8}" fill="{t["muted"]}" font-size="8" font-family="{MONO}" letter-spacing="0.06em">{text}</text>')
-            x += 32 + int(len(text) * 5.4) + 24
+            x += 32 + int(_cells(text) * 5.4) + 24
         self.boxes.append("".join(parts))
 
     # ---- output -----------------------------------------------------------
@@ -191,11 +196,95 @@ class Canvas:
         )
 
 
-def disposition(theme_name: str) -> str:
+STRINGS = {
+    "en": {
+        "candidate": ("AOI candidate", "template · test · difference"),
+        "classify": ("ResNet-18 re-verifier", "class + P(false call) · 2.5 ms CPU"),
+        "sure": "sure enough?",
+        "dismiss": "P(FALSE CALL) ≥ {thr} · DISMISS",
+        "confirm": "DEFECT ≥ {conf}, NOT OPEN · CONFIRM",
+        "else": "EVERYTHING ELSE",
+        "gather": ("gather context", "3 MCP tools · criteria scoped by class"),
+        "reason": ("LLM writes the rationale", "explains, never decides · 60 s limit"),
+        "decide": "CONFIDENCE ≥ {thr} · DECIDE",
+        "escalate": "BELOW · ESCALATE",
+        "verdict": ("classifier's verdict stands", "dismiss · confirm · decide"),
+        "operator": ("an operator answers", "interrupt() · checkpoint · queue"),
+        "aside1": "82.2% of regions never reach the LLM;",
+        "aside2": "the operator's answer is the next label.",
+        "legend1": [("terminal", "start / end"), ("step", "node in graph/flow.py"),
+                    ("diamond", "routes on the classifier"), ("focal", "the one place a person enters")],
+        "question": ("supervisor's question", "zh-TW or en · free text"),
+        "plan": ("plan", "LLM call #1 · typed plan"),
+        "valid": "valid?",
+        "no": "NO · EVERY ERROR SHOWN",
+        "send": "SEND ×N · INDEPENDENT FACTS",
+        "refused": ("refused, with every error", "shown, never retried"),
+        "tool": ("run one tool", "typed args · no SQL"),
+        "tool_note": ("a failed branch returns", "data, not an exception"),
+        "collect": ("collect", "operator.add reducer"),
+        "chart": "CHART FROM RESULT SHAPE",
+        "synth": ("synthesise", "LLM call #2 · prose only"),
+        "page": ("answer page", "prose beside its figures"),
+        "store": ("analysis_runs", "plan + results, redrawn"),
+        "recorded": "RECORDED",
+        "aside3": ["The validator checks the tool, the argument names and",
+                   "the argument values against what the store holds;",
+                   "the LLM chooses lookups and writes the sentence, nothing else."],
+        "legend2": [("terminal", "start / end"), ("step", "node in analysis/graph.py"),
+                    ("focal", "the gate that refuses"), ("dot", "Send fan-out"), ("store", "table")],
+        "title1": "How one flagged region is dispositioned",
+        "title2": "How /ask answers a supervisor's question",
+    },
+    "zh-TW": {
+        "candidate": ("AOI 標出的區域", "範本 · 待測板 · 差異圖"),
+        "classify": ("ResNet-18 複判模型", "類別 + P(誤判) · CPU 2.5 ms"),
+        "sure": "夠確定嗎？",
+        "dismiss": "P(誤判) ≥ {thr} · 排除",
+        "confirm": "缺陷 ≥ {conf} 且非 open · 確認",
+        "else": "其餘",
+        "gather": ("撈脈絡", "3 個 MCP 工具 · 標準依類別 scope"),
+        "reason": ("LLM 寫理由", "只解釋、不決定 · 60 秒上限"),
+        "decide": "信心 ≥ {thr} · 決定",
+        "escalate": "低於 · 交給人",
+        "verdict": ("分類器的判定成立", "排除 · 確認 · 決定"),
+        "operator": ("作業員回答", "interrupt() · checkpoint · 佇列"),
+        "aside1": "82.2% 的區域不會碰到 LLM；",
+        "aside2": "作業員的答案是下一輪的標籤。",
+        "legend1": [("terminal", "起點 / 終點"), ("step", "graph/flow.py 的 node"),
+                    ("diamond", "依分類器的數字分路"), ("focal", "唯一有人介入的地方")],
+        "question": ("領班的問題", "中文或英文 · 自由輸入"),
+        "plan": ("規劃", "LLM 呼叫 #1 · 型別化計畫"),
+        "valid": "有效？",
+        "no": "否 · 列出每一條錯誤",
+        "send": "SEND ×N · 彼此獨立的事實",
+        "refused": ("拒答，附全部錯誤", "顯示，不重試"),
+        "tool": ("跑一個工具", "型別化參數 · 沒有 SQL"),
+        "tool_note": ("失敗的分支回傳資料，", "不是例外"),
+        "collect": ("收集", "operator.add reducer"),
+        "chart": "圖從結果的形狀推出",
+        "synth": ("合成", "LLM 呼叫 #2 · 只寫文字"),
+        "page": ("答案頁", "文字旁邊就是數字"),
+        "store": ("analysis_runs", "計畫 + 結果，重畫不重跑"),
+        "recorded": "存檔",
+        "aside3": ["驗證器對照真實的工具簽名、參數名、",
+                   "以及 store 裡實際存在的值；",
+                   "LLM 只挑查詢、寫句子，其他都不歸它。"],
+        "legend2": [("terminal", "起點 / 終點"), ("step", "analysis/graph.py 的 node"),
+                    ("focal", "會拒答的關卡"), ("dot", "Send 展開"), ("store", "資料表")],
+        "title1": "一個被標出的區域怎麼被處置",
+        "title2": "/ask 怎麼回答領班的問題",
+    },
+}
+
+
+def disposition(theme_name: str, lang: str = "en") -> str:
     t = THEMES[theme_name]
+    L = STRINGS[lang]
+    slug = f"disposition-{theme_name}" + ("" if lang == "en" else "-zh")
     c = Canvas(
-        f"disposition-{theme_name}", 960, 776, t,
-        "How one flagged region is dispositioned",
+        slug, 960, 776, t,
+        L["title1"],
         "Flowchart: the re-verifier classifies a flagged region; a confident false call is "
         "dismissed and a confident defect confirmed without a language model; anything else "
         "gathers production context and criteria, the LLM writes a rationale, and the region "
@@ -208,41 +297,40 @@ def disposition(theme_name: str) -> str:
     c.arrow("M480,72 V108")                                   # start -> classify
     c.arrow("M480,176 V208")                                  # classify -> D1
     c.arrow("M384,248 H144 Q136,248 136,256 V652 Q136,660 144,660 H356")  # dismiss
-    c.label(260, 248, f"P(FALSE CALL) ≥ {thr} · DISMISS")
+    c.label(260, 248, L["dismiss"].format(thr=thr))
     c.arrow("M576,248 H912 Q920,248 920,256 V652 Q920,660 912,660 H604")  # confirm
-    c.label(744, 248, f"DEFECT ≥ {conf}, NOT OPEN · CONFIRM")
+    c.label(744, 248, L["confirm"].format(conf=conf))
     c.arrow("M480,288 V316")                                  # D1 -> gather
-    c.side_label(480, 302, "EVERYTHING ELSE")
+    c.side_label(480, 302, L["else"])
     c.arrow("M480,380 V404")                                  # gather -> reason
     c.arrow("M480,468 V508")                                  # reason -> D2
     c.arrow("M480,588 V628")                                  # D2 -> verdict
-    c.side_label(480, 608, f"CONFIDENCE ≥ {thr} · DECIDE")
+    c.side_label(480, 608, L["decide"].format(thr=thr))
     c.arrow("M576,548 H668", accent=True)                     # D2 -> escalate
-    c.label(622, 548, "BELOW · ESCALATE")
+    c.label(622, 548, L["escalate"])
 
     # boxes
-    c.box(400, 24, 160, 48, "AOI candidate", "template · test · difference", kind="input")
-    c.box(352, 112, 256, 64, "ResNet-18 re-verifier", "class + P(false call) · 2.5 ms CPU", tag="CLASSIFY")
-    c.diamond(480, 248, 96, 40, "sure enough?")
-    c.box(352, 316, 256, 64, "gather context", "3 MCP tools · criteria scoped by class", tag="TOOLS")
-    c.box(352, 404, 256, 64, "LLM writes the rationale", "explains, never decides · 60 s limit", tag="LLM")
-    c.diamond(480, 548, 96, 40, "sure enough?")
-    c.box(360, 632, 240, 56, "classifier's verdict stands", "dismiss · confirm · decide", kind="terminal")
-    c.box(672, 516, 224, 64, "an operator answers", "interrupt() · checkpoint · queue", kind="focal", tag="HUMAN")
-    c.aside(672, 604, "82.2% of regions never reach the LLM;")
-    c.aside(672, 620, "the operator's answer is the next label.")
-    c.legend(736, [
-        ("terminal", "start / end"), ("step", "node in graph/flow.py"),
-        ("diamond", "routes on the classifier"), ("focal", "the one place a person enters"),
-    ])
+    c.box(400, 24, 160, 48, *L["candidate"], kind="input")
+    c.box(352, 112, 256, 64, *L["classify"], tag="CLASSIFY")
+    c.diamond(480, 248, 96, 40, L["sure"])
+    c.box(352, 316, 256, 64, *L["gather"], tag="TOOLS")
+    c.box(352, 404, 256, 64, *L["reason"], tag="LLM")
+    c.diamond(480, 548, 96, 40, L["sure"])
+    c.box(360, 632, 240, 56, *L["verdict"], kind="terminal")
+    c.box(672, 516, 224, 64, *L["operator"], kind="focal", tag="HUMAN")
+    c.aside(672, 604, L["aside1"])
+    c.aside(672, 620, L["aside2"])
+    c.legend(736, L["legend1"])
     return c.render()
 
 
-def analysis(theme_name: str) -> str:
+def analysis(theme_name: str, lang: str = "en") -> str:
     t = THEMES[theme_name]
+    L = STRINGS[lang]
+    slug = f"analysis-{theme_name}" + ("" if lang == "en" else "-zh")
     c = Canvas(
-        f"analysis-{theme_name}", 992, 568, t,
-        "How /ask answers a supervisor's question",
+        slug, 992, 568, t,
+        L["title2"],
         "Data-flow: a supervisor's question becomes a typed plan of tool calls from one LLM call; "
         "the plan is validated against real tool signatures and the store's value domains and refused "
         "with every error if it fails; valid calls fan out in parallel, results are collected with a "
@@ -254,47 +342,44 @@ def analysis(theme_name: str) -> str:
     c.arrow("M184,200 H220")                                  # question -> plan
     c.arrow("M384,200 H404")                                  # plan -> validate
     c.arrow("M480,240 V312")                                  # validate -> refused
-    c.side_label(480, 276, "NO · EVERY ERROR SHOWN")
+    c.side_label(480, 276, L["no"])
     c.arrow("M552,200 H572")                                  # validate -> dot
     c.arrow("M576,200 H604")                                  # dot -> run tools (middle)
     c.arrow("M576,200 V152 Q576,144 584,144 H604")            # dot -> run tools (top)
     c.arrow("M576,200 V248 Q576,256 584,256 H604")            # dot -> run tools (bottom)
-    c.label(576, 132, "SEND ×N · INDEPENDENT FACTS")
+    c.label(576, 132, L["send"])
     c.arrow("M768,144 H788 Q796,144 796,152 V180 Q796,188 804,188 H808")   # tools -> collect
     c.arrow("M768,200 H808")
     c.arrow("M768,256 H788 Q796,256 796,248 V220 Q796,212 804,212 H808")
     c.arrow("M880,224 V312")                                  # collect -> synthesise
-    c.side_label(880, 290, "CHART FROM RESULT SHAPE", left=True)
+    c.side_label(880, 290, L["chart"], left=True)
     c.arrow("M880,364 V428")                                  # synthesise -> page
     c.arrow("M808,460 H740")                                  # page -> store
-    c.label(774, 460, "RECORDED")
+    c.label(774, 460, L["recorded"])
 
     # boxes
-    c.box(24, 176, 160, 48, "supervisor's question", "zh-TW or en · free text", kind="input")
-    c.box(224, 172, 160, 56, "plan", "LLM call #1 · typed plan", tag="LLM")
-    c.diamond(480, 200, 72, 40, "valid?", focal=True)
-    c.box(400, 312, 160, 52, "refused, with every error", "shown, never retried", kind="terminal")
+    c.box(24, 176, 160, 48, *L["question"], kind="input")
+    c.box(224, 172, 160, 56, *L["plan"], tag="LLM")
+    c.diamond(480, 200, 72, 40, L["valid"], focal=True)
+    c.box(400, 312, 160, 52, *L["refused"], kind="terminal")
     c.dot(576, 200)
     c.boxes.append(  # a stack behind the tool node: one node, N branches
         f'<rect x="{616}" y="{124}" width="160" height="136" rx="6" fill="{t["node"]}" stroke="{t["ink"]}" stroke-opacity="0.35" stroke-width="1"/>'
         f'<rect x="{612}" y="{128}" width="160" height="136" rx="6" fill="{t["node"]}" stroke="{t["ink"]}" stroke-opacity="0.55" stroke-width="1"/>'
     )
-    c.box(608, 132, 160, 136, "run one tool", "typed args · no SQL", tag="MCP")
+    c.box(608, 132, 160, 136, *L["tool"], tag="MCP")
+    n1, n2 = L["tool_note"]
     c.boxes.append(
-        f'<text x="688" y="234" fill="{t["soft"]}" font-size="8" font-family="{MONO}" text-anchor="middle">a failed branch returns</text>'
-        f'<text x="688" y="246" fill="{t["soft"]}" font-size="8" font-family="{MONO}" text-anchor="middle">data, not an exception</text>'
+        f'<text x="688" y="234" fill="{t["soft"]}" font-size="8" font-family="{MONO}" text-anchor="middle">{n1}</text>'
+        f'<text x="688" y="246" fill="{t["soft"]}" font-size="8" font-family="{MONO}" text-anchor="middle">{n2}</text>'
     )
-    c.box(808, 176, 144, 48, "collect", "operator.add reducer")
-    c.box(808, 312, 144, 52, "synthesise", "LLM call #2 · prose only", tag="LLM")
-    c.box(808, 428, 144, 60, "answer page", "prose beside its figures", kind="terminal")
-    c.box(580, 428, 160, 60, "analysis_runs", "plan + results, redrawn", kind="store", tag="SQLITE")
-    c.aside(24, 468, "The validator checks the tool, the argument names and")
-    c.aside(24, 484, "the argument values against what the store holds;")
-    c.aside(24, 500, "the LLM chooses lookups and writes the sentence, nothing else.")
-    c.legend(528, [
-        ("terminal", "start / end"), ("step", "node in analysis/graph.py"),
-        ("focal", "the gate that refuses"), ("dot", "Send fan-out"), ("store", "table"),
-    ])
+    c.box(808, 176, 144, 48, *L["collect"])
+    c.box(808, 312, 144, 52, *L["synth"], tag="LLM")
+    c.box(808, 428, 144, 60, *L["page"], kind="terminal")
+    c.box(580, 428, 160, 60, *L["store"], kind="store", tag="SQLITE")
+    for i, line in enumerate(L["aside3"]):
+        c.aside(24, 468 + 16 * i, line)
+    c.legend(528, L["legend2"])
     return c.render()
 
 
@@ -303,6 +388,8 @@ def main() -> int:
     for theme in THEMES:
         (OUT / f"disposition-flow-{theme}.svg").write_text(disposition(theme))
         (OUT / f"analysis-flow-{theme}.svg").write_text(analysis(theme))
+        (OUT / f"disposition-flow-{theme}.zh-TW.svg").write_text(disposition(theme, "zh-TW"))
+        (OUT / f"analysis-flow-{theme}.zh-TW.svg").write_text(analysis(theme, "zh-TW"))
     for path in sorted(OUT.glob("*.svg")):
         print(path.relative_to(OUT.parents[1]), f"{path.stat().st_size:,} bytes")
     return 0

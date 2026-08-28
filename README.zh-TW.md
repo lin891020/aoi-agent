@@ -16,8 +16,8 @@ agent 接手模型收不掉的，最後透過可持久化的 hand-off 交給作�
 下每個數字都指得到產生它的腳本。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/disposition-flow-dark.svg">
-  <img alt="一個被標出的區域怎麼被處置：複判模型先分類；有把握的 false call 直接排除、有把握的 defect 直接確認，都不經過語言模型；其餘的撈脈絡、由 LLM 寫理由，再依分類器的信心決定，或透過可持久化的 interrupt 交給作業員。" src="docs/diagrams/disposition-flow-light.svg" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/disposition-flow-dark.zh-TW.svg">
+  <img alt="一個被標出的區域怎麼被處置：複判模型先分類；有把握的 false call 直接排除、有把握的 defect 直接確認，都不經過語言模型；其餘的撈脈絡、由 LLM 寫理由，再依分類器的信心決定，或透過可持久化的 interrupt 交給作業員。" src="docs/diagrams/disposition-flow-light.zh-TW.svg" width="100%">
 </picture>
 
 <sub>一個被標出的區域，從頭到尾。圖由 `scripts/render_diagrams.py` 讀 graph 的 node 名和程
@@ -326,8 +326,8 @@ uv run python scripts/add_operator.py --list
 同一組 MCP tool，而且它什麼都不 disposition。
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/analysis-flow-dark.svg">
-  <img alt="/ask 怎麼回答一個問題：一次 LLM 呼叫產生型別化的計畫；計畫對照真實的工具簽名和 store 的值域驗證，不過就連同每一條錯誤拒答；通過的呼叫平行展開，結果收集後從形狀推出圖表，第二次 LLM 呼叫在數字旁邊寫文字，整次執行存下來，圖是從資料重畫、不是重新規劃。" src="docs/diagrams/analysis-flow-light.svg" width="100%">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/analysis-flow-dark.zh-TW.svg">
+  <img alt="/ask 怎麼回答一個問題：一次 LLM 呼叫產生型別化的計畫；計畫對照真實的工具簽名和 store 的值域驗證，不過就連同每一條錯誤拒答；通過的呼叫平行展開，結果收集後從形狀推出圖表，第二次 LLM 呼叫在數字旁邊寫文字，整次執行存下來，圖是從資料重畫、不是重新規劃。" src="docs/diagrams/analysis-flow-light.zh-TW.svg" width="100%">
 </picture>
 
 一次 LLM call 產生一份 typed 的 plan。`validate_plan` 在任何東西跑起來之前分三層檢
