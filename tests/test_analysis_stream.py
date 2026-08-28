@@ -430,3 +430,31 @@ def test_the_join_is_on_the_wire_before_the_second_model_call_is_entered(
         "the join must be announced with the synthesis call still ahead of it, "
         f"not after it -- the model had been called with {at_the_event}"
     )
+
+
+def test_the_streamed_run_is_planned_in_the_language_it_is_recorded_under(client, monkeypatch):
+    """The stream path built its initial state without `lang`, so a question
+    asked from the English station was recorded under `en` and planned and
+    written in the default language -- the run said one thing and every
+    sentence on it said another. The language has to reach the planner the
+    same way `service.answer_question` sends it."""
+    from conftest import read_in
+
+    seen: list[list[dict]] = []
+    stub = StubClient()
+    original = stub.chat
+
+    def recording_chat(messages, **kwargs):
+        seen.append(messages)
+        return original(messages, **kwargs)
+
+    stub.chat = recording_chat
+    monkeypatch.setattr(station_app, "_analysis_graph",
+                        analysis.build_analysis_graph(stub, DOMAINS))
+
+    read_in(client, "en").get("/ask/stream", params={"question": "is M22 high"})
+
+    assert seen, "the stream never reached the planner"
+    system = seen[0][0]["content"]
+    assert "Write all prose you produce in English" in system
+    assert "Traditional Chinese" not in system

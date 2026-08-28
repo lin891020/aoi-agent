@@ -824,7 +824,7 @@ def _flow_events(run: dict) -> list[dict]:
     return events
 
 
-def _analysis_context(run: dict | None) -> dict:
+def _analysis_context(run: dict | None, locale: str | None = None) -> dict:
     """Everything ``analysis.html`` renders, for both of its entrances.
 
     A rejected or unparseable plan's reasons are not a key here. They reach a
@@ -853,7 +853,11 @@ def _analysis_context(run: dict | None) -> dict:
         # does not enforce is worse than a page whose coverage is a restart
         # behind.
         "coverage_days": analysis_domains()["max_days"],
-        "chart_svg": render_svg(run["chart"]) if run and run.get("chart") else "",
+        # In the reader's language: the spec stores keys, not sentences, so
+        # the same stored chart reads in whichever language the page is in.
+        # Until 2026-08-28 the locale was not passed and the chart came out
+        # in the default language under an English heading.
+        "chart_svg": render_svg(run["chart"], locale=locale) if run and run.get("chart") else "",
         # Passed as a callable rather than precomputed: the results are read
         # straight out of the store and nothing here should copy them to hang a
         # display field on. It is what keeps `ground_truth` filtered in Python,
@@ -884,7 +888,7 @@ def _analysis_context(run: dict | None) -> dict:
 @app.get("/ask", response_class=HTMLResponse)
 def ask_page(request: Request):
     return templates.TemplateResponse(
-        request, "analysis.html", _analysis_context(None)
+        request, "analysis.html", _analysis_context(None, locale_of(request))
     )
 
 
@@ -999,7 +1003,13 @@ def ask_stream(request: Request, question: str):
         yield ": stream-open\n\n"
         try:
             for update in graph.stream(
-                {"question": question.strip(), "results": [], "timings_ms": {}},
+                # `lang` in the initial state, as `service.answer_question`
+                # passes it. Until 2026-08-28 this path left it out, so a
+                # question asked from the English station was recorded under
+                # `en` and planned and written in the default language: the
+                # stored run said one thing and every sentence on it another.
+                {"question": question.strip(), "results": [], "timings_ms": {},
+                 "lang": asked_lang},
                 stream_mode="updates",
             ):
                 for node, payload in update.items():
@@ -1121,5 +1131,5 @@ def ask_result(request: Request, run_id: int):
     if run is None:
         raise HTTPException(404, f"no analysis run {run_id}")
     return templates.TemplateResponse(
-        request, "analysis.html", _analysis_context(run)
+        request, "analysis.html", _analysis_context(run, locale_of(request))
     )

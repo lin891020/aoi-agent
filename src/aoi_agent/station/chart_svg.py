@@ -84,6 +84,22 @@ def _slots(series: list[dict]) -> list:
     return slots
 
 
+def _split_title(title: str) -> tuple[str, str]:
+    """The headline, and the parenthetical qualifier it carries, on two lines.
+
+    The chart titles say what the figure is *and* what it is not ("the
+    re-verifier's judgement, not ground truth") in one string, because the
+    qualifier must not be separable from the number. It can still be drawn on
+    its own line: the string is split at the first opening bracket, in either
+    script, and the bracket is kept so the qualifier reads as one.
+    """
+    for bracket in (" (", "（"):
+        if bracket in title:
+            head, tail = title.split(bracket, 1)
+            return head, bracket.strip() + tail
+    return title, ""
+
+
 def render_svg(
     spec: dict, width: int = 720, height: int = 280, locale: str | None = None
 ) -> str:
@@ -92,7 +108,11 @@ def render_svg(
     if not series:
         return ""
 
-    pad_left, pad_right, pad_top, pad_bottom = 56, 16, 28, 44
+    # Three header lines above the plot -- title, its qualifier, the y-axis
+    # label -- rather than a title that runs off the right edge and a y-label
+    # drawn over the first bar, which is what a 90-character English title
+    # did to the event-window chart on 2026-08-28.
+    pad_left, pad_right, pad_top, pad_bottom = 56, 16, 60, 44
     plot_w = width - pad_left - pad_right
     plot_h = height - pad_top - pad_bottom
 
@@ -104,11 +124,16 @@ def render_svg(
     group_w = plot_w / max(1, len(slots))
     bar_w = group_w / (len(series) + 1)
 
+    headline, qualifier = _split_title(title)
     parts = [
         f'<svg viewBox="0 0 {width} {height}" width="100%" role="img" '
         f'aria-label="{_text(title or "chart")}">',
-        f'<text x="{pad_left}" y="18" fill="#e7e7ea" font-size="13">'
-        f'{_text(title)}</text>',
+        f'<text x="{pad_left}" y="16" fill="#e7e7ea" font-size="13">'
+        f'{_text(headline)}</text>',
+        f'<text x="{pad_left}" y="32" fill="#8b8b96" font-size="10">'
+        f'{_text(qualifier)}</text>',
+        f'<text x="{pad_left}" y="48" fill="#8b8b96" font-size="10">'
+        f'{_text(label_from(spec, "y_label", locale))}</text>',
         f'<line x1="{pad_left}" y1="{pad_top + plot_h}" x2="{width - pad_right}" '
         f'y2="{pad_top + plot_h}" stroke="#2e2e35"/>',
     ]
@@ -141,9 +166,5 @@ def render_svg(
             f'font-size="10" text-anchor="middle">{_text(label)}</text>'
         )
 
-    parts.append(
-        f'<text x="4" y="{pad_top + 8}" fill="#8b8b96" font-size="10">'
-        f'{_text(label_from(spec, "y_label", locale))}</text>'
-    )
     parts.append("</svg>")
     return "".join(parts)

@@ -1027,3 +1027,20 @@ def test_the_waiting_mark_is_drawn_rather_than_typed(client):
     assert "⟳" not in page, "no glyph reaches the document"
     assert "border-radius: 50%" in rule and "border-top-color" in rule
     assert "content:" not in rule, "and none is put back through CSS"
+
+
+def test_the_chart_reads_in_the_language_the_page_is_in(client):
+    """The spec stores keys, not sentences, so one stored chart should read
+    in whichever language the page is in. The run page rendered it without
+    the reader's locale, so an English page carried a Chinese chart title
+    under an English heading -- caught in a screenshot, not by a test."""
+    from conftest import read_in
+
+    location = client.post("/ask", data={"question": "is M22 high"},
+                           follow_redirects=False).headers["location"]
+
+    en = read_in(client, "en").get(location).text
+    zh = read_in(client, "zh-TW").get(location).text
+
+    assert "Defect share by machine" in en and "各機台缺陷佔比" not in en
+    assert "各機台缺陷佔比" in zh and "Defect share by machine" not in zh
