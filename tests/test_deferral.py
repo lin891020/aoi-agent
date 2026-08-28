@@ -571,3 +571,30 @@ def test_the_board_page_summary_follows_the_language_switch(station):
 
     assert "個旗標區域" in zh and "flagged regions" not in zh
     assert "flagged regions" in en
+
+
+def test_a_non_senior_sees_no_verdict_buttons_on_a_handed_back_region(station, senior_elsewhere):
+    """The route refused a non-senior verdict with a 403; the page still drew
+    the seven buttons, so the refusal came after the click. Seen in the demo
+    recording, not by a test -- every test posted to the route directly."""
+    from conftest import read_in
+
+    client, _ = station
+    client.post(f"/c/{STEM}/0/defer", follow_redirects=False)
+
+    body = read_in(client, "en").get(f"/c/{STEM}/0").text
+
+    assert 'class="verdict"' not in body, "no verdict form for an operator on a handed-back region"
+    assert "You are an operator" in body, "the page says who may answer instead"
+    assert 'class="defer"' in body, "declining again is still allowed"
+
+
+def test_a_senior_sees_the_verdict_buttons_on_a_handed_back_region(station, senior):
+    from conftest import read_in
+
+    client, _ = station
+    client.post(f"/c/{STEM}/0/defer", follow_redirects=False)
+
+    body = read_in(client, "en").get(f"/c/{STEM}/0").text
+
+    assert 'class="verdict"' in body

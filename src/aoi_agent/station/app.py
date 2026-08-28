@@ -491,6 +491,13 @@ def station_page(request: Request, stem: str, index: int):
             # the route. One source for the set, and both readers ask it.
             "answerable": bool(escalation)
             and escalation["status"] in ANSWERABLE,
+            # Whether *this* operator may answer it. The route refuses a
+            # non-senior verdict on a handed-back region with a 403; until
+            # 2026-08-28 the page still drew the seven buttons for them, so
+            # the refusal arrived after the click instead of before it.
+            "may_answer": not escalation
+            or escalation["status"] != escalations.DEFERRED
+            or auth.role_of(getattr(request.state, "operator", None)) == auth.SENIOR,
             "state": state,
             # Rendered from the status, never stored as though the model had
             # written it. WI-300: an absent rationale is absent, and the gap is

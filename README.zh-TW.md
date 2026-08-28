@@ -24,7 +24,7 @@ PCB AOI 複判系統：視覺模型在複判佇列前面，agent 在後面，每
 | **資料** | [DeepPCB](https://github.com/tangsanli5201/DeepPCB) 官方切分：499 片測試板、7,322 個 candidate，41.2% 為真實缺陷。False call 由範本相減產生，非人工編造。 |
 | **結果** | **在 ≤0.5% 的 escape budget 下省去 52.8% 的人工複判。** Escape rate 的 95% 區間上緣 0.82%。 |
 | **技術** | Python 3.12 · PyTorch（MPS / CPU）· LangGraph · MCP · FastAPI + Jinja · SQLite · Ollama（`gpt-oss:20b`） |
-| **驗證** | 1,276 個測試，不需模型或 GPU。每個門檻皆引用出處；每個數字皆註明產生它的腳本。 |
+| **驗證** | 1,278 個測試，不需模型或 GPU。每個門檻皆引用出處；每個數字皆註明產生它的腳本。 |
 | **限制** | 照片板材上，相減前端無法通過第一道閘門；錫膏影像上，YOLO26n 偵測器可定位 92% 的缺陷，但排序只能省 1.2%。見[遷移](#遷移兩份新資料集)。 |
 
 ## Demo
@@ -444,7 +444,7 @@ uv run python -m aoi_agent corrections                   # 作業員推翻 model
 `gpt-oss:20b`）。全部在本機跑，沒有任何東西離開這台機器 —— 在產線上這是要求，不是
 偏好。
 
-**1,276 個測試。** 其中 1,249 個在乾淨 checkout 上就能在 CI 跑完 —— 它們自己在
+**1,278 個測試。** 其中 1,249 個在乾淨 checkout 上就能在 CI 跑完 —— 它們自己在
 tmpdir 裡建 store、建 Chroma collection、建板子，model 是 stub 掉的。另外 25 個要磁碟
 上有資料集，帶 `dataset` marker；CI job 每次跑完都會把它們列出來，因為「測試
 數量默默變少但綠燈照亮」正是那個 job 要防的事。

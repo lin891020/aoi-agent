@@ -148,6 +148,24 @@
   </div>
 
   {% if answerable %}
+  {% if declines %}
+  {# Shown before the buttons, not after: somebody who declined this
+     yesterday should not rediscover it by spending five minutes on it. #}
+  <div class="declined-before">
+    <p class="sub warn-line">{{ t('region.declined_before', count=declines|length) }}</p>
+    <ul>
+      {% for decline in declines %}
+      <li>
+        <span class="mono">{{ t('region.declined_by',
+              operator=decline.operator, when=decline.deferred_at) }}</span>
+        {% if decline.note %}&mdash; {{ decline.note }}
+        {% else %}<span class="dim">{{ t('region.declined_no_note') }}</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% if may_answer %}
   <form class="verdict" method="post" action="/c/{{ stem }}/{{ index }}/verdict">
     <div class="verdict-head">
       <h2>{{ t('region.your_verdict') }}</h2>
@@ -164,23 +182,6 @@
        by the script; empty when nobody measured, which is a true statement
        about the decision rather than a missing field. #}
     <input type="hidden" name="measurement" id="measurement" value="">
-    {% if declines %}
-    {# Shown before the buttons, not after: somebody who declined this
-       yesterday should not rediscover it by spending five minutes on it. #}
-    <div class="declined-before">
-      <p class="sub warn-line">{{ t('region.declined_before', count=declines|length) }}</p>
-      <ul>
-        {% for decline in declines %}
-        <li>
-          <span class="mono">{{ t('region.declined_by',
-                operator=decline.operator, when=decline.deferred_at) }}</span>
-          {% if decline.note %}&mdash; {{ decline.note }}
-          {% else %}<span class="dim">{{ t('region.declined_no_note') }}</span>{% endif %}
-        </li>
-        {% endfor %}
-      </ul>
-    </div>
-    {% endif %}
     <div class="options">
       {% for option in options %}
       <button type="submit" name="verdict" value="{{ option }}"
@@ -194,6 +195,11 @@
       {{ t('region.verdict_note') }}
     </p>
   </form>
+  {% else %}
+  {# A handed-back region, and this operator is not a senior: the notice the
+     deferred list shows, in place of buttons the route would refuse. #}
+  <p class="sub warn-line">{{ t('deferred.needs_senior') }}</p>
+  {% endif %}
 
   {# The eighth option, and deliberately outside the verdict form: it posts to
      its own route, because anything reaching the verdict route can end up in
