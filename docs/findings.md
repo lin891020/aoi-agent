@@ -126,7 +126,7 @@ sentence written over correct data is the section below.
 
 ### And then the prose over those plans was checked against the payload.
 
-*"How do I know when it is bullshitting?"* The tools are deterministic, so for a
+*"How do I know when it is making a figure up?"* The tools are deterministic, so for a
 figure that question is arithmetic: it either renders from a value in the
 payload or it does not, and the entity it is attached to either holds it or does
 not. Five failure kinds, reported apart, because a fabricated number and a

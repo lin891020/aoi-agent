@@ -1,6 +1,6 @@
 # AOI-Agent
 
-**AOI 標出來的每一個點都要再看一次 —— 但先看的是 model，不是人。**
+PCB AOI 複判系統：視覺模型在複判佇列前面，agent 在後面，每一個主張都有對應的量測。
 
 [![tests](https://github.com/lin891020/aoi-agent/actions/workflows/tests.yml/badge.svg)](https://github.com/lin891020/aoi-agent/actions/workflows/tests.yml)
 ![python 3.12](https://img.shields.io/badge/python-3.12-3776AB)
@@ -8,123 +8,86 @@
 ![licence MIT](https://img.shields.io/badge/licence-MIT-0B6455)
 &nbsp; **[English version →](README.md)**
 
-PCB 產線上的 AOI 是照 recall 去調的，所以一定 over-flag：標出來的每一個區域都要送
-給人看，而人看完大部分是沒事的。這個專案在那條 queue 前面放一個 ResNet-18 複判模型
-——**在 ≤0.5% 的 escape budget 下省掉 52.8% 的人工複判**——後面放一個 LangGraph
-agent 接手模型收不掉的，最後透過可持久化的 hand-off 交給作業員。第二個入口 `/ask`
-用一份經過驗證的查詢計畫和從資料畫出來的圖，回答領班的白話問題。全部在本機跑；底
-下每個數字都指得到產生它的腳本。
-
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/disposition-flow-dark.zh-TW.svg">
-  <img alt="一個被標出的區域怎麼被處置：複判模型先分類；有把握的 false call 直接排除、有把握的 defect 直接確認，都不經過語言模型；其餘的撈脈絡、由 LLM 寫理由，再依分類器的信心決定，或透過可持久化的 interrupt 交給作業員。" src="docs/diagrams/disposition-flow-light.zh-TW.svg" width="100%">
+  <img alt="單一標記區域的處置流程：複判模型先分類；高信心的 false call 直接排除、高信心的缺陷直接確認，不經過語言模型；其餘取得生產脈絡與允收標準、由 LLM 產生說明，再依分類器信心決定，或透過可持久化的 interrupt 升級給作業員。" src="docs/diagrams/disposition-flow-light.zh-TW.svg" width="100%">
 </picture>
 
-<sub>一個被標出的區域，從頭到尾。圖由 `scripts/render_diagrams.py` 讀 graph 的 node 名和程
-式裡的門檻畫出來。`/ask` 的流程圖在[下面](#問產線問題--ask)。</sub>
+<sub>處置流程。由 `scripts/render_diagrams.py` 讀取 `graph/flow.py` 的 node 名稱與門檻產生。`/ask` 的流程圖見[問產線問題](#問產線問題--ask)。</sub>
 
-資料是 [DeepPCB](https://github.com/tangsanli5201/DeepPCB)：真的板子掃描、真的
-defect，false call 也是用真的演算法跑出來的，不是編的。
+## 概要
 
-## 一頁看完
-
-- **它做什麼。** 一個 ResNet-18 複判模型讀每一個 AOI candidate，82% 在 2.5 ms
-  內自己收掉；剩下的走一條 LangGraph flow：撈生產履歷和允收標準、讓本地 LLM
-  *解釋*這個區域、收不掉的透過可持久化的 interrupt 交給作業員。第二個入口
-  `/ask` 把領班的白話問題變成一份經過驗證的型別化查詢計畫，圖從結果的形狀畫出
-  來。兩個入口都是雙語（繁體中文 / English）。
-- **頭條。** 在 ≤0.5% 的 escape budget 下，**省掉 52.8% 的人工複判**——499 片沒
-  看過的板、7,322 個 candidate，其中 41.2% 是真 defect。這個 escape rate 的 95%
-  區間上緣是 0.82%，**不排除超過預算**。故意這樣報。
-- **量出來的，不是宣稱的。** 每個 threshold 都引得到一支腳本或文件裡的一行，值
-  漂掉會有 29 個測試紅掉。這個專案量到六件自己錯的事——三件錯在對自己有利的方
-  向——每一件底下都有一節，寫著改前改後的數字。
-- **它在哪裡失效，也量了。** 照片（HRIPCB）上相減這一關就過不了；錫膏影像
-  （PCB-AoI）上 YOLO26n 偵測器找得到 92% 的 defect，但它的信心在同一個預算下只省
-  得掉 1.2% 的複判。兩個都是發現，不是缺口——見
-  [它在哪裡失效](#它在哪裡失效兩份新資料集兩個不)。
-- **1,276 個測試**，沒有一個呼叫模型或需要 GPU；25 個要磁碟上有資料集，有標記。
+| | |
+|---|---|
+| **問題** | 產線 AOI 以 recall 為目標，過度標記。每個標記區域都由人複判，多數為 false call。 |
+| **方法** | ResNet-18 複判模型為每個 candidate 評分。LangGraph flow 對不確定者取得脈絡與 LLM 說明，無法定案者透過可持久化的 `interrupt()` 升級給作業員。第二入口 `/ask` 將主管的問題轉成經驗證的型別化查詢計畫與圖表。 |
+| **資料** | [DeepPCB](https://github.com/tangsanli5201/DeepPCB) 官方切分：499 片測試板、7,322 個 candidate，41.2% 為真實缺陷。False call 由範本相減產生，非人工編造。 |
+| **結果** | **在 ≤0.5% 的 escape budget 下省去 52.8% 的人工複判。** Escape rate 的 95% 區間上緣 0.82%。 |
+| **技術** | Python 3.12 · PyTorch（MPS / CPU）· LangGraph · MCP · FastAPI + Jinja · SQLite · Ollama（`gpt-oss:20b`） |
+| **驗證** | 1,276 個測試，不需模型或 GPU。每個門檻皆引用出處；每個數字皆註明產生它的腳本。 |
+| **限制** | 照片板材上，相減前端無法通過第一道閘門；錫膏影像上，YOLO26n 偵測器可定位 92% 的缺陷，但排序只能省 1.2%。見[遷移](#遷移兩份新資料集)。 |
 
 ## Demo
 
-<!-- 影片佔位 —— Mike：錄好之後把下面這段換成連結（docs/demo.mp4 走 git-lfs，
-     或 YouTube 連結）。分鏡和旁白在 docs/demo-script.md -->
+<!-- 影片佔位：錄好後把這一段換成連結。分鏡：docs/demo-script.md -->
 
-**示範影片：錄製中。** 兩分鐘——跑一片板 → 佇列 → 開一個區域 → 按 `0`「我不確定」
-→ 資深回答一般作業員答不了的 → `/boards` → 在 `/ask` 問 M32 參數變更有沒有動到
-open 的比例 → 沒效果的對照機台 → 把頁面切成英文。
+示範影片：製作中。流程——跑一片板 → 佇列 → 區域頁 → `0`（無法判斷）→ 資深複判
+→ `/boards` → `/ask` 查機台事件 → 對照機台 → 語言切換。
 
-先看站台現在的樣子（每一頁都有 English 版）：
+站台畫面（每一頁皆有 English 版）：
 
-| 佇列——agent 收不掉的，等最久的在前 | 一個區域——範本、待測板、差異圖，以及為什麼交給人 |
+| 佇列——agent 無法定案的區域，等候最久者在前 | 區域——範本、待測板、差異圖與交付說明 |
 |---|---|
 | ![佇列](docs/screenshots/queue-zh.png) | ![區域](docs/screenshots/region-zh.png) |
-| **`/boards`——扣住、放行、等待中，對整張表算** | **`/ask`——驗證過的計畫、平行展開、從結果形狀畫的圖、旁邊的文字** |
+| **`/boards`——扣住、放行、等待中，以整表計數** | **`/ask`——經驗證的計畫、平行展開、依結果形狀產生的圖表與說明** |
 | ![板](docs/screenshots/boards-zh.png) | ![提問](docs/screenshots/ask-zh.png) |
 
 ## 快速開始
 
 ```bash
 git clone --depth 1 https://github.com/tangsanli5201/DeepPCB.git data/DeepPCB
-uv sync                                                  # Python 3.12；torch 走 MPS 或 CPU
+uv sync                                                  # Python 3.12；torch 使用 MPS 或 CPU
 uv run python scripts/build_patches.py --split trainval && uv run python scripts/build_patches.py --split test
 uv run python scripts/train.py                           # M5 Air 約 4 分鐘 -> models/reverifier.pt
 uv run python scripts/seed_store.py --split test --limit 500
-uv run python scripts/add_operator.py mike --role senior # 會問 passphrase
-uv run python -m aoi_agent board 20085294 --queue        # 一片板走整條 flow；需要 Ollama + gpt-oss:20b
+uv run python scripts/add_operator.py mike --role senior # 互動輸入 passphrase
+uv run python -m aoi_agent board 20085294 --queue        # 一片板走完整 flow；需要 Ollama + gpt-oss:20b
 uv run python -m aoi_agent station                       # http://127.0.0.1:8110
 ```
 
-`uv run pytest` 跑 1,276 個測試，不需要模型、GPU 或資料集。所有量測腳本、容器、
-每個指令寫出什麼，在[怎麼跑](#怎麼跑)。
+`uv run pytest` 執行全部測試，不需模型、GPU 或資料集。量測腳本、容器與 CLI 子命令：[怎麼跑](#怎麼跑)。
 
 ## 結果
 
-官方 DeepPCB test split，499 片沒看過的板子、7,322 個 AOI candidate，其中
-3,018 個（41.2%）是真的 defect：
+DeepPCB 官方測試切分：499 片未見過的板、7,322 個 AOI candidate，其中 3,018 個（41.2%）為真實缺陷。
 
-| escape budget | 實際 escape rate | 省掉的人工複判 |
+| escape budget | 實際 escape rate | 省去的人工複判 |
 |---|---|---|
 | ≤0.25% | 0.23% | **40.2%** |
 | ≤0.50% | 0.50% | **52.8%** |
 | ≤1.00% | 0.99% | **58.3%** |
 
-**這些數字是在系統變好的時候變差的，值得一段說明。** 2026-08-26 之前這張表寫的是
-8,143 個 candidate、≤0.50% 省掉 56.2%。那一次量測早於 registration 階段：把它打開
-之後，偵測器不再送出「殘餘位移製造的簡單 false call」，candidate 掉到 7,322 ——
-少了 842 個 false call，而且**多**找到 21 個真 defect。省掉的比例是
-`dismissed / total`，分母變乾淨，比例自然下降。真正送到作業員面前的反而少了：
-**之前 3,568 個區域，之後 3,457 個。** 元件指標變差、產線變好，這就是為什麼這個
-專案在每一個複判減量數字旁邊都要寫上 prevalence —— 見 `docs/benchmarks.md`
-的 "Prevalence" 一節。
+- **指標。** 漏判（escape）讓缺陷板出貨；false call 只多花作業員幾秒。因此模型以
+  escape budget 下的 operating-point 曲線報告，而非 accuracy（參考值 96.5%）。
+- **區間。** 0.50% 為此切分上 3,018 個缺陷中的 15 個。95% Wilson 區間上緣 0.82%，
+  故僅憑此證據無法確認未見缺陷上的預算達標。
+- **分類別。** 出貨門檻下 `short` 的 escape 為 1.55%，為整體的 3.1 倍，且該類別無任何
+  作業指導書允收。漏判的 open 其 `P(open)` < 0.006，屬高信心錯誤，模型自身輸出無法
+  切分；電性測試可以。超標類別隨 checkpoint 移動（2026-08-24 重訓前為 `open`，1.35%）。
+- **盛行率。** 前一版頭條 56.2%（8,143 個 candidate）量測於對位階段之前，2026-08-26
+  作廢。對位移除 842 個易判 false call 並多找到 21 個缺陷；複判減量降為 52.8%，
+  但送達作業員的區域由 3,568 降為 3,457。複判減量一律附註其假設的盛行率。
+- **分流。** 82.2% 的 candidate 由複判模型單獨處置，CPU 上每個 2.5 ms（p50）；
+  LLM 僅處理其餘 17.8%。
 
-Accuracy 故意不放頭條。把真的 defect 判掉是讓壞板子出貨，把 false call 留著只是多
-花作業員幾秒鐘；這兩種錯的代價差太多，不能混在一個數字裡。所以這裡報的是一條對
-escape budget 的曲線，不是單一數字。（參考用：整體 accuracy 96.5%。）
+完整報告：[docs/benchmarks.md](docs/benchmarks.md)，只增不改、新的在後。區間與分類別細節：
+[prevalence](docs/benchmarks.md#prevalence--what-survives-a-line-that-is-not-this-dataset-1)
+· [per-class escape](docs/benchmarks.md#per-class-escape--one-budget-over-six-classes-that-are-not-alike-1)。
 
-表格沒說、但讀的人需要的兩件事。0.50% 是 3,018 個 defect 裡漏了 15 個，*在這個
-split 上*；當成沒看過的 defect 上的比率來讀，95% 區間上緣是 **0.82%**，所以光憑
-這份證據，部署不能宣稱預算達標。而且這個預算是六個類別平均出來的一個數字，而作
-業指導書對六類並不一視同仁：在出貨的 threshold 下 **`short` 的 escape 是 1.55%**，
-是整體的三倍，而它是沒有任何文件允許放行的類別。超標的是哪一類會跟著 checkpoint
-移動（2026-08-24 重訓之前是 `open`）。明顯的修法——按類別否決——並不存在，也做不出
-來：在它判掉的 open 上，`P(open)` 低於 0.006，那是有把握的錯，不是沒把握的錯。
-能收掉它們的是一個不共享這個失效的第二種量測，也就是電性測試。
-→ [prevalence](docs/benchmarks.md#prevalence--what-survives-a-line-that-is-not-this-dataset-1)
-· [分類別 escape](docs/benchmarks.md#per-class-escape--one-budget-over-six-classes-that-are-not-alike-1)
+## 量測改變了什麼
 
-而且 **82.2% 的 candidate 根本不會碰到 language model** —— 它們由 vision model 直接
-處理掉，CPU 上每個 **2.5 ms**（p50，單張，300 次；MPS 是 7.3 ms，batch 1 的時候
-GPU 反而輸）。LLM 只花在真正模稜兩可的那 17.8%，這才是 20B model 在產線節拍下還付
-得起的原因。
-
-完整報告在 [docs/benchmarks.md](docs/benchmarks.md)。底下每個數字都指得到出處。
-
-## 量出來之後改掉的東西
-
-這個 repo 比較值得看的不是 pipeline，是這六件量完發現是錯的事 —— 其中三件錯在對自己
-有利的方向 —— 以及量完之後 code 改成什麼樣子。這裡每件一行；每一件的完整經過、改前
-改後的數字，在 [docs/findings.zh-TW.md](docs/findings.zh-TW.md)。
+六項量測推翻了先前的主張或設計決定，每一項都改了程式。下表每項一列；完整經過與
+改前改後的數字在 [docs/findings.zh-TW.md](docs/findings.zh-TW.md)。
 
 | 量了什麼 | 量到什麼 | 改了什麼 |
 |---|---|---|
@@ -135,7 +98,7 @@ GPU 反而輸）。LLM 只花在真正模稜兩可的那 17.8%，這才是 20B m
 | 兩個 threshold 的出處 | `ESCALATE_BELOW` 引一個沒人跑過的 sweep；`CONFIDENT` 引一條沒有數字的條款 | 兩個都 sweep 了；`ESCALATE_BELOW` 在結構上等於 dismiss threshold；29 個測試守每一個引用 —— [完整版](docs/findings.zh-TW.md#兩個-threshold-的出處其實沒寫那件事) |
 | 全線 escape rate | 發表 5.4%；實際 0.61%，而且是兩個數字（0.22% 沒標到、0.38% 判掉） | 一個「框得多緊」的統計量被當成漏檢率 —— [完整版](docs/findings.zh-TW.md#全線-escape-rate-被高估了將近一個數量級) |
 
-## 它在哪裡失效：兩份新資料集，兩個「不」
+## 遷移：兩份新資料集
 
 DeepPCB 是二值化、已對位的，等於拿掉了真實產線兩個最大的 false call 來源。所以
 2026-08-26 把出貨的 pipeline 原封不動跑在兩份它從來沒被掃過的資料集上，答案比問題
@@ -271,8 +234,8 @@ uv run python -m aoi_agent station                  # http://aoi.test
 - agent 撈到的生產履歷跟允收標準（現在已經 scope 在對應的 class 上）。
 - agent 為什麼不敢判。
 
-有兩件事是刻意不做的。它**絕對不顯示 ground truth**：作業員的答案就是下一輪訓練的
-label，照著答案抄出來的 label 一文不值。它也**絕對不為了 render 一個頁面去重跑
+有兩件事在設計上不做。它**絕對不顯示 ground truth**：作業員的答案就是下一輪訓練的
+label，照答案抄出來的 label 沒有價值。它也**絕對不為了 render 一個頁面去重跑
 flow** —— 暫停的狀態就在 checkpointer 裡，讀它只是一次磁碟 seek，而重跑要再燒一次
 20B model，還可能吐出跟螢幕上不一樣的理由。
 
@@ -301,7 +264,7 @@ uv run python scripts/add_operator.py mike               # 會問 passphrase
 uv run python scripts/add_operator.py --list
 ```
 
-使用者管理就這樣，刻意的 —— 一條線上的人是固定的那幾個，加上一個會跑 script 的主管。
+使用者管理僅此而已，這是設計上的選擇： 一條線上的人是固定的那幾個，加上一個會跑 script 的主管。
 這套機制**擋不住**什麼，寫在 `src/aoi_agent/station/auth.py` 跟
 [benchmarks](docs/benchmarks.md#the-scheme-and-what-it-does-not-protect-against)
 裡，因為一套講清楚自己界線的機制，比一套更強但不講的值錢。
@@ -314,9 +277,8 @@ uv run python scripts/add_operator.py --list
 `review_decisions` —— 中間掛掉的話這個區域會被再看一次，反過來寫的話會默默吃掉作業
 員的答案。
 
-這也是這個 graph 誠不誠實的地方。用 in-memory checkpointer 的話，在單一 CLI run 裡
-看起來一切正常，process 一結束 queue 就沒了；那時候 `interrupt` 只是穿著 graph 外衣
-的 prompt。`tests/test_checkpoint_durability.py` 會在一個直譯器裡發出 escalation、
+這是交接能否持久的關鍵。用 in-memory checkpointer 的話，在單一 CLI run 裡
+看起來一切正常，process 一結束 queue 就沒了；撐不過 process 的 interrupt 只是 prompt，不是交接。`tests/test_checkpoint_durability.py` 會在一個直譯器裡發出 escalation、
 讓它結束，再用第二個直譯器把它做完。
 
 ## 問產線問題 —— `/ask`
@@ -433,12 +395,11 @@ Model 匯出成 ONNX 之後量化成 INT8，兩種做法：dynamic，以及用 *
 | INT8 static | **53.0%** | 10.8 MB | 81 MB | 0.65 ms |
 
 **在這個 checkpoint 上，兩種 INT8 都守住了曲線**，都在報表當初寫死的 1 個百分點
-容忍度之內，於是規則挑硬碟省最多的那個：INT8 dynamic，贏 0.1 MB。那是擲銅板，
-也應該當成擲銅板來讀 —— 兩個引擎在部署預算上差 0.5 個百分點，換算是 7,322 個
+容忍度之內，於是規則挑硬碟省最多的那個：INT8 dynamic，贏 0.1 MB。差距在雜訊範圍內：兩個引擎在部署預算上差 0.5 個百分點，換算是 7,322 個
 candidate 裡 15 對 12 個判定不同。活下來的發現不是「哪一種 INT8」，是 INT8 守得住
 operating point 這件事本身。
 
-**判決翻了，而翻的原因才是重點。** 2026-08-26 之前這一節拒收 INT8 dynamic：在前一個
+**判決在兩個 checkpoint 之間改變了。** 2026-08-26 之前這一節拒收 INT8 dynamic：在前一個
 checkpoint 上它丟了 1.3 個百分點，大約一個班別裡八十個區域回到作業員面前，檔案變小
 買不回這件事。那個損失沒有活過 2026-08-24 的重訓 —— 它是某一組權重的量化誤差，不是
 dynamic 量化的性質 —— 所以 `scripts/quantisation_report.py` 現在進了重訓的鏈：量化的
