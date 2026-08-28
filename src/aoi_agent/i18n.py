@@ -386,7 +386,7 @@ STRINGS: dict[str, dict[str, str]] = {
             "is notified. Emptying this list happens at handover, not here.",
         "nav.boards": 'PCB dispositions',
         "nav.deferred": "Senior review",
-        "queue.deferred_link": "{count} more that nobody could judge →",
+        "queue.deferred_link": "{count} more awaiting senior review →",
         "queue.empty": 'Nothing waiting.',
         "queue.empty_hint": 'Feed the queue with',
         "queue.false_call_probability": 'P(false call)',
