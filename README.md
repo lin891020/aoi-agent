@@ -18,7 +18,7 @@ agent behind it, and a benchmark for every claim.
 
 ## Overview
 
-| | |
+| Aspect | Summary |
 |---|---|
 | **Problem** | Production AOI is tuned for recall and over-flags. Every flagged region is reviewed by a person; most are false calls. |
 | **Approach** | A ResNet-18 re-verifier scores each candidate. A LangGraph flow gathers context and an LLM rationale for the uncertain ones and escalates what it cannot settle to an operator through a durable `interrupt()`. A second entrance, `/ask`, turns a supervisor's question into a validated plan of typed lookups and a chart. |
