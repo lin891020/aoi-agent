@@ -22,6 +22,9 @@ _args = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.Ra
 _args.add_argument("--lang", default="zh-TW", choices=("zh-TW", "en"))
 _args.add_argument("--stem", required=True, help="a board whose region #8 is on the queue")
 _args.add_argument("--base", default="http://127.0.0.1:8110")
+_args.add_argument("--tts", default="kokoro", choices=("kokoro", "say"),
+                   help="kokoro: Kokoro-82M through ~/Projects/video_transfer's backend (neural, both languages); say: macOS")
+_args.add_argument("--video-transfer", default=str(Path.home() / "Projects" / "video_transfer"))
 ARGS = _args.parse_args()
 
 LANG = ARGS.lang
@@ -34,7 +37,8 @@ REGION = f"{STEM}#8"
 SENIOR = ("mike", os.environ.get("AOI_DEMO_SENIOR_SECRET", ""))
 OPERATOR = ("watcher", os.environ.get("AOI_DEMO_OPERATOR_SECRET", ""))
 FFMPEG = "/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg"
-VOICE = {"zh-TW": "Meijia", "en": "Samantha"}[LANG]
+VOICE = {"zh-TW": "Meijia", "en": "Samantha"}[LANG]            # macOS say
+KOKORO_VOICE = {"zh-TW": "zf_xiaoxiao", "en": "af_heart"}[LANG]  # Kokoro: first letter is the language
 TAG = "zh" if LANG == "zh-TW" else "en"
 
 Q_M32 = {"zh-TW": "M32 參數變更前後，open 的比例有沒有變？",
@@ -44,44 +48,63 @@ Q_M31 = {"zh-TW": "M31 換燈前後，open 的比例有沒有變？",
 
 SCENES = {
  "zh-TW": [
-  ("cli",      f"一片板進來。AOI 標了三十個區域；視覺模型在幾毫秒內排除了二十八個，剩下兩個它不敢判，交給人。"),
-  ("queue",    "這是等人看的清單。每一列有模型的判定、信心、誤判機率，還有 agent 寫的說明。它只解釋，不決定。等最久的排最前面。"),
-  ("region",   "打開一個區域：範本、待測板、差異圖並排；右邊是這台機器的缺陷率，和這一類的驗收標準。這一頁不顯示答案，因為作業員的答案就是下一輪的訓練標籤。"),
-  ("defer",    "看不出來就按零。它不會變成一個判定；區域換到另一個隊伍，等資深的人。"),
-  ("blocked",  "換一般作業員登入，打開同一個區域：按鈕不見了。退回的區域只有資深能答，這是這個站唯一的權限。"),
-  ("boards",   "板的索引：已定案、扣住、放行、等待中。分母在這裡，不在佇列。"),
-  ("ask",      "主管的問題：M32 參數變更前後，open 的比例有沒有變。系統把它變成一份型別化的查詢計畫，先驗證，再平行執行。"),
-  ("ask_done", "前後兩根柱，區間不重疊；圖是從結果的形狀畫出來的，文字寫在數字旁邊。"),
-  ("control",  "對照組：M31 換燈前後。"),
-  ("control_done", "兩根區間重疊。工具會說沒差，不是有事件就有影響。"),
-  ("switch",   "切換語言：問題和規劃段保留原文並標示；答案從同一批結果重寫，不是翻譯。每個門檻都引得到一支腳本，每個數字都在 benchmarks 裡。"),
+  ("cli",      "好，一片 PCB 剛進來。AOI 標了三十個區域，視覺模型幾毫秒就排掉二十八個；剩下兩個它不敢判，就交給人。"),
+  ("queue",    "這一頁就是等人看的清單。每一列都有模型的判定、信心、誤判機率，還有 agent 寫的一段說明。注意，agent 只負責解釋，不做決定。誰等最久，誰排前面。"),
+  ("region",   "點進一個區域。左邊是黃金樣板、待測 PCB 和差異圖並排；右邊是這台機器的缺陷率，還有這一類的驗收標準。這一頁故意不顯示答案，因為作業員按下去的答案，就是下一輪訓練的標籤。"),
+  ("defer",    "真的看不出來？按零。它不會被記成判定，區域會換到另一個隊伍，交給資深的人。"),
+  ("blocked",  "換一般作業員登入，打開同一個區域，按鈕不見了。退回的區域只有資深能答，這是整個站唯一的權限。"),
+  ("boards",   "這是 PCB 處置紀錄：已定案、扣住、放行、等待中。分母在這裡，不在待複判清單。"),
+  ("ask",      "主管問：M32 參數變更前後，open 的比例有沒有變？系統先把問題變成一份查詢計畫，驗證過才跑，幾個查詢是平行的。"),
+  ("ask_done", "前後兩根柱，區間沒有重疊。圖是從結果的形狀畫出來的，文字就寫在數字旁邊。"),
+  ("control",  "再問一個對照組：M31 換燈前後。"),
+  ("control_done", "這次兩根區間重疊，系統就直接說沒差。有事件，不代表有影響。"),
+  ("switch",   "最後切換語言。問題和規劃段保留原文、標示出來；答案是用同一批結果重寫的，不是翻譯。每個門檻都引得到腳本，每個數字都在 benchmarks 裡。"),
  ],
  "en": [
-  ("cli",      "One board comes in. The AOI flagged thirty regions; the vision model dismissed twenty-eight in milliseconds and handed two it could not settle to a person."),
-  ("queue",    "This is the queue: each row carries the model's class, its confidence, the false-call probability, and the agent's rationale. The agent explains; it does not decide. Longest wait first."),
-  ("region",   "One region: template, board under test and difference side by side; the machine's defect rate and the acceptance criteria for this class on the right. The page never shows the answer key, because the operator's answer is the next training label."),
-  ("defer",    "Press zero when you cannot tell. It is not recorded as a verdict; the region moves to a second list for a senior reviewer."),
-  ("blocked",  "Signed in as an ordinary operator, the same region has no buttons. Handed-back regions are answered by a senior only — the station's one permission."),
-  ("boards",   "The board index: dispositioned, held, released and waiting. The denominator lives here, not on the queue."),
-  ("ask",      "A supervisor's question: did the parameter change on M32 move its share of opens. It becomes a typed plan of lookups, validated before anything runs, then executed in parallel."),
-  ("ask_done", "Two bars, before and after, with intervals that do not overlap. The chart is derived from the result shape; the prose sits beside the figures."),
-  ("control",  "A control: the lamp replacement on M31."),
-  ("control_done", "Overlapping intervals — no difference shown. The tool says so rather than reading an event as an effect."),
-  ("switch",   "Switching language: the question and the plan stay as written and are labelled; the answer is written again from the same results, not translated. Every threshold cites a script and every figure is in the benchmarks file."),
+  ("cli",      "A board just came in. The AOI flagged thirty regions; the vision model cleared twenty-eight of them in milliseconds, and the two it wasn't sure about go to a person."),
+  ("queue",    "This is the review queue. Every row has the model's class, its confidence, the false-call probability, and a short rationale from the agent. The agent explains — it never decides. Whoever has waited longest is on top."),
+  ("region",   "Open one region. Template, PCB under test and difference side by side; on the right, this machine's defect rate and the acceptance criteria for the class. The answer key is deliberately not on this page, because whatever the operator presses becomes the next training label."),
+  ("defer",    "Can't tell? Press zero. It isn't recorded as a verdict; the region moves to a second list for a senior reviewer."),
+  ("blocked",  "Sign in as an ordinary operator, open the same region, and the buttons are gone. Handed-back regions are for seniors only — that's the station's one permission."),
+  ("boards",   "PCB dispositions: settled, held, released, waiting. The denominator lives here, not on the queue."),
+  ("ask",      "A supervisor asks: did the parameter change on M32 move its share of opens? The question becomes a plan of lookups, validated before anything runs, then executed in parallel."),
+  ("ask_done", "Two bars, before and after, and the intervals don't overlap. The chart comes from the shape of the results; the prose sits right beside the numbers."),
+  ("control",  "Now a control: the lamp replacement on M31."),
+  ("control_done", "This time the intervals overlap, and the system says so. An event is not an effect."),
+  ("switch",   "Finally, switch the language. The question and the plan stay as written and are labelled; the answer is written again from the same results, not translated. Every threshold cites a script, and every figure is in the benchmarks file."),
  ],
 }[LANG]
 
 
+def _duration(path: Path) -> float:
+    info = subprocess.run(["afinfo", str(path)], capture_output=True, text=True).stdout
+    return float([l for l in info.splitlines() if "estimated duration" in l][0].split(":")[1].split("sec")[0])
+
+
 def tts() -> dict[str, float]:
+    """One narration file per scene, and its length. Kokoro-82M through
+    ~/Projects/video_transfer's TTS backend by default -- the same neural voice
+    that project dubs with -- with macOS `say` as the fallback."""
     NARR.mkdir(parents=True, exist_ok=True)
-    durations = {}
-    for key, text in SCENES:
-        path = NARR / f"{key}.aiff"
-        subprocess.run(["say", "-v", VOICE, "-r", "175" if LANG == "en" else "190", "-o", str(path), text], check=True)
-        info = subprocess.run(["afinfo", str(path)], capture_output=True, text=True).stdout
-        secs = float([l for l in info.splitlines() if "estimated duration" in l][0].split(":")[1].split("sec")[0])
-        durations[key] = secs
-    return durations
+    if ARGS.tts == "say":
+        for key, text in SCENES:
+            subprocess.run(["say", "-v", VOICE, "-r", "175" if LANG == "en" else "190",
+                            "-o", str(NARR / f"{key}.aiff"), text], check=True)
+        return {key: _duration(NARR / f"{key}.aiff") for key, _ in SCENES}
+    spec = NARR / "lines.json"
+    spec.write_text(json.dumps([{"key": k, "text": t} for k, t in SCENES], ensure_ascii=False))
+    runner = (
+        "import json, sys\nfrom pathlib import Path\nfrom video_pipeline.tts import KokoroBackend\n"
+        "spec, out, voice = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]\n"
+        "b = KokoroBackend()\n"
+        "for line in json.loads(spec.read_text()):\n"
+        "    b.synthesize(line['text'], out / (line['key'] + '.wav'), speaker=voice)\n"
+    )
+    subprocess.run(["uv", "run", "--project", ARGS.video_transfer, "python", "-c", runner,
+                    str(spec), str(NARR), KOKORO_VOICE],
+                   check=True, cwd=ARGS.video_transfer, env={**os.environ, "VT_TTS_BACKEND": "kokoro"},
+                   capture_output=True)
+    return {key: _duration(NARR / f"{key}.wav") for key, _ in SCENES}
 
 
 def cli_transcript() -> list[str]:
@@ -201,7 +224,8 @@ def main() -> None:
     # audio: each narration delayed to its scene start, mixed
     inputs, delays = [], []
     for i, t in enumerate(timeline):
-        inputs += ["-i", str(NARR / f"{t['key']}.aiff")]
+        ext = "aiff" if ARGS.tts == "say" else "wav"
+        inputs += ["-i", str(NARR / f"{t['key']}.{ext}")]
         delays.append(f"[{i+1}:a]adelay={int(t['start']*1000)}|{int(t['start']*1000)}[a{i}]")
     mix = "".join(f"[a{i}]" for i in range(len(timeline))) + f"amix=inputs={len(timeline)}:normalize=0[narr]"
     font = "PingFang TC" if LANG == "zh-TW" else "Helvetica Neue"
