@@ -63,12 +63,39 @@ STRINGS: dict[str, dict[str, str]] = {
         "chart.series.everything": "全部",
         "chart.series.share_of": "{defect_type} 佔比",
         "chart.series.fleet_average": "全廠平均",
+        "chart.series.defects_per_board": "每片缺陷數",
+        "chart.axis.defects_per_board": "每片缺陷數",
+        "chart.title.defects_per_board_by_machine": "各機台每片缺陷數",
+        "queue.more": "展開全文",
 
         # -- a question that produced no lookup -------------------------------
         "analysis.refused.opening":
             "這個問題沒有可以查的資料，所以沒有作答。",
         "analysis.refused.capabilities":
             "這套系統可以回答的是：",
+        # -- the page asked what it can be asked ------------------------------
+        "analysis.capabilities.opening":
+            "這一頁能回答的是下面這幾類問題。問題會先變成一份查詢計畫，驗證過才執行；"
+            "它不改任何資料、不做預測，也不判斷原因。",
+        "analysis.capabilities.interpretation":
+            "問的是這一頁能查什麼。這由工具登錄表回答，不需要規劃。",
+        "analysis.can": "這一頁能回答什麼",
+        "analysis.cannot":
+            "它不會改任何資料、不做預測、不判斷原因；沒有資料的日期不存在，也不會拿鄰近的日期代替。",
+        "tool.query_defect_history.does":
+            "某條線、某台機、某個批號或某幾天的缺陷數量，按類別；也能取某個機台事件的前後兩段。",
+        "tool.query_machine_stats.does":
+            "每台機台的缺陷率排名：指定一類看佔比，不指定看每片缺陷數；可以指定日期、只取前 N 名。",
+        "tool.query_false_call_rate.does":
+            "AOI 標出來、被本系統駁回為誤判的比例，按機台、產線或班別。",
+        "tool.query_machine_events.does":
+            "某台機台發生過的事：參數變更、保養，什麼時候。",
+        "tool.query_board_context.does":
+            "一片 PCB 的來歷：批號、產線、機台、班別，以及同批的狀況。",
+        "tool.search_standards.does":
+            "某一類缺陷的驗收標準寫了什麼。",
+        "tool.list_candidates.does":
+            "一片 PCB 上 AOI 標出的區域，以及模型對每一區的判定。",
 
         "station.name": '複判站',
         "nav.queue": '待複判',
@@ -337,12 +364,47 @@ STRINGS: dict[str, dict[str, str]] = {
         "chart.series.everything": "All",
         "chart.series.share_of": "share of {defect_type}",
         "chart.series.fleet_average": "fleet average",
+        "chart.series.defects_per_board": "defects per board",
+        "chart.axis.defects_per_board": "defects per board",
+        "chart.title.defects_per_board_by_machine": "defects per board, by machine",
+        "queue.more": "show all",
 
         # -- a question that produced no lookup -------------------------------
         "analysis.refused.opening":
             "No lookup in this system answers that, so nothing was run.",
         "analysis.refused.capabilities":
             "What it can answer:",
+        # -- the page asked what it can be asked ------------------------------
+        "analysis.capabilities.opening":
+            "This page answers the kinds of question below. A question becomes a "
+            "plan of lookups, which is validated before it runs; nothing here "
+            "changes data, forecasts, or establishes cause.",
+        "analysis.capabilities.interpretation":
+            "A question about what can be asked here. The registry answers it; "
+            "nothing is planned.",
+        "analysis.can": "What this page can answer",
+        "analysis.cannot":
+            "It changes nothing, forecasts nothing and establishes no cause; a day "
+            "with no data does not exist here and is not replaced with a nearby one.",
+        "tool.query_defect_history.does":
+            "Defect counts by class for a line, a machine, a lot or a span of "
+            "days; also the two windows either side of a machine event.",
+        "tool.query_machine_stats.does":
+            "Every machine ranked by defect rate: the share of one class when a "
+            "class is named, defects per board when none is; by date, cut to the top N.",
+        "tool.query_false_call_rate.does":
+            "How much of what the AOI flags this system dismisses as a false "
+            "call, by machine, line or shift.",
+        "tool.query_machine_events.does":
+            "What has happened to a machine -- parameter changes, maintenance -- "
+            "and when.",
+        "tool.query_board_context.does":
+            "Where one PCB was made: lot, line, machine, shift, and how the lot "
+            "is doing.",
+        "tool.search_standards.does":
+            "What the acceptance criteria say about one defect class.",
+        "tool.list_candidates.does":
+            "The regions the AOI flagged on one PCB, and what the model called each of them.",
 
         "station.name": 're-verification station',
         "nav.queue": 'Review queue',

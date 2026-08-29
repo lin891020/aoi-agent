@@ -198,7 +198,7 @@ CAUSE_WORDS = ("cause", "causal", "causation", "association", "correlat", "å› æž
 #:
 #: `days` and `top_k` are deliberately excluded: no question here pins a window,
 #: and `validate_plan` already bounds `days` against what the store holds.
-SCORED_ARGS = ("defect_type", "line_id", "machine_id", "board")
+SCORED_ARGS = ("defect_type", "line_id", "machine_id", "board", "date_from", "date_to", "top_n")
 
 #: The deadline the station runs under, not a longer one for the benchmark.
 #:

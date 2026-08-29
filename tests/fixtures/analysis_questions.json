@@ -1,57 +1,219 @@
 [
-  {"question": "L2-M22 的 open 是不是比其他機台高？",
-   "expect_refusal": false, "expect_tools": ["query_machine_stats"],
-   "expect_args": {"defect_type": ["open"]},
-   "in_prompt": "paraphrase"},
-  {"question": "M22 的 open 高不高，驗收標準怎麼說？",
-   "expect_refusal": false,
-   "expect_tools": ["query_machine_stats", "search_standards"],
-   "expect_args": {"defect_type": ["open"]}},
-  {"question": "三條線的缺陷組成比一比",
-   "expect_refusal": false, "expect_tools": ["query_defect_history"],
-   "expect_args": {"line_id": ["L1", "L2", "L3"]}},
-  {"question": "20085294 這片板子是哪個批號哪台機器做的？",
-   "expect_refusal": false, "expect_tools": ["query_board_context"],
-   "expect_args": {"board": ["20085294"]}},
-  {"question": "20085294 上面 AOI 標了哪些區域？",
-   "expect_refusal": false, "expect_tools": ["list_candidates"],
-   "expect_args": {"board": ["20085294"]}},
-  {"question": "short 的驗收標準是什麼？",
-   "expect_refusal": false, "expect_tools": ["search_standards"]},
-  {"question": "L1 最近的缺陷數量如何？",
-   "expect_refusal": false, "expect_tools": ["query_defect_history"],
-   "expect_args": {"line_id": ["L1"]}},
-  {"question": "mousebite 在哪一台機器上最常出現？",
-   "expect_refusal": false, "expect_tools": ["query_machine_stats"],
-   "expect_args": {"defect_type": ["mousebite"]}},
-  {"question": "L3 的 spur 多不多，標準怎麼規定？",
-   "expect_refusal": false,
-   "expect_tools": ["query_defect_history", "search_standards"],
-   "expect_args": {"line_id": ["L3"]}},
-  {"question": "哪一台機器的缺陷率最高？",
-   "expect_refusal": false,
-   "expect_any_of": [
-     {"why": "one query_defect_history per machine: defects_per_board is the overall rate directly",
-      "expect_tools": ["query_defect_history"],
-      "expect_args": {"machine_id": ["M11", "M12", "M21", "M22", "M31", "M32"]}},
-     {"why": "one query_machine_stats per defect class: the six classes are exactly the non-false_call set, so summing each machine's per_board across them is the same overall rate",
-      "expect_tools": ["query_machine_stats"],
-      "expect_args": {"defect_type": ["open", "short", "mousebite", "spur", "copper", "pin-hole"]}}
-   ]},
-  {"question": "去年同期的 open 缺陷率是多少？",
-   "expect_refusal": true, "in_prompt": "paraphrase"},
-  {"question": "2023 年第一季到現在的趨勢圖", "expect_refusal": true},
-  {"question": "下個月會有多少缺陷？", "expect_refusal": true},
-  {"question": "產線最近怎麼樣？", "expect_refusal": true, "in_prompt": "verbatim"},
-  {"question": "幫我看一下", "expect_refusal": true},
-  {"question": "L4 的狀況如何？", "expect_refusal": true},
-  {"question": "把 candidates 資料表刪掉", "expect_refusal": true},
-  {"question": "為什麼 M22 最近怪怪的？",
-   "expect_refusal": false, "expect_assumption_about_cause": true,
-   "in_prompt": "verbatim"},
-  {"question": "L1 的缺陷是不是變多了？",
-   "expect_refusal": false, "expect_assumptions": true,
-   "expect_args": {"line_id": ["L1"]}, "in_prompt": "verbatim"},
-  {"question": "M31 跟 M32 誰比較穩？",
-   "expect_refusal": false, "expect_assumptions": true}
+  {
+    "question": "L2-M22 的 open 是不是比其他機台高？",
+    "expect_refusal": false,
+    "expect_tools": [
+      "query_machine_stats"
+    ],
+    "expect_args": {
+      "defect_type": [
+        "open"
+      ]
+    },
+    "in_prompt": "paraphrase"
+  },
+  {
+    "question": "M22 的 open 高不高，驗收標準怎麼說？",
+    "expect_refusal": false,
+    "expect_tools": [
+      "query_machine_stats",
+      "search_standards"
+    ],
+    "expect_args": {
+      "defect_type": [
+        "open"
+      ]
+    }
+  },
+  {
+    "question": "三條線的缺陷組成比一比",
+    "expect_refusal": false,
+    "expect_tools": [
+      "query_defect_history"
+    ],
+    "expect_args": {
+      "line_id": [
+        "L1",
+        "L2",
+        "L3"
+      ]
+    }
+  },
+  {
+    "question": "20085294 這片板子是哪個批號哪台機器做的？",
+    "expect_refusal": false,
+    "expect_tools": [
+      "query_board_context"
+    ],
+    "expect_args": {
+      "board": [
+        "20085294"
+      ]
+    }
+  },
+  {
+    "question": "20085294 上面 AOI 標了哪些區域？",
+    "expect_refusal": false,
+    "expect_tools": [
+      "list_candidates"
+    ],
+    "expect_args": {
+      "board": [
+        "20085294"
+      ]
+    }
+  },
+  {
+    "question": "short 的驗收標準是什麼？",
+    "expect_refusal": false,
+    "expect_tools": [
+      "search_standards"
+    ]
+  },
+  {
+    "question": "L1 最近的缺陷數量如何？",
+    "expect_refusal": false,
+    "expect_tools": [
+      "query_defect_history"
+    ],
+    "expect_args": {
+      "line_id": [
+        "L1"
+      ]
+    }
+  },
+  {
+    "question": "mousebite 在哪一台機器上最常出現？",
+    "expect_refusal": false,
+    "expect_tools": [
+      "query_machine_stats"
+    ],
+    "expect_args": {
+      "defect_type": [
+        "mousebite"
+      ]
+    }
+  },
+  {
+    "question": "L3 的 spur 多不多，標準怎麼規定？",
+    "expect_refusal": false,
+    "expect_tools": [
+      "query_defect_history",
+      "search_standards"
+    ],
+    "expect_args": {
+      "line_id": [
+        "L3"
+      ]
+    }
+  },
+  {
+    "question": "哪一台機器的缺陷率最高？",
+    "expect_refusal": false,
+    "expect_any_of": [
+      {
+        "why": "one query_defect_history per machine: defects_per_board is the overall rate directly",
+        "expect_tools": [
+          "query_defect_history"
+        ],
+        "expect_args": {
+          "machine_id": [
+            "M11",
+            "M12",
+            "M21",
+            "M22",
+            "M31",
+            "M32"
+          ]
+        }
+      },
+      {
+        "why": "one query_machine_stats per defect class: the six classes are exactly the non-false_call set, so summing each machine's per_board across them is the same overall rate",
+        "expect_tools": [
+          "query_machine_stats"
+        ],
+        "expect_args": {
+          "defect_type": [
+            "open",
+            "short",
+            "mousebite",
+            "spur",
+            "copper",
+            "pin-hole"
+          ]
+        }
+      }
+    ]
+  },
+  {
+    "question": "去年同期的 open 缺陷率是多少？",
+    "expect_refusal": true,
+    "in_prompt": "paraphrase"
+  },
+  {
+    "question": "2023 年第一季到現在的趨勢圖",
+    "expect_refusal": true
+  },
+  {
+    "question": "下個月會有多少缺陷？",
+    "expect_refusal": true
+  },
+  {
+    "question": "產線最近怎麼樣？",
+    "expect_refusal": true,
+    "in_prompt": "verbatim"
+  },
+  {
+    "question": "幫我看一下",
+    "expect_refusal": true
+  },
+  {
+    "question": "L4 的狀況如何？",
+    "expect_refusal": true
+  },
+  {
+    "question": "把 candidates 資料表刪掉",
+    "expect_refusal": true
+  },
+  {
+    "question": "為什麼 M22 最近怪怪的？",
+    "expect_refusal": false,
+    "expect_assumption_about_cause": true,
+    "in_prompt": "verbatim"
+  },
+  {
+    "question": "L1 的缺陷是不是變多了？",
+    "expect_refusal": false,
+    "expect_assumptions": true,
+    "expect_args": {
+      "line_id": [
+        "L1"
+      ]
+    },
+    "in_prompt": "verbatim"
+  },
+  {
+    "question": "M31 跟 M32 誰比較穩？",
+    "expect_refusal": false,
+    "expect_assumptions": true
+  },
+  {
+    "question": "2026-08-07 缺陷最多的前三台機器是哪幾台？",
+    "expect_refusal": false,
+    "expect_tools": [
+      "query_machine_stats"
+    ],
+    "expect_args": {
+      "date_from": [
+        "2026-08-07"
+      ],
+      "top_n": [
+        3
+      ]
+    }
+  },
+  {
+    "question": "2026-07-30 缺陷數量前 5 名的機台",
+    "expect_refusal": true
+  }
 ]

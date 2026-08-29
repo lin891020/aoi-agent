@@ -60,6 +60,24 @@
   </p>
   <p class="sim">{{ t('analysis.coverage', days=coverage_days) }}</p>
 
+  {# What can be asked, before anyone asks. One line per registered tool,
+     read off the registry at request time -- a tool added there appears here
+     without anybody remembering to list it -- with the registry name kept
+     beside the readable one for the same reason the results table keeps it.
+     Open on the empty page, where a first-time reader is; folded once there is
+     an answer to read. #}
+  <details class="rules" {% if not run %}open{% endif %}>
+    <summary>{{ t('analysis.can') }}</summary>
+    <ul>
+      {% for name in capabilities %}
+      <li><strong>{{ t('tool.' + name) }}</strong>
+          <span class="mono small dim">{{ name }}</span>
+          — {{ t('tool.' + name + '.does') }}</li>
+      {% endfor %}
+    </ul>
+    <p class="sub">{{ t('analysis.cannot') }}</p>
+  </details>
+
   {# A rejected or unparseable plan's reasons never reach this template as
      `plan_errors`: the POST route 303-redirects before they can be attached,
      and `/ask/stream` (below) only has them while it is live -- it streams

@@ -103,30 +103,50 @@ def _defect_breakdown(payloads: list[dict]) -> dict | None:
 
 
 def _machine_comparison(payloads: list[dict]) -> dict | None:
-    """Every machine's share, one series per defect class asked about."""
+    """Every machine, one series per lookup, on the axis the tool ranked by.
+
+    The payload says which: ``share_of_defects`` when one class was asked
+    about, ``per_board`` when every class was. A chart that read
+    ``share_of_defects`` off a ranking by ``per_board`` would plot a column of
+    Nones as zero, which is a picture of nothing labelled as a finding.
+    """
     usable = [p for p in payloads if p.get("machines")]
     if not usable:
         return None
 
-    series: list[dict[str, Any]] = [
-        {
-            "name_key": "chart.series.share_of",
-            "name_args": {"defect_type": payload.get("defect_type", "")},
-            "points": [
-                {"x": m["machine"], "y": round(m["share_of_defects"], 4)}
-                for m in payload["machines"]
-            ],
-        }
-        for payload in usable
-    ]
+    def axis(payload: dict) -> str:
+        return payload.get("ranked_by") or "share_of_defects"
 
-    fleet = usable[0].get("fleet_share_of_defects")
+    series: list[dict[str, Any]] = []
+    for payload in usable:
+        if axis(payload) == "per_board":
+            series.append({
+                "name_key": "chart.series.defects_per_board",
+                "name_args": {},
+                "points": [
+                    {"x": m["machine"], "y": round(float(m["per_board"]), 4)}
+                    for m in payload["machines"]
+                ],
+            })
+        else:
+            series.append({
+                "name_key": "chart.series.share_of",
+                "name_args": {"defect_type": payload.get("defect_type", "")},
+                "points": [
+                    {"x": m["machine"], "y": round(m["share_of_defects"], 4)}
+                    for m in payload["machines"]
+                ],
+            })
+
+    first = usable[0]
+    per_board = axis(first) == "per_board"
+    fleet = first.get("fleet_average_per_board" if per_board else "fleet_share_of_defects")
     if len(usable) == 1 and fleet is not None:
         # Carried as a series rather than folded into the bars: without it the
         # reader compares machines against each other and cannot see that every
         # one of them sits above the fleet.
         #
-        # Only when one class was asked about. Several classes already give the
+        # Only when one lookup was made. Several classes already give the
         # reader a baseline -- each other -- and a fleet line per class is four
         # more bars per machine saying what the first four already said.
         series.append(
@@ -134,17 +154,19 @@ def _machine_comparison(payloads: list[dict]) -> dict | None:
                 "name_key": "chart.series.fleet_average",
                 "name_args": {},
                 "points": [
-                    {"x": m["machine"], "y": round(fleet, 4)}
-                    for m in usable[0]["machines"]
+                    {"x": m["machine"], "y": round(float(fleet), 4)}
+                    for m in first["machines"]
                 ],
             }
         )
 
     return {
         "kind": "bar",
-        "title_key": "chart.title.share_by_machine",
+        "title_key": "chart.title.defects_per_board_by_machine" if per_board
+                     else "chart.title.share_by_machine",
         "x_label_key": "chart.axis.machine",
-        "y_label_key": "chart.axis.share_of_own_defects",
+        "y_label_key": "chart.axis.defects_per_board" if per_board
+                       else "chart.axis.share_of_own_defects",
         "series": series,
     }
 

@@ -61,7 +61,14 @@
         <td class="dim">{{ row.line_id }} / {{ row.machine_id }} &middot; {{ row.shift }}</td>
         <td class="mono dim">{{ (row.raised_at or '')[:16].replace('T', ' ') }}</td>
         <td class="reason">
-          {{ row.reason }}
+          {# Two sentences on the row, the rest behind a disclosure. The
+             rationale is a paragraph written for the region page; thirty of
+             them made this the one column an operator could not scan. Nothing
+             is cut -- `lead + rest` is the text -- and the region page still
+             shows it whole. #}
+          {% set lead, rest = lead_and_rest(row.reason or '') %}
+          {{ lead }}
+          {% if rest %}<details class="more"><summary>{{ t('queue.more') }}</summary>{{ rest }}</details>{% endif %}
           {% if row.explanation_status and row.explanation_status != 'ok' %}
             <span class="chip warn">{{ t('queue.no_explanation') }}</span>
           {% endif %}

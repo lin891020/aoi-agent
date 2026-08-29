@@ -286,3 +286,15 @@ def test_a_run_from_before_the_column_is_labelled_rather_than_claimed(client):
     for locale in ("zh-TW", "en"):
         page = read_in(client, locale).get(f"/ask/{run_id}").text
         assert STRINGS[locale]["analysis.as_asked"] in page
+
+
+def test_every_plannable_tool_says_what_it_does_in_both_languages():
+    """The rules block on `/ask` lists what can be asked, one line per
+    registered tool, and the line has to exist in the reader's language --
+    the docstring the refusal quotes is English."""
+    from aoi_agent.analysis.plan import PLANNABLE_TOOLS
+
+    for name in PLANNABLE_TOOLS:
+        for locale in LOCALES:
+            key = f"tool.{name}.does"
+            assert STRINGS[locale][key] != key, f"{key} missing from {locale}"

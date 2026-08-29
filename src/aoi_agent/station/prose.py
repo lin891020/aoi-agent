@@ -189,3 +189,24 @@ def blocks(answer: str) -> list[dict]:
     flush_paragraph()
     flush_list()
     return out
+
+
+#: Where a sentence ends. A CJK full stop ends one wherever it stands; an
+#: ASCII one only when followed by a space or the end of the text, because
+#: ``0.61`` is not two sentences. ``！？`` and ``!?`` are read the same way.
+_SENTENCE_END = re.compile(r"[。！？]|[.!?](?=\s|$)")
+
+
+def lead_and_rest(text: str, sentences: int = 2) -> tuple[str, str]:
+    """The first few sentences of a rationale, and everything after them.
+
+    For the queue, where a paragraph per row made the one column an operator
+    scans the one they could not. Nothing is dropped: ``lead + rest`` is the
+    text, so the disclosure that shows ``rest`` shows the rationale whole.
+    """
+    text = text or ""
+    ends = [m.end() for m in _SENTENCE_END.finditer(text)]
+    if len(ends) <= sentences:
+        return text, ""
+    cut = ends[sentences - 1]
+    return text[:cut], text[cut:]

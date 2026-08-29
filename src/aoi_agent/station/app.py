@@ -65,7 +65,7 @@ from markupsafe import Markup
 
 from aoi_agent.analysis import service as analysis_service
 from aoi_agent.analysis.graph import build_analysis_graph
-from aoi_agent.analysis.plan import store_domains
+from aoi_agent.analysis.plan import PLANNABLE_TOOLS, store_domains
 from aoi_agent.graph.flow import DEFAULT_MODEL, build_graph, explanation_notice
 from aoi_agent.provenance import UNAVAILABLE, UNRECORDED, ReviewerIdentity
 from aoi_agent.llm.ollama import OllamaClient
@@ -78,7 +78,7 @@ from aoi_agent.i18n import (
     normalise,
     translate,
 )
-from aoi_agent.station.prose import blocks as prose_blocks
+from aoi_agent.station.prose import blocks as prose_blocks, lead_and_rest
 from aoi_agent.station.result_view import clip, error_text, readable_rows, shown_count
 from aoi_agent.store import analysis as analysis_store
 from aoi_agent.store import dispositions, escalations
@@ -166,6 +166,7 @@ def _script_json(value: object) -> Markup:
 templates.env.globals["t"] = _t
 templates.env.globals["here"] = _here
 templates.env.globals["strings_for"] = _strings_for
+templates.env.globals["lead_and_rest"] = lead_and_rest
 #: What the switch offers. Each language names itself in itself -- somebody
 #: looking for English does not read 英文, and somebody looking for Chinese does
 #: not read "Chinese".
@@ -854,6 +855,11 @@ def _analysis_context(run: dict | None, locale: str | None = None) -> dict:
     return {
         "run": run,
         "examples": EXAMPLE_QUESTIONS,
+        # The rules block: what can be asked, read off the registry at
+        # request time so a tool added there appears here without anyone
+        # remembering to list it. The sentences are `tool.<name>.does` in
+        # the reader's language; the key-parity test holds both tables.
+        "capabilities": list(PLANNABLE_TOOLS),
         "recent": analysis_store.recent_runs(8),
         # The same snapshot the validator was built from, not a fresh read:
         # see `analysis_domains`. A page that states a coverage the validator

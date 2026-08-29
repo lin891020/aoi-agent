@@ -413,3 +413,11 @@ table.kv td { padding: 0.15rem 0; vertical-align: top; }
 .ruler-out.is-outside { color: #f87171; }
 .ruler-out.is-refused { color: #f59e0b; }
 .ruler-reset { margin-left: auto; font-size: .8rem; }
+
+/* ---- /ask: what can be asked; queue: folded rationale ---- */
+details.rules { margin: 0.5rem 0 1rem; border: 1px solid #26262c; border-radius: 6px; padding: 0.5rem 0.9rem; }
+details.rules summary { cursor: pointer; font-weight: 500; }
+details.rules ul { margin: 0.5rem 0 0.25rem; padding-left: 1.1rem; }
+details.rules li { margin: 0.25rem 0; font-size: 0.92rem; }
+td.reason details.more { margin-top: 0.2rem; }
+td.reason details.more summary { cursor: pointer; font-size: 0.8rem; color: var(--dim); }

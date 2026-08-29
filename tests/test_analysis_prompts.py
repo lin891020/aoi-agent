@@ -35,11 +35,12 @@ DOMAINS = {
     "relative_to": {"parameter_change", "maintenance", "lamp_replaced",
                     "nozzle_cleaned"},
     "side": {"before", "after"},
+    "date_span": ("2026-08-01", "2026-08-09"),
 }
 
 
-def test_there_are_seven_examples():
-    assert len(FEW_SHOT) == 7
+def test_there_are_eight_examples():
+    assert len(FEW_SHOT) == 8
 
 
 def test_every_example_plan_would_pass_validation():
@@ -62,6 +63,7 @@ def test_the_examples_cover_the_seven_shapes():
         "too_vague",
         "action_request",
         "event_window",
+        "dated_top_n",
     }
 
 
@@ -185,3 +187,20 @@ def test_the_prompt_lists_the_event_kinds_the_store_holds():
 
     assert "lamp_replaced" in blob
     assert "nozzle_cleaned" in blob
+
+
+def test_the_domain_note_names_the_dates_held_so_a_date_can_be_planned():
+    """The planner is shown which days exist, the same way it is shown which
+    machines exist. Without it «2026-07-30» is a date it has no way to know is
+    outside the data, and «2026-08-05» one it has no way to know is inside."""
+    system = build_planning_messages("q", DOMAINS)[0]["content"]
+    assert "2026-08-01" in system and "2026-08-09" in system
+    assert "date_from" in system
+
+
+def test_the_dated_top_n_example_uses_a_date_the_domain_holds():
+    example = next(e for e in FEW_SHOT if e["shape"] == "dated_top_n")
+    call = example["plan"]["calls"][0]
+    assert call["tool"] == "query_machine_stats"
+    assert call["args"]["top_n"] == 5
+    assert DOMAINS["date_span"][0] <= call["args"]["date_from"] <= DOMAINS["date_span"][1]

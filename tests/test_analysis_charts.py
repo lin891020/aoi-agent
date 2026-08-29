@@ -277,3 +277,26 @@ def test_a_window_with_no_flagged_regions_is_left_out_not_drawn_at_zero():
     ])
     (series,) = spec["series"]
     assert [p["x"] for p in series["points"]] == ["before"]
+
+
+def test_a_ranking_over_all_classes_is_drawn_as_defects_per_board():
+    """`query_machine_stats` with no class ranks by `per_board` and reports
+    `share_of_defects` as None -- the share of all defects among all defects is
+    1 by construction. The chart follows the payload's own `ranked_by` rather
+    than plotting a column of Nones as zero."""
+    payload = {
+        "defect_type": None, "ranked_by": "per_board",
+        "fleet_average_per_board": 2.7, "fleet_share_of_defects": None,
+        "machines": [
+            {"machine": "L1-M11", "boards": 1, "defects": 5, "per_board": 5.0, "share_of_defects": None},
+            {"machine": "L2-M22", "boards": 9, "defects": 18, "per_board": 2.0, "share_of_defects": None},
+        ],
+    }
+    spec = chart_spec_for([ok("query_machine_stats", payload)])
+
+    assert spec["y_label_key"] == "chart.axis.defects_per_board"
+    assert [p["y"] for p in spec["series"][0]["points"]] == [5.0, 2.0]
+    assert spec["series"][0]["name_key"] == "chart.series.defects_per_board"
+    # A fleet baseline exists for this ranking too, and it is the per-board one.
+    fleet = [s for s in spec["series"] if "fleet" in s["name_key"]]
+    assert fleet and fleet[0]["points"][0]["y"] == 2.7

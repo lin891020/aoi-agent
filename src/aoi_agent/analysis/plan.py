@@ -67,6 +67,11 @@ class Domains(TypedDict):
     relative_to: set[str]
     side: set[str]
     max_days: int
+    #: The first and last calendar day the store holds, ISO, or None when it
+    #: is empty. `date_from`/`date_to` are checked against it the way `days`
+    #: is checked against `max_days`: a date outside it returns nothing, and
+    #: an empty chart reads as a finding about that day.
+    date_span: tuple[str, str] | None
 
 
 #: Arguments whose values are checked against a domain rather than a type.
@@ -94,6 +99,12 @@ DOMAIN_OF = {
     "relative_to": "relative_to",
     "kind": "relative_to",
     "side": "side",
+    #: A calendar day, checked for being one and for being inside the span
+    #: held. Not a closed vocabulary like the others, so `_domain_errors`
+    #: reads it specially; it is in this table because that is the account
+    #: the registry keeps of every parameter that can carry text.
+    "date_from": "date_span",
+    "date_to": "date_span",
 }
 
 
@@ -402,6 +413,31 @@ def capability_summary() -> list[str]:
         lines.append(f"{registration.name} — {first}" if first else registration.name)
     return lines
 
+#: Ways of asking this page what it can be asked. Matched on the question
+#: before any model is called, because the answer is the registry and the
+#: registry does not need a model to be read. The first question typed at
+#: the station was «你能查什麼», and it went to the planner, which refused
+#: it as a lookup it could not plan -- restating the question twice and
+#: never listing what could be asked. Deliberately narrow: a real question
+#: that happens to contain "功能" («M22 的功能異常嗎») must still be planned,
+#: so the whole question has to be about the page.
+_CAPABILITY_PATTERNS = (
+    r"^(你們|你们|你|妳|您|這個系統|这个系统|這一頁|這裡|这里|這頁|这页|這個|这个|這|这|它)?(可以|能|會|会)?(查|問|问|做|回答|處理|处理)(什麼|什么|哪些|啥)",
+    r"^(有|你有|這裡有|这里有)?(什麼|什么|哪些|啥)(功能|能力|可以查的|可以問的|可以问的)",
+    r"^(what|which)\b.*\b(can|could|do|does)\b.*\b(ask|query|answer|do|look ?up|help)\b",
+    r"^(help|capabilities|\?)\s*[?？]*$",
+)
+_CAPABILITY = tuple(__import__("re").compile(pattern, __import__("re").IGNORECASE) for pattern in _CAPABILITY_PATTERNS)
+
+
+def is_capability_question(question: str) -> bool:
+    """Is this the page being asked what it can be asked?"""
+    text = (question or "").strip()
+    if not text or len(text) > 40:
+        return False
+    return any(pattern.search(text) for pattern in _CAPABILITY)
+
+
 PLAN_SCHEMA: dict = {
     "type": "object",
     "properties": {
@@ -443,6 +479,7 @@ def store_domains() -> Domains:
         "relative_to": set(),
         "side": set(SIDES),
         "max_days": 1,
+        "date_span": None,
     }
 
     try:
@@ -471,6 +508,7 @@ def store_domains() -> Domains:
         "relative_to": kinds,
         "side": empty["side"],
         "max_days": span,
+        "date_span": (lo.date().isoformat(), hi.date().isoformat()) if lo and hi else None,
     }
 
 
@@ -499,10 +537,36 @@ def _signature_errors(name: str, args: dict, position: int) -> list[str]:
     return errors
 
 
+def _date_error(key: str, value: object, span: tuple[str, str] | None, position: int) -> str | None:
+    """Why this date must not run, or None."""
+    from datetime import date
+
+    try:
+        day = date.fromisoformat(str(value))
+    except ValueError:
+        return f"call {position}: {key}={value!r} is not a date; write it as YYYY-MM-DD"
+    if span is None:
+        return f"call {position}: {key}={value!r} names a day, and the store holds no days"
+    first, last = span
+    if not first <= day.isoformat() <= last:
+        return (f"call {position}: {key}={value!r} is outside the days held "
+                f"({first} to {last}); there is nothing on that day to count")
+    return None
+
+
 def _domain_errors(name: str, args: dict, domains: Domains, position: int) -> list[str]:
     errors = []
     for key, value in args.items():
         domain_key = DOMAIN_OF.get(key)
+        if domain_key == "date_span":
+            if value is not None:
+                error = _date_error(key, value, domains.get("date_span"), position)
+                if error:
+                    errors.append(error)
+            continue
+        if key == "top_n" and value is not None and (not isinstance(value, int) or value < 1):
+            errors.append(f"call {position}: top_n={value!r} must be a whole number of at least 1")
+            continue
         if domain_key and value is not None and value not in domains[domain_key]:
             allowed = ", ".join(sorted(domains[domain_key]))
             errors.append(

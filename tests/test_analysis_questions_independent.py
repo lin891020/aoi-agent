@@ -345,7 +345,10 @@ def test_the_published_twenty_are_still_what_the_script_runs_by_default():
     reproducible. `--questions` is what makes the seventy runnable; making them
     the default would silently reinterpret every number already published."""
     assert QUESTIONS.name == "analysis_questions.json"
-    assert len(load_questions(QUESTIONS)) == 20
+    # Twenty until 2026-08-29, when two dated rows were added for the
+    # parameters that did not exist before -- a date and a top-N cut -- and
+    # the next published figure is over twenty-two, said so in its entry.
+    assert len(load_questions(QUESTIONS)) == 22
     assert QUESTIONS != FIXTURE
 
 

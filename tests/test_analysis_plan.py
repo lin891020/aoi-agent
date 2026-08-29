@@ -32,6 +32,10 @@ DOMAINS = {
     "relative_to": {"parameter_change"},
     "side": {"before", "after"},
     "max_days": 9,
+    # The span the store covers, as dates. `date_from`/`date_to` are checked
+    # against it the way `days` is checked against `max_days`: a date outside
+    # it returns nothing and would read as a finding.
+    "date_span": ("2026-08-01", "2026-08-09"),
 }
 
 
@@ -74,8 +78,10 @@ def test_an_unknown_argument_name_is_rejected():
 
 
 def test_a_missing_required_argument_is_rejected():
-    errors = validate_plan(plan(("query_machine_stats", {"days": 7})), DOMAINS)
-    assert any("defect_type" in e for e in errors)
+    # `query_board_context` is the tool with a required argument now that
+    # `query_machine_stats` ranks every class when no class is named.
+    errors = validate_plan(plan(("query_board_context", {})), DOMAINS)
+    assert any("board" in e for e in errors)
 
 
 def test_an_optional_argument_may_be_omitted():
@@ -177,3 +183,35 @@ def test_a_tool_taking_kwargs_accepts_arguments_rather_than_requiring_one(monkey
     errors = validate_plan(plan(("search_standards", {"query": "open"})), DOMAINS)
 
     assert errors == []
+
+
+# --- dated windows and top-N -------------------------------------------------
+
+def test_a_date_inside_the_span_validates():
+    errors = validate_plan(
+        plan(("query_machine_stats", {"date_from": "2026-08-05", "date_to": "2026-08-05", "top_n": 5})),
+        DOMAINS,
+    )
+    assert errors == []
+
+
+def test_a_date_outside_the_span_is_refused_and_the_span_is_named():
+    """«2026-07-30 前 5 名» is the question that motivated the parameter, and
+    the store does not hold that day. The tool would return nothing for it;
+    the validator refuses it and says what days exist."""
+    errors = validate_plan(
+        plan(("query_defect_history", {"date_from": "2026-07-30", "date_to": "2026-07-30"})),
+        DOMAINS,
+    )
+    assert len(errors) == 2
+    assert all("2026-08-01" in e and "2026-08-09" in e for e in errors)
+
+
+def test_a_date_that_does_not_parse_is_refused():
+    errors = validate_plan(plan(("query_defect_history", {"date_from": "7/30"})), DOMAINS)
+    assert errors and "date_from" in errors[0]
+
+
+def test_a_top_n_below_one_is_refused_before_it_runs():
+    errors = validate_plan(plan(("query_machine_stats", {"top_n": 0})), DOMAINS)
+    assert errors and "top_n" in errors[0]

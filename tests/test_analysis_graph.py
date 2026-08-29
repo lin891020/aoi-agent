@@ -316,3 +316,42 @@ def test_a_planner_outage_is_not_reported_as_a_validation_failure(stub_tools):
 
     assert "did not validate" not in state["answer"]
     assert "ReadTimeout" in state["answer"]
+
+
+# --- asking what can be asked -------------------------------------------------
+
+@pytest.mark.parametrize("question", [
+    "你能查什麼？", "這個可以問什麼", "有什麼功能", "what can I ask here?",
+    "What can you do?", "help",
+])
+def test_asking_what_can_be_asked_is_answered_without_calling_the_model(stub_tools, question):
+    """«你能查什麼» was the first question typed at the station, and it went
+    to the planner, which read it as a lookup it could not plan and refused --
+    twice restating the question and never once listing what could be asked.
+    The answer to this question is the registry, and the registry does not
+    need a model to be read."""
+    client = StubClient()
+    state = run(client, question)
+
+    assert client.calls == [], "no model call answers a question about the registry"
+    assert stub_tools == []
+    assert state["capability_question"] is True
+    for line in capability_summary():
+        assert line in state["answer"]
+
+
+def test_a_capability_answer_does_not_open_by_saying_the_data_is_missing(stub_tools):
+    """The ordinary refusal opens with "no lookup answers that". A question
+    about what can be asked *is* answered, so it must not."""
+    from aoi_agent.i18n import translate
+
+    state = run(StubClient(), "你能查什麼")
+    assert translate("analysis.refused.opening") not in state["answer"]
+    assert translate("analysis.capabilities.opening") in state["answer"]
+
+
+def test_an_ordinary_question_still_goes_to_the_planner(stub_tools):
+    client = StubClient()
+    state = run(client, "M22 的 open 有什麼問題嗎")
+    assert len(client.calls) == 2
+    assert not state.get("capability_question")

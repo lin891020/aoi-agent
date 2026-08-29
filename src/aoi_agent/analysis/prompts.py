@@ -1,14 +1,17 @@
-"""What the model is told, and the seven examples that show it the edges.
+"""What the model is told, and the eight examples that show it the edges.
 
 Diversity matters more than count in few-shot, and the useful examples are the
 boundaries rather than the happy path: a question with no stated baseline, a
 causal question the data cannot answer, a window outside the data, a question
-too vague to act on, a request to act. Four of the seven are refusals or
+too vague to act on, a request to act. Four of the eight are refusals or
 hedges, which is the intended lesson. A system that answers everything is more
 dangerous on a factory floor than one that says it cannot. The seventh is the
 opposite lesson, added after the first before/after question asked at the
 station was refused: a comparison across a recorded machine event *is*
-answerable, and the example shows the two-call shape that answers it.
+answerable, and the example shows the two-call shape that answers it. The
+eighth is a dated ranking -- a calendar day, a top-N cut -- which is the
+shape of the first question a supervisor wrote down for this page, and which
+no parameter expressed until 2026-08-29.
 
 Whether this actually helps is a measurement, not an assumption -- see
 `scripts/analysis_eval.py`.
@@ -242,6 +245,30 @@ FEW_SHOT: list[dict[str, Any]] = [
             ],
         },
     },
+    {
+        "shape": "dated_top_n",
+        "question": "2026-08-05 缺陷數量前 5 名的機台",
+        "plan": {
+            "interpretation": "The five machines with the most defects per "
+            "board among the boards inspected on 2026-08-05, over every "
+            "defect class.",
+            "assumptions": [
+                "Most defects means the most re-verifier-confirmed defects per "
+                "board inspected, over all six classes rather than one class's "
+                "share.",
+                "One calendar day, 2026-08-05, which is inside the span held.",
+            ],
+            "calls": [
+                {
+                    "tool": "query_machine_stats",
+                    "args": {"date_from": "2026-08-05", "date_to": "2026-08-05",
+                             "top_n": 5},
+                    "why": "every machine's defects per board on that day, "
+                           "cut to the top five",
+                },
+            ],
+        },
+    },
 ]
 
 
@@ -279,7 +306,16 @@ def _domain_note(domains: Domains) -> str:
     # answers whether an event of that kind exists on *that* machine; this
     # line only says which kinds exist at all.
     kinds = sorted(domains.get("relative_to") or ())
+    span = domains.get("date_span")
+    dates = (
+        f"Days held: {span[0]} to {span[1]}. `date_from` and `date_to` "
+        f"(YYYY-MM-DD, inclusive) bound a window to calendar days inside that "
+        f"span; a day outside it does not exist here and is not to be "
+        f"substituted with a nearby one.\n"
+        if span else "Days held: none.\n"
+    )
     return (
+        dates +
         f"Lines: {', '.join(sorted(domains['line_id']))}\n"
         f"Machines: {', '.join(sorted(domains['machine_id']))}\n"
         f"Defect classes: {', '.join(sorted(domains['defect_type']))}\n"

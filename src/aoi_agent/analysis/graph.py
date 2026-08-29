@@ -35,6 +35,7 @@ from aoi_agent.analysis.plan import (
     PLANNABLE_TOOLS,
     Domains,
     capability_summary,
+    is_capability_question,
     store_domains,
     validate_plan,
 )
@@ -65,6 +66,11 @@ class AnalysisState(TypedDict, total=False):
     plan: dict | None
     plan_errors: list[str]
     refused: bool
+    #: The question was the page being asked what it can be asked. Answered
+    #: off the registry without a model call; `refused` is set too, so the
+    #: routing treats it as "nothing to run", but the answer is an answer
+    #: and the stored run does not call it a refusal.
+    capability_question: bool
     #: `time.perf_counter()` at the instant the plan node returned. Not a
     #: duration and not shown anywhere: it is the origin `collect_node`
     #: measures the fan-out's wall time from, and it has to be taken before
@@ -79,6 +85,24 @@ class AnalysisState(TypedDict, total=False):
 def make_plan_node(client, domains: Domains):
     def plan_node(state: AnalysisState) -> dict[str, Any]:
         started = time.perf_counter()
+        if is_capability_question(state["question"]):
+            # The registry answers this, and a model asked instead read it as
+            # a lookup it could not plan. No call is made; the "plan" is the
+            # record that says so, in the asker's language, because like every
+            # plan it is frozen once written.
+            return {
+                "plan": {
+                    "interpretation": translate(
+                        "analysis.capabilities.interpretation", state.get("lang")),
+                    "assumptions": [],
+                    "calls": [],
+                },
+                "plan_errors": [],
+                "refused": True,
+                "capability_question": True,
+                "fan_out_at": time.perf_counter(),
+                "timings_ms": {"plan": (time.perf_counter() - started) * 1000},
+            }
         try:
             result = client.chat(
                 build_planning_messages(state["question"], domains, state.get("lang")),
@@ -230,7 +254,22 @@ def make_synthesise_node(client):
     return synthesise_node
 
 
-def refusal_answer() -> str:
+def capability_answer(lang: str | None = None) -> str:
+    """What the page can be asked, as the answer to being asked that.
+
+    The same list the refusal ends with, under an opening that says the
+    question *was* answered -- a reader who asked what they can ask has not
+    been refused anything.
+    """
+    lines = [
+        translate("analysis.capabilities.opening", lang),
+        "",
+        *(f"- {line}" for line in capability_summary()),
+    ]
+    return "\n".join(lines)
+
+
+def refusal_answer(lang: str | None = None) -> str:
     """What to show when the planner declined to plan any lookup.
 
     A dead end is a place someone has to leave, so it names the exit. The list
@@ -244,9 +283,9 @@ def refusal_answer() -> str:
     language it was made in. See `station/i18n.py`.
     """
     lines = [
-        translate("analysis.refused.opening"),
+        translate("analysis.refused.opening", lang),
         "",
-        translate("analysis.refused.capabilities"),
+        translate("analysis.refused.capabilities", lang),
         "",
         *(f"- {line}" for line in capability_summary()),
     ]
@@ -262,6 +301,8 @@ def report_node(state: AnalysisState) -> dict[str, Any]:
     being down, and telling someone their plan "did not validate" sends them to
     look for a fault in a question that was never read.
     """
+    if state.get("capability_question"):
+        return {"answer": capability_answer(state.get("lang")), "chart_spec": None}
     if state.get("refused"):
         # Not the plan's `interpretation`. That string is already on the page
         # under "how it read your question", and putting it here too gave a
@@ -271,7 +312,7 @@ def report_node(state: AnalysisState) -> dict[str, Any]:
         #
         # What replaces it says the question was not answered, and what can
         # be asked -- read off the tool registry, so it cannot go stale.
-        return {"answer": refusal_answer(), "chart_spec": None}
+        return {"answer": refusal_answer(state.get("lang")), "chart_spec": None}
 
     errors = "\n".join(f"- {e}" for e in state.get("plan_errors") or [])
     if state.get("plan") is None:

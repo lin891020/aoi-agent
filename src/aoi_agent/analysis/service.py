@@ -49,7 +49,10 @@ def persist_run(
         chart=state.get("chart_spec"),
         answer=state.get("answer", ""),
         timings=state.get("timings_ms") or {},
-        refused=bool(state.get("refused")),
+        # A question about what can be asked ran no lookup either, but it was
+        # answered; the stored flag means "the planner declined", and on the
+        # recent list it renders as a chip saying so.
+        refused=bool(state.get("refused")) and not state.get("capability_question"),
         asked_by=asked_by,
         # The language the plan was written in, which is what makes the page
         # able to say that section 1 is a record rather than a rendering.

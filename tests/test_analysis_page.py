@@ -1044,3 +1044,20 @@ def test_the_chart_reads_in_the_language_the_page_is_in(client):
 
     assert "Defect share by machine" in en and "各機台缺陷佔比" not in en
     assert "各機台缺陷佔比" in zh and "Defect share by machine" not in zh
+
+
+def test_the_page_says_what_can_be_asked_before_anyone_asks(client):
+    """The rules block. Every registered tool appears under its readable name
+    with a sentence in the page's language, and the block says what the page
+    does not do -- change anything, forecast, or establish cause -- so the
+    first question is not «你能查什麼»."""
+    from aoi_agent.analysis.plan import PLANNABLE_TOOLS
+    from aoi_agent.i18n import translate
+
+    for locale in ("zh-TW", "en"):
+        client.get(f"/locale/{locale}?next=/ask")
+        page = client.get("/ask").text
+        for name in PLANNABLE_TOOLS:
+            assert translate(f"tool.{name}", locale) in page, (locale, name)
+            assert translate(f"tool.{name}.does", locale) in page, (locale, name)
+        assert translate("analysis.cannot", locale) in page
