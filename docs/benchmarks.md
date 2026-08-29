@@ -6085,3 +6085,39 @@ evidence supports, in the order a planner should apply it: a typed tool that
 expresses the dimension is the answer; a dimension only the tables hold is a
 SELECT; a question naming no entity, or asking for what the tables do not
 hold, is a refusal whatever the language. `run_sql` stays registered.
+
+### Why the Chinese explanation is slower — three regions, both languages, token counts
+
+2026-08-29, evening, a quiet machine, `gpt-oss:20b` at `think="low"`; the same
+three regions the router sends to the model, explained once in `zh-TW` and
+once in `en` through the real reason node. Three samples, so a shape and not
+a figure; the figure is the twenty-call entry above.
+
+| region | language | eval tokens | eval | tokens/s | rationale length |
+|---|---|---|---|---|---|
+| 00041220#0 | zh-TW | 677 | 30.3 s | 22.3 | 992 chars |
+| 00041220#0 | en | 335 | 17.6 s | 19.0 | 1,511 chars |
+| 00041220#1 | zh-TW | 630 | 28.6 s | 22.0 | 841 chars |
+| 00041220#1 | en | 278 | 14.9 s | 18.7 | 1,253 chars |
+| 90100065#7 | zh-TW | 701 | 36.8 s | 19.1 | 847 chars |
+| 90100065#7 | en | 202 | 10.6 s | 19.0 | 929 chars |
+
+The model generates at the same speed in both languages -- 19 to 22 tokens a
+second either way -- and the Chinese explanation is **two to three times as
+many tokens**: around 0.75 tokens per Chinese character against 0.22 per
+English character on this tokenizer, so a shorter text in characters is a
+longer one in tokens, and the Chinese answers also came back structured
+(numbered headings, bullets) where the English ones were a paragraph. The
+cost is generation, not thinking (17 to 179 thinking characters in both) and
+not queueing.
+
+**They are not the same text, and the Chinese one added a number.** For
+90100065#7 the Chinese rationale says the 0.901 confidence is "already above
+the usual high-confidence threshold (typically set at 0.85 or higher)" -- no
+such threshold is in the prompt, the criteria or the store; the English
+rationale for the same region quotes the document and invents nothing. Two
+generations from one prompt are two answers, and the only check this project
+has on their content is the one `/ask` runs on figures against the payload;
+the reason node has no payload to check against, which is why its verdict was
+taken off the model in the first place. What the operator loses to an
+invented threshold is trust, not a board.
