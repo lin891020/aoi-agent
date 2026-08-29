@@ -235,6 +235,38 @@
       {%- endfor %}
       </div>
     </div>
+
+    {% if timing_rows %}
+    {# Stage by stage, with the model's own inference time beside the wait.
+       The wait includes queueing and loading; the model column is what
+       Ollama reported as eval_duration, which is the only figure this
+       project quotes as the model's time. "Unrecorded" is a run stored
+       before the model column existed, and it is not rendered as zero. #}
+    <div class="answer-block timing">
+      <h2>{{ t('analysis.timing.title') }}</h2>
+      <table class="queue timing">
+        <thead><tr>
+          <th>{{ t('analysis.timing.stage') }}</th>
+          <th class="num">{{ t('analysis.timing.wall') }}</th>
+          <th class="num">{{ t('analysis.timing.model') }}</th>
+        </tr></thead>
+        <tbody>
+        {% for row in timing_rows %}
+          <tr{% if row.key == 'analysis.timing.total' %} class="total"{% endif %}>
+            <td>{{ t(row.key) }}</td>
+            <td class="num mono">{% if row.wall_s is not none %}{{ t('analysis.timing.seconds', s='%.2f'|format(row.wall_s)) }}{% else %}—{% endif %}</td>
+            <td class="num mono">
+              {%- if row.model_s is not none %}{{ t('analysis.timing.seconds', s='%.2f'|format(row.model_s)) }}
+              {%- elif row.model_unrecorded %}<span class="dim">{{ t('analysis.timing.unrecorded') }}</span>
+              {%- else %}—{% endif -%}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <p class="sub dim">{{ t('analysis.timing.note') }}</p>
+    </div>
+    {% endif %}
   {% endif %}
 
   {% if recent %}

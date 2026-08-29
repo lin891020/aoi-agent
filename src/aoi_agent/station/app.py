@@ -79,6 +79,7 @@ from aoi_agent.i18n import (
     translate,
 )
 from aoi_agent.station.prose import blocks as prose_blocks, lead_and_rest
+from aoi_agent.station import timing_view
 from aoi_agent.station.result_view import clip, error_text, readable_rows, shown_count
 from aoi_agent.store import analysis as analysis_store
 from aoi_agent.store import dispositions, escalations
@@ -894,6 +895,9 @@ def _analysis_context(run: dict | None, locale: str | None = None) -> dict:
         # in, which is why the template renders it with no `|safe` -- see
         # `station/prose.py`.
         "prose_blocks": prose_blocks,
+        # The stage table under the answer: what the page waited at each
+        # stage, and what the model reported as its own inference time.
+        "timing_rows": timing_view.rows(run.get("timings")) if run else [],
         "waiting": escalations.pending_count(),
     }
 

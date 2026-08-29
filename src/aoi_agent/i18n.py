@@ -80,6 +80,21 @@ STRINGS: dict[str, dict[str, str]] = {
         "analysis.capabilities.interpretation":
             "問的是這一頁能查什麼。這由工具登錄表回答，不需要規劃。",
         "analysis.can": "這一頁能回答什麼",
+        # -- the stage table under the answer ----------------------------------
+        "analysis.timing.title": "6 · 花了多久",
+        "analysis.timing.stage": "階段",
+        "analysis.timing.wall": "等待",
+        "analysis.timing.model": "其中模型推論",
+        "analysis.timing.plan": "規劃（模型讀題、決定查什麼）",
+        "analysis.timing.tools": "查詢（工具，平行）",
+        "analysis.timing.chart": "繪圖（由結果推導）",
+        "analysis.timing.synthesise": "撰寫回答（模型）",
+        "analysis.timing.total": "合計",
+        "analysis.timing.seconds": "{s} 秒",
+        "analysis.timing.unrecorded": "未記錄",
+        "analysis.timing.note":
+            "「等待」是頁面實際等的時間，含排隊與載入模型；「模型推論」是 Ollama 回報的 "
+            "eval_duration。兩者差很多，通常是機器同時在忙別的事。",
         "analysis.cannot":
             "它不會改任何資料、不做預測、不判斷原因；沒有資料的日期不存在，也不會拿鄰近的日期代替。",
         "tool.query_defect_history.does":
@@ -383,6 +398,23 @@ STRINGS: dict[str, dict[str, str]] = {
             "A question about what can be asked here. The registry answers it; "
             "nothing is planned.",
         "analysis.can": "What this page can answer",
+        # -- the stage table under the answer ----------------------------------
+        "analysis.timing.title": "6 · How long it took",
+        "analysis.timing.stage": "stage",
+        "analysis.timing.wall": "waited",
+        "analysis.timing.model": "of which model inference",
+        "analysis.timing.plan": "planning (the model reads the question, decides what to look up)",
+        "analysis.timing.tools": "lookups (tools, in parallel)",
+        "analysis.timing.chart": "chart (derived from the results)",
+        "analysis.timing.synthesise": "writing the answer (model)",
+        "analysis.timing.total": "total",
+        "analysis.timing.seconds": "{s} s",
+        "analysis.timing.unrecorded": "unrecorded",
+        "analysis.timing.note":
+            "\"Waited\" is what the page actually waited, queueing and model "
+            "loading included; \"model inference\" is the eval_duration Ollama "
+            "reported. A wide gap between them usually means the machine was "
+            "busy with something else.",
         "analysis.cannot":
             "It changes nothing, forecasts nothing and establishes no cause; a day "
             "with no data does not exist here and is not replaced with a nearby one.",

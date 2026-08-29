@@ -421,3 +421,5 @@ details.rules ul { margin: 0.5rem 0 0.25rem; padding-left: 1.1rem; }
 details.rules li { margin: 0.25rem 0; font-size: 0.92rem; }
 td.reason details.more { margin-top: 0.2rem; }
 td.reason details.more summary { cursor: pointer; font-size: 0.8rem; color: var(--dim); }
+table.timing { width: auto; min-width: 28rem; }
+table.timing tr.total td { border-top: 1px solid #3a3a42; font-weight: 500; }

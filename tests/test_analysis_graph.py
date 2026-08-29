@@ -355,3 +355,19 @@ def test_an_ordinary_question_still_goes_to_the_planner(stub_tools):
     state = run(client, "M22 的 open 有什麼問題嗎")
     assert len(client.calls) == 2
     assert not state.get("capability_question")
+
+
+# --- what the model reported, kept beside what the page waited ---------------
+
+def test_the_models_own_inference_time_is_recorded_for_both_calls(stub_tools):
+    """`plan` and `synthesise` are wall times. The stub's `Timing` says the
+    model spent 1ms evaluating; that figure has to reach the stored run under
+    its own key, because on this machine the two differ by the length of
+    whatever else is holding the GPU, and the page shows both."""
+    state = run(StubClient())
+    timings = state["timings_ms"]
+
+    assert timings["plan_eval"] == 1.0
+    assert timings["plan_load"] == 0.0
+    assert timings["synthesise_eval"] == 1.0
+    assert "chart" in timings, "deriving the chart is a stage and is timed"

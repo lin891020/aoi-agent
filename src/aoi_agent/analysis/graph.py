@@ -109,6 +109,7 @@ def make_plan_node(client, domains: Domains):
                 think="low",
                 response_format=PLAN_SCHEMA,
             )
+            model_ms = _model_timings("plan", result)
         except (httpx.HTTPError, OSError) as error:
             return {
                 "plan": None,
@@ -141,10 +142,31 @@ def make_plan_node(client, domains: Domains):
             "plan_errors": errors,
             "refused": refused,
             "fan_out_at": time.perf_counter(),
-            "timings_ms": {"plan": (time.perf_counter() - started) * 1000},
+            "timings_ms": {"plan": (time.perf_counter() - started) * 1000, **model_ms},
         }
 
     return plan_node
+
+
+def _model_timings(stage: str, result) -> dict[str, float]:
+    """What the model itself reports about one call, keyed under its stage.
+
+    ``<stage>`` in `timings_ms` is the wall time the page waited, queueing and
+    loading included. These are the pieces Ollama reports inside it --
+    `eval_duration`, `prompt_eval_duration`, `load_duration` -- which is the
+    split `measuring-llm-latency` insists on: a 16-second wait beside a
+    13-second inference is a busy machine, and one number cannot say so. A
+    client that reports no timing contributes nothing, and the page says
+    "unrecorded" rather than zero.
+    """
+    timing = getattr(result, "timing", None)
+    if timing is None:
+        return {}
+    return {
+        f"{stage}_eval": round(float(timing.eval_ms), 1),
+        f"{stage}_prompt_eval": round(float(timing.prompt_eval_ms), 1),
+        f"{stage}_load": round(float(timing.load_ms), 1),
+    }
 
 
 def fan_out(state: AnalysisState) -> list[Send] | str:
@@ -187,6 +209,9 @@ def collect_node(state: AnalysisState) -> dict[str, Any]:
     results = state.get("results") or []
     sequential = sum(r["elapsed_ms"] for r in results)
     started = state.get("fan_out_at")
+    chart_started = time.perf_counter()
+    chart_spec = chart_spec_for(results)
+    chart_ms = (time.perf_counter() - chart_started) * 1000
     if started is None:
         # Only when `collect_node` is called outside the graph -- nothing in
         # the flow reaches here without `plan_node` having stamped it. Falling
@@ -196,8 +221,13 @@ def collect_node(state: AnalysisState) -> dict[str, Any]:
     else:
         wall = (time.perf_counter() - started) * 1000
     return {
-        "chart_spec": chart_spec_for(results),
+        "chart_spec": chart_spec,
         "timings_ms": {
+            # Deriving the specification, not drawing it: the SVG is rendered
+            # at page time from the stored spec. Microseconds, and shown as
+            # such -- the point of the row is that the chart costs nothing
+            # beside the two model calls.
+            "chart": round(chart_ms, 2),
             "tools_wall": round(wall, 1),
             "tools_longest_branch": round(
                 max((r["elapsed_ms"] for r in results), default=0.0), 1
@@ -210,7 +240,14 @@ def collect_node(state: AnalysisState) -> dict[str, Any]:
 def synthesise(
     client, question: str, plan: dict, results: list[dict], lang: str | None = None
 ) -> str:
-    """Write up one set of results, in one language.
+    """`synthesise_timed` without the timing, for callers that want the prose."""
+    return synthesise_timed(client, question, plan, results, lang)[0]
+
+
+def synthesise_timed(
+    client, question: str, plan: dict, results: list[dict], lang: str | None = None
+) -> tuple[str, dict[str, float]]:
+    """Write up one set of results, in one language, and say what it cost.
 
     Lifted out of the node so a stored run can be written up again without
     being re-planned. That is the whole of what the station's language switch
@@ -228,7 +265,7 @@ def synthesise(
             build_synthesis_messages(question, plan, results, lang),
             think="low",
         )
-        return result.text.strip()
+        return result.text.strip(), _model_timings("synthesise", result)
     except (httpx.HTTPError, OSError) as error:
         # The results are already correct and already on screen. Losing the
         # prose costs a reader some effort; losing the results would cost them
@@ -236,19 +273,19 @@ def synthesise(
         return (
             f"The tools returned their results, but the summary could not be "
             f"written ({type(error).__name__}). The figures below are complete."
-        )
+        ), {}
 
 
 def make_synthesise_node(client):
     def synthesise_node(state: AnalysisState) -> dict[str, Any]:
         started = time.perf_counter()
-        answer = synthesise(
+        answer, model_ms = synthesise_timed(
             client, state["question"], state.get("plan") or {},
             state.get("results") or [], state.get("lang"),
         )
         return {
             "answer": answer,
-            "timings_ms": {"synthesise": (time.perf_counter() - started) * 1000},
+            "timings_ms": {"synthesise": (time.perf_counter() - started) * 1000, **model_ms},
         }
 
     return synthesise_node

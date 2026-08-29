@@ -1061,3 +1061,16 @@ def test_the_page_says_what_can_be_asked_before_anyone_asks(client):
             assert translate(f"tool.{name}", locale) in page, (locale, name)
             assert translate(f"tool.{name}.does", locale) in page, (locale, name)
         assert translate("analysis.cannot", locale) in page
+
+
+def test_the_finished_page_shows_how_long_each_stage_took_in_seconds(client):
+    """The per-tool milliseconds were on the page; the model's own time was
+    not, once the progress panel had gone. The table under the answer shows
+    planning, lookups, chart and writing, waited beside inferred."""
+    page = client.post("/ask", data={"question": "M22 正常嗎"},
+                       follow_redirects=True).text
+
+    assert "花了多久" in page
+    assert "規劃" in page and "撰寫回答" in page and "繪圖" in page
+    assert "合計" in page
+    assert "其中模型推論" in page
