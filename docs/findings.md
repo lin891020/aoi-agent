@@ -131,7 +131,10 @@ The set also found two real defects that the score does not contain:
   and 25/28. S25 composes on the event tools again, S20 refuses again, the
   five gains hold. Two SELECTs were valid and wrong -- a state value that does
   not exist, a column read as a position -- and each returned a number; the
-  guard now refuses an equality on a value no row holds, unmeasured as yet.
+  guard now refuses an equality on a value no row holds; read offline against
+  every SELECT of a third run it refuses the wrong state value and the board
+  number compared to the integer key, and cannot see a column read as a
+  position.
 
 What it does not establish: the questions were written by LLM authors working
 from different briefs, not by a real shift supervisor, so this bounds the shapes

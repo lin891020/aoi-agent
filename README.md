@@ -399,7 +399,11 @@ hold. The re-run also produced the failure the old rule was written for: two
 SELECTs that were valid, read-only, bounded and wrong, each returning a number
 (a state value that does not exist; a column read as a position). The guard
 now refuses an equality on a value no row holds and names the values that
-exist; that rule postdates both arms and is unmeasured.
+exist. Read against every SELECT of a third run (prompt unchanged, plans
+near-identical): it refuses the wrong state value and the board number
+compared to the integer key, and cannot see a column read as a position --
+values exist, the meaning is wrong -- which is left to the prompt rule and to
+the SQL printed above its rows.
 
 What makes it admissible is structure, not a prompt asking the model to be
 careful:

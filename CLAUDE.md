@@ -432,7 +432,10 @@ the second reading found is the failure the old invariant was written for:
 two SELECTs that were valid, read-only, bounded and wrong -- a state value
 that does not exist, a column read as a position -- each returning a number.
 The guard now refuses a bare `column = literal` that matches no row and names
-the values held; that rule postdates both arms and is unmeasured. The
+the values held; read against every SELECT of a third run (prompt unchanged,
+plans near-identical) it refuses S11's wrong state and A22's `boards.id =
+'20085294'`, and cannot see S24's column-read-as-position, which is left to
+the prompt rule and the SQL on the page. The
 per-question report with every SELECT is linked from the benchmarks entry.
 
 Retraining from operator corrections -- now selectable by who made them, which
