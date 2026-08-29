@@ -220,8 +220,9 @@ STRINGS = {
         "no": "FAIL · ALL ERRORS SHOWN",
         "send": "SEND ×N · INDEPENDENT FACTS",
         "refused": ("refused", "errors shown · no retry"),
-        "tool": ("run tool", "typed arguments · no SQL"),
-        "tool_note": ("a failed branch returns data,", "not an exception"),
+        "tool": ("run tool", "typed arguments · or one SELECT"),
+        "tool_note": ("SQL: a copy without ground_truth,", "one statement · 200 rows · 2 s",
+                      "a failed branch returns data,", "not an exception"),
         "collect": ("collect", "operator.add reducer"),
         "chart": "CHART FROM RESULT SHAPE",
         "synth": ("synthesise", "LLM call #2 · prose"),
@@ -230,6 +231,7 @@ STRINGS = {
         "recorded": "RECORDED",
         "aside3": ["Validation checks tool name, argument names and",
                    "argument values against the store's domains.",
+                   "Model-written SQL reaches the store only through sql_guard.",
                    "The LLM selects lookups and writes prose; nothing else."],
         "legend2": [("terminal", "start / end"), ("step", "node in analysis/graph.py"),
                     ("focal", "validation gate"), ("dot", "Send fan-out"), ("store", "table")],
@@ -259,8 +261,9 @@ STRINGS = {
         "no": "未通過 · 列出全部錯誤",
         "send": "SEND ×N · 彼此獨立的事實",
         "refused": ("拒絕", "顯示錯誤 · 不重試"),
-        "tool": ("執行工具", "型別化參數 · 無 SQL"),
-        "tool_note": ("失敗的分支回傳資料，", "而非例外"),
+        "tool": ("執行工具", "型別化參數 · 或一句 SELECT"),
+        "tool_note": ("SQL：只讀副本，不含 ground_truth", "單句 · 200 列 · 2 秒",
+                      "失敗的分支回傳資料，", "而非例外"),
         "collect": ("收集", "operator.add reducer"),
         "chart": "圖從結果的形狀推出",
         "synth": ("合成", "LLM 呼叫 #2 · 文字"),
@@ -269,6 +272,7 @@ STRINGS = {
         "recorded": "寫入",
         "aside3": ["驗證對照工具名稱、參數名稱，",
                    "以及 store 中實際存在的值域。",
+                   "模型寫的 SQL 只能經由 sql_guard 進到 store。",
                    "LLM 負責選擇查詢與撰寫文字，其餘皆由程式決定。"],
         "legend2": [("terminal", "起點 / 終點"), ("step", "analysis/graph.py 的 node"),
                     ("focal", "驗證關卡"), ("dot", "Send 展開"), ("store", "資料表")],
@@ -368,17 +372,16 @@ def analysis(theme_name: str, lang: str = "en") -> str:
         f'<rect x="{612}" y="{128}" width="160" height="136" rx="6" fill="{t["node"]}" stroke="{t["ink"]}" stroke-opacity="0.55" stroke-width="1"/>'
     )
     c.box(608, 132, 160, 136, *L["tool"], tag="MCP")
-    n1, n2 = L["tool_note"]
-    c.boxes.append(
-        f'<text x="688" y="234" fill="{t["soft"]}" font-size="8" font-family="{MONO}" text-anchor="middle">{n1}</text>'
-        f'<text x="688" y="246" fill="{t["soft"]}" font-size="8" font-family="{MONO}" text-anchor="middle">{n2}</text>'
-    )
+    for i, line in enumerate(L["tool_note"]):
+        c.boxes.append(
+            f'<text x="688" y="{226 + 11 * i}" fill="{t["soft"]}" font-size="8" font-family="{MONO}" text-anchor="middle">{line}</text>'
+        )
     c.box(808, 176, 144, 48, *L["collect"])
     c.box(808, 312, 144, 52, *L["synth"], tag="LLM")
     c.box(808, 428, 144, 60, *L["page"], kind="terminal")
     c.box(580, 428, 160, 60, *L["store"], kind="store", tag="SQLITE")
     for i, line in enumerate(L["aside3"]):
-        c.aside(24, 468 + 16 * i, line)
+        c.aside(24, 462 + 15 * i, line)
     c.legend(528, L["legend2"])
     return c.render()
 
