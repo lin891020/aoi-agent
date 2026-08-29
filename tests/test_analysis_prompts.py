@@ -224,3 +224,13 @@ def test_the_planner_is_shown_the_sql_tools_schema():
     assert "run_sql" in system
     assert "candidates(id, board_id" in system
     assert "withheld: ground_truth" in system
+
+
+def test_the_planner_is_told_it_does_not_choose_charts():
+    """A real plan promised «圓餅圖與長條圖» in its assumptions; the page draws
+    one chart from the result shape and there is no pie. The rule makes the
+    planner say so instead of promising."""
+    from aoi_agent.analysis.prompts import SYSTEM_PROMPT
+
+    assert "You do not choose charts" in SYSTEM_PROMPT
+    assert "pie chart" in SYSTEM_PROMPT

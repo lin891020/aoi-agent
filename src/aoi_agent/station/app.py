@@ -65,6 +65,9 @@ from markupsafe import Markup
 
 from aoi_agent.analysis import service as analysis_service
 from aoi_agent.analysis.graph import build_analysis_graph
+import logging
+
+from aoi_agent.analysis import claims
 from aoi_agent.analysis.plan import PLANNABLE_TOOLS, store_domains
 from aoi_agent.graph.flow import DEFAULT_MODEL, build_graph, explanation_notice
 from aoi_agent.provenance import UNAVAILABLE, UNRECORDED, ReviewerIdentity
@@ -93,6 +96,8 @@ from aoi_agent.store.boards import (
 HERE = Path(__file__).parent
 
 app = FastAPI(title="AOI re-verification station")
+log = logging.getLogger(__name__)
+
 app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
 templates = Jinja2Templates(directory=HERE / "templates")
 
@@ -833,6 +838,27 @@ def _flow_events(run: dict) -> list[dict]:
     return events
 
 
+def checked_claims(run: dict) -> list[dict]:
+    """The arithmetic findings over this run's answer, as the page shows them.
+
+    A refusal has no results and nothing to check; a checker that raises must
+    not cost the page, so a failure here is an empty list and a log line.
+    """
+    if not run.get("results") or not run.get("answer"):
+        return []
+    try:
+        findings, _waved, _derived = claims.check(
+            claims.normalise(run["answer"]), run.get("plan") or {}, run["results"]
+        )
+    except Exception as error:  # noqa: BLE001 -- a broken checker is not a broken page
+        log.warning("claim check failed on run %s: %s", run.get("id"), error)
+        return []
+    return [
+        {"kind": f.kind, "claim": f.claim, "evidence": f.evidence, "sentence": f.sentence}
+        for f in findings if f.checked
+    ]
+
+
 def _analysis_context(run: dict | None, locale: str | None = None) -> dict:
     """Everything ``analysis.html`` renders, for both of its entrances.
 
@@ -898,6 +924,14 @@ def _analysis_context(run: dict | None, locale: str | None = None) -> dict:
         # in, which is why the template renders it with no `|safe` -- see
         # `station/prose.py`.
         "prose_blocks": prose_blocks,
+        # The figure check the eval runs offline, run here on the answer this
+        # page shows: every number in the prose that no result renders as,
+        # and every number stated under the wrong machine. Recomputed at
+        # render from the stored payload rather than stored -- the checker is
+        # deterministic and a stored verdict would outlive a fixed checker.
+        # Only the two arithmetic kinds reach the page; the pattern kinds are
+        # for a person reading the eval, not a supervisor reading an answer.
+        "claims": checked_claims(run) if run else [],
         # The stage table under the answer: what the page waited at each
         # stage, and what the model reported as its own inference time.
         "timing_rows": timing_view.rows(run.get("timings")) if run else [],

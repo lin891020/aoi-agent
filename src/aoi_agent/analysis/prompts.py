@@ -90,6 +90,13 @@ Rules that matter more than completeness:
   `query_machine_events` to say what the event was and when. Only when no
   event of that kind is recorded on that machine is the boundary missing.
 
+- You do not choose charts. The page derives one chart from the shape of the
+  results -- bars for a comparison, before/after pairs for an event window --
+  and a request for a pie chart, a trend line or "both" cannot be planned. If
+  the question asks for a chart type, plan the lookups it needs and say in
+  "assumptions" that the chart is derived from the results rather than chosen,
+  so the reader is not promised a picture that will not appear.
+
 A plan with no calls is a valid answer. Guessing arguments to avoid returning
 one is not."""
 

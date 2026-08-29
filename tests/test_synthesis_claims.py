@@ -486,3 +486,58 @@ def test_the_headline_clause_says_what_the_table_under_it_says():
     assert _checked_clause(Counter({"unsupported_claim": 9})) == (
         "no fabrications and no misattributions"
     )
+
+
+
+# --- a derived figure is a count over a count, 2026-08-29 -----------------------
+
+def machine_stats_results():
+    return [{
+        "tool": "query_machine_stats", "args": {"defect_type": "open", "days": 7},
+        "ok": True, "error": None, "elapsed_ms": 1.0,
+        "data": {"defect_type": "open", "days": 7, "fleet_share_of_defects": 0.21,
+                 "machines": [
+                     {"machine": "L2-M22", "boards": 83, "defects": 191,
+                      "per_board": 2.301, "share_of_defects": 0.326},
+                     {"machine": "L1-M12", "boards": 77, "defects": 82,
+                      "per_board": 1.065, "share_of_defects": 0.172},
+                 ]},
+    }, {
+        "tool": "search_standards", "args": {"query": "open", "top_k": 10},
+        "ok": True, "error": None, "elapsed_ms": 1.0,
+        "data": {"query": "open", "top_k": 10, "passages": []},
+    }]
+
+
+def test_a_percentage_that_is_a_count_divided_by_a_share_is_not_excused():
+    """The real answer this came from: «佔總缺陷 58.1%（191/585）». 191/585 is
+    32.6%, and 58.1 is in no result. The old rule excused it as 10/0.172 --
+    `top_k` over another machine's share -- which is not arithmetic anyone
+    meant. A derived figure is a count over a count."""
+    plan = {"interpretation": "", "assumptions": [], "calls": []}
+    findings, _waved, derived = check(
+        "L2-M22 在 83 枚檢測板中共發現 191 起 open 缺陷，佔總缺陷 58.1%（191/585）。",
+        plan, machine_stats_results() + [{
+            "tool": "query_defect_history", "args": {"machine_id": "M22", "days": 7},
+            "ok": True, "error": None, "elapsed_ms": 1.0,
+            "data": {"filters": {"machine_id": "M22"}, "defects_total": 585,
+                     "by_class": {"open": 191, "short": 84}},
+        }],
+    )
+    assert any(f.kind == "fabricated_figure" and f.claim == "58.1" for f in findings), (
+        [(f.kind, f.claim) for f in findings], derived)
+
+
+def test_a_count_over_a_count_is_still_the_models_to_divide():
+    plan = {"interpretation": "", "assumptions": [], "calls": []}
+    findings, _waved, derived = check(
+        "M22 的 191 起 open 佔其 585 起缺陷的 32.6%，每板 2.301 起。",
+        plan, machine_stats_results() + [{
+            "tool": "query_defect_history", "args": {"machine_id": "M22", "days": 7},
+            "ok": True, "error": None, "elapsed_ms": 1.0,
+            "data": {"filters": {"machine_id": "M22"}, "defects_total": 585,
+                     "by_class": {"open": 191, "short": 84}},
+        }],
+    )
+    assert not [f for f in findings if f.kind == "fabricated_figure"], derived
+    assert any(d.startswith("32.6 = 191/585") for d in derived), derived

@@ -80,6 +80,9 @@ STRINGS: dict[str, dict[str, str]] = {
         "analysis.capabilities.interpretation":
             "問的是這一頁能查什麼。這由工具登錄表回答，不需要規劃。",
         "analysis.can": "這一頁能回答什麼",
+        "analysis.claims.title": "數字核對：{count} 處與回傳資料對不上，請對照第 2 節的資料再讀這段。",
+        "analysis.claims.fabricated_figure": "回傳的資料裡沒有這個數字",
+        "analysis.claims.misattributed_figure": "這個數字在資料裡屬於另一台機台",
         # -- the stage table under the answer ----------------------------------
         "analysis.timing.title": "6 · 花了多久",
         "analysis.timing.stage": "階段",
@@ -409,6 +412,9 @@ STRINGS: dict[str, dict[str, str]] = {
             "A question about what can be asked here. The registry answers it; "
             "nothing is planned.",
         "analysis.can": "What this page can answer",
+        "analysis.claims.title": "Figure check: {count} figure(s) do not match the returned data; read this against the data in section 2.",
+        "analysis.claims.fabricated_figure": "no returned value renders as this figure",
+        "analysis.claims.misattributed_figure": "in the data this figure belongs to another machine",
         # -- the stage table under the answer ----------------------------------
         "analysis.timing.title": "6 · How long it took",
         "analysis.timing.stage": "stage",

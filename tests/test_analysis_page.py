@@ -1099,3 +1099,33 @@ def test_a_select_result_is_shown_as_a_grid_with_the_sql_that_ran(client, monkey
     assert "<th class=\"mono\">shift</th>" in page
     assert "<td class=\"mono\">5</td>" in page
     assert "<svg" in page, "an aggregate is charted"
+
+
+def test_a_figure_the_results_do_not_hold_is_flagged_above_the_answer(client, monkeypatch):
+    """«佔總缺陷 58.1%（191/585）» reached a real page on 2026-08-29 with 58.1
+    in no result and 191/585 being 32.6%. The checker that catches it ran only
+    in the offline eval; it runs on the page now, on the answer shown."""
+    monkeypatch.setattr(
+        station_app, "_analysis_graph",
+        analysis.build_analysis_graph(
+            StubClient(answer="L2-M22 在 40 枚檢測板中共發現 29 起 open 缺陷，佔總缺陷 58.1%。"),
+            DOMAINS),
+    )
+    monkeypatch.setitem(
+        analysis.PLANNABLE_TOOLS, "query_machine_stats",
+        lambda **kw: {"defect_type": "open", "fleet_share_of_defects": 0.2,
+                      "machines": [{"machine": "L2-M22", "boards": 40, "defects": 29,
+                                    "share_of_defects": 0.32, "per_board": 0.725}]},
+    )
+    page = client.post("/ask", data={"question": "M22 正常嗎"},
+                       follow_redirects=True).text
+
+    assert "數字核對" in page
+    assert "58.1" in page
+    assert "回傳的資料裡沒有這個數字" in page
+
+
+def test_a_faithful_answer_carries_no_figure_warning(client):
+    page = client.post("/ask", data={"question": "M22 正常嗎"},
+                       follow_redirects=True).text
+    assert "數字核對" not in page

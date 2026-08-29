@@ -490,13 +490,21 @@ class Grounding:
         machine is a failure this cannot see, because a quotient carries no
         entity. The report says so.
         """
-        pool = sorted(self.everything)
+        # Counts only. Until 2026-08-29 any two stored figures could be the
+        # pair, and on a real answer «佔總缺陷 58.1%（191/585）» -- where
+        # 191/585 is 32.6% and 58.1 appears nowhere -- the checker excused
+        # 58.1 as 10/0.172: a `top_k` divided by another machine's share.
+        # A ratio the model is entitled to is a count over a count; a share
+        # is already a ratio and dividing by one is not arithmetic anyone
+        # meant. The excuse is still listed so the latitude stays countable.
+        pool = sorted(
+            figure for figure in self.everything
+            if figure == figure.to_integral_value() and figure > 0
+        )
         if len(pool) > _RATIO_CAP:
             return ""
         for numerator in pool:
             for denominator in pool:
-                if denominator == 0:
-                    continue
                 for form in (numerator / denominator,
                              numerator * 100 / denominator):
                     if abs(value - form) <= _tolerance(places):

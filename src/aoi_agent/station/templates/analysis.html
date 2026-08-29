@@ -219,6 +219,22 @@
 
     <div class="answer-block">
       <h2>{{ t('analysis.s5') }}</h2>
+      {% if claims %}
+      {# The figure check, on the page. A number the prose states that no
+         result renders as, or one stated under the wrong machine, is named
+         here above the answer -- the figures panel is where a reader can
+         confirm it. Not a verdict on the answer: the sentence stays, the
+         warning sits beside it. #}
+      <div class="claims warn-line">
+        <p class="sub">{{ t('analysis.claims.title', count=claims|length) }}</p>
+        <ul>
+          {% for c in claims %}
+          <li><strong class="mono">{{ c.claim }}</strong> — {{ t('analysis.claims.' + c.kind) }}
+              {% if c.sentence %}<span class="dim">「{{ c.sentence }}」</span>{% endif %}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% endif %}
       {# Not `{{ run.answer }}` in one `<p>`, which printed the model's
          asterisks and pipe rows on screen as asterisks and pipe rows. Not
          `|safe` either, now or ever: this text is written by a model from tool
