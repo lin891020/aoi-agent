@@ -117,6 +117,15 @@ The set also found two real defects that the score does not contain:
   S32 was refused and now plans a false-call rate for a question about
   confidence over time. Everything else is inside the three-row drift
   baseline. The in-house twenty read 18/20 (11/13 answered, 7/7 refused).
+- **2026-08-29, the read-only SQL tool, two arms.** With `run_sql` registered:
+  independent 24/42 answered, adjudicated refusals 22/28; without it (the
+  control, `AOI_SQL_TOOL=0`): 26/42 and 25/28. Five refused questions gained a
+  route (a shift on one machine, today's flagged regions, the waiting count);
+  S25's event composition was lost to a SELECT and three SELECTs were written
+  for questions naming no entity. In-house, now twenty-two rows, 20/22 against
+  21/22, with the new dated question planned correctly in both arms. The tool
+  stays; the two prompt sentences that address the failures are named in the
+  adjudication and not yet made.
 
 What it does not establish: the questions were written by LLM authors working
 from different briefs, not by a real shift supervisor, so this bounds the shapes

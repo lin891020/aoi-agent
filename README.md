@@ -385,8 +385,15 @@ supervisor questions sat on dimensions no typed tool combines -- a shift on one
 machine, which machines a lot ran on, how many regions were flagged -- and
 every one was refused. `run_sql` takes one SELECT for those. It is an
 experiment with a control: `AOI_SQL_TOOL=0` leaves it out of the registry, and
-the same seventy planned both ways is what decides whether it stays. No figure
-has been published with it yet.
+the same seventy planned both ways is what decides whether it stays. Measured
+2026-08-29, both arms: adjudicated refusals 22/28 with the tool against 25/28
+without, answered 24/42 against 26/42. Five questions that had no route before
+were answered (a shift on one machine, regions flagged today, how many wait on
+a person); one composition was lost -- the M32 before/after that the event
+tools answer, written as a SELECT instead -- and three SELECTs were written
+for questions naming no entity. It stays registered, and the two prompt
+sentences that address the four failures are named in the adjudication entry
+and deliberately not yet made, so the figures describe the prompt that ships.
 
 What makes it admissible is structure, not a prompt asking the model to be
 careful:
@@ -631,7 +638,10 @@ explanation step needs the container to be able to reach it.
   the verdict, which is the classifier's at 2.5 ms, and
   `EXPLANATION_DEADLINE_S` is 60 s and bounds a wait nothing blocks on.
   Re-measured under the shipped configuration: median 8.6 s, p90 11.1 s, **0 of
-  24 calls without an explanation**. A missing one is a first-class state now,
+  24 calls without an explanation** -- in English. Since 2026-08-29 the
+  rationale is written in the line's language, Chinese by default, and the
+  same measurement reads median 31.9 s, p90 35.9 s, 0 of 20 past the deadline:
+  3.7x, all of it generation, none of it waited on. A missing one is a first-class state now,
   shown as a notice and counted by `uv run python -m aoi_agent explanations` —
   [the run](docs/benchmarks.md#agent-layer-latency--does-the-reason-node-fit-the-explanation-deadline).
 - **Production context is simulated, with two planted signals and three

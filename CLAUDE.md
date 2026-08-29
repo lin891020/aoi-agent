@@ -240,9 +240,14 @@ board is back under the unscoped reading.
   as run is stored on the run and printed beside its rows. What no guard holds
   is *meaning*, so the planner is told it is the last resort, and
   `AOI_SQL_TOOL=0` is the control arm of the eval that decides whether it
-  stays. **No `analysis_eval.py` figure in docs/benchmarks.md has been run
-  with it in the registry yet.** Held by `tests/test_sql_guard.py` and
-  `tests/test_analysis_registry.py`.
+  stays. Measured the same day, both arms on the independent seventy:
+  adjudicated refusals **22/28 with the tool against 25/28 without**, answered
+  24/42 against 26/42 -- five questions answered that had no route before
+  (S02, S06, S11, S12, A04), one composition lost (S25 wrote a SELECT where
+  the event tools were the answer) and three reaches into questions naming no
+  entity (S20, S23, A22). It stays registered; the next prompt change is named
+  in the adjudication entry and is not yet made or measured. Held by
+  `tests/test_sql_guard.py` and `tests/test_analysis_registry.py`.
 - **The fan-out is the shape of the work, not a latency optimisation.** The plan
   expands into `Send` branches because the facts are independent. The tools
   cost milliseconds either side of two model calls costing around 25 seconds,
@@ -349,10 +354,10 @@ board is back under the unscoped reading.
   a record of the same kind and, since 2026-08-29, is written in the *line's*
   language (`AOI_LINE_LANGUAGE`, default the station's) rather than in
   English regardless -- the queue then shows it as written, whichever way the
-  switch is set. **The explanation deadline was measured on English prose and
-  has not been re-measured on Chinese**; `scripts/latency_report.py` names the
-  language it ran in, and no figure taken before that line existed applies to
-  the other language.
+  switch is set. Re-measured in Chinese the same day: **median 31.9 s, p90
+  35.9 s, 0 of 20 past the 60 s deadline**, against 8.6 s / 11.1 s in English
+  -- 3.7x, and it is generation, not queueing. `scripts/latency_report.py`
+  names the language it ran in; neither figure applies to the other language.
 - **Say what is simulated.** Production metadata is generated with **two
   planted signals, both by assignment** -- the seeder never writes a defect,
   it decides which DeepPCB board went to which machine. The first is M22,
@@ -414,18 +419,20 @@ machine state as the graph state's field names under **busy** -- a variable
 reused inside `main` -- and `machine_line` now refuses a dict.
 
 
-**The read-only SQL tool is registered and unmeasured.** 2026-08-29. `run_sql`
-is in the registry by default, the planner has a rule and a ninth few-shot
-saying when to reach for it, and nothing in docs/benchmarks.md has been run
-with it present. The measurement it needs is the same seventy planned both
-ways -- `AOI_SQL_TOOL=1` and `=0` -- read for three things: whether the six
-refused-for-a-missing-dimension rows now plan a SELECT the guard accepts,
-whether any row that had a typed plan now reaches for SQL instead (the failure
-the rule is written against), and whether the drift baseline moves. The same
-day added `date_from`/`date_to`, `top_n`, an unclassed `query_machine_stats`
-and an eighth few-shot, so the next run measures both changes at once and has
-to say so; the two fixture rows added for the dated question make the in-house
-set twenty-two.
+**The read-only SQL tool is registered and measured once, and the next prompt
+change is named but not made.** 2026-08-29, both arms of `analysis_eval.py`
+on the independent seventy and the in-house twenty-two, in docs/benchmarks.md
+under "Adjudication — the read-only SQL tool". With the tool: five refused
+questions answered as the exposed tables allow, S25's event composition lost
+to a SELECT, three SELECTs written for questions naming no entity, answer side
+two to three rows down, inside drift. The two sentences that would address the
+four failures -- an entity a SELECT filters on must be named in the question;
+before/after an event is the event tools -- are written in that entry and
+deliberately not in the prompt, so today's figures describe what ships. Making
+them and re-running the SQL arm is the next measurement. The same day's
+`date_from`/`date_to`, `top_n` and eighth few-shot are inside both arms:
+«2026-08-07 前三台» planned correctly on every repeat in both, and
+«2026-07-30» was refused as outside the days held.
 
 Retraining from operator corrections -- now selectable by who made them, which
 is what `reviewer_auth` bought -- deploying the quantised model, demo video.
@@ -579,7 +586,10 @@ bounds the *verdict*, which is `classify_node` at 2.5ms. `EXPLANATION_DEADLINE_S
 is 60s in `llm/ollama.py` and bounds a wait nobody blocks on -- the disposition
 is decided from `model_class` and `model_confidence`, both of which exist before
 the reason node is entered. Re-measured at that deadline: median 8.6s, p90
-11.1s, max 13.0s, **0 of 24 calls without an explanation**. A missing
+11.1s, max 13.0s, **0 of 24 calls without an explanation**. That figure is
+English; with the rationale written in Chinese (the default since 2026-08-29)
+the same measurement reads median 31.9s, p90 35.9s, max 36.8s, 0 of 20 past
+the deadline -- 3.7x, all of it generation. A missing
 explanation is now `explanation_status`, shown to the operator as a notice
 rather than an exception name, and counted by `uv run python -m aoi_agent
 explanations`. Do not re-merge the two constants;
