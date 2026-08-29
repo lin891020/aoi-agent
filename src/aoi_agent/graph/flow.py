@@ -32,6 +32,7 @@ import httpx
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
+from aoi_agent.i18n import LANGUAGE_NOTE, line_language
 from aoi_agent.graph.checkpoint import make_checkpointer
 from aoi_agent.graph.state import ReviewState
 from aoi_agent.llm.ollama import EXPLANATION_DEADLINE_S, OllamaClient
@@ -379,7 +380,18 @@ Give your verdict."""
         try:
             result = client.chat(
                 [
-                    {"role": "system", "content": SYSTEM_PROMPT},
+                    # The operator reads the rationale in the line's language.
+                    # Until 2026-08-29 it was written in English under a
+                    # Chinese station, and the switch could not move it --
+                    # correctly, since it is a record -- so every queue row
+                    # read in the wrong language for the person it was for.
+                    # The note is the one sentence the analysis prompts use,
+                    # from the same table; the rest of the prompt is unchanged
+                    # and the deadline it runs under is re-measured
+                    # (`scripts/latency_report.py`), because Chinese prose is
+                    # more tokens than English for the same content.
+                    {"role": "system",
+                     "content": f"{SYSTEM_PROMPT}\n\n{LANGUAGE_NOTE[line_language()]}"},
                     {"role": "user", "content": prompt},
                 ],
                 think="low",

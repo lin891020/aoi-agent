@@ -32,7 +32,7 @@ from aoi_agent.analysis.plan import PLANNABLE_TOOLS, Domains
 # import points at the station from the analysis layer, which is the wrong
 # direction on paper -- taken deliberately, because two copies of an invariant
 # is the failure it is meant to prevent, and `result_view` imports nothing.
-from aoi_agent.i18n import DEFAULT_LOCALE, normalise
+from aoi_agent.i18n import DEFAULT_LOCALE, LANGUAGE_NOTE, normalise
 from aoi_agent.station.result_view import strip_hidden
 
 SYSTEM_PROMPT = """You plan data lookups for a PCB production line's review station.
@@ -369,18 +369,9 @@ def _domain_note(domains: Domains) -> str:
 
 
 #: Appended to whichever prompt is being built. One sentence, and only about
-#: the language: everything else in both prompts is a constraint that has been
-#: measured, and re-wording a measured constraint invalidates the measurement
-#: it was taken under.
-LANGUAGE_NOTE = {
-    "zh-TW": "Write all prose you produce in Traditional Chinese (繁體中文). "
-             "Leave identifiers -- defect classes, line, machine and lot ids, "
-             "document numbers, tool names -- exactly as they appear in the "
-             "data.",
-    "en": "Write all prose you produce in English. Leave identifiers -- defect "
-          "classes, line, machine and lot ids, document numbers, tool names -- "
-          "exactly as they appear in the data.",
-}
+#: the language. Lives in `i18n` since 2026-08-29, because the disposition
+#: path's explanation prompt appends the same sentence for the line's language
+#: and two spellings of one instruction would drift.
 
 
 def _language_note(lang: str | None) -> str:

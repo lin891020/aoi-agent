@@ -27,9 +27,11 @@ class StubClient:
 
     def __post_init__(self):
         self.prompts = []
+        self.systems = []
 
     def chat(self, messages, **kwargs) -> ChatResult:
         self.prompts.append(messages[-1]["content"])
+        self.systems.append(messages[0]["content"])
         text = self.raw_text if self.raw_text is not None else json.dumps(
             {
                 "verdict": self.verdict,
@@ -396,3 +398,23 @@ def test_timings_separate_the_stages(stub_tools):
         "inference time must be recorded separately from wall time, which "
         "includes queueing behind other jobs on the same GPU"
     )
+
+
+
+def test_the_explanation_is_asked_for_in_the_lines_language(stub_tools, monkeypatch):
+    """The operator reads the rationale, so it is written in the language the
+    line reads -- Traditional Chinese unless `AOI_LINE_LANGUAGE` says
+    otherwise. The sentence is the one the analysis prompts use, from the
+    same table, so the two paths cannot drift apart on it."""
+    from aoi_agent.i18n import LANGUAGE_NOTE, LINE_LANGUAGE_ENV
+
+    monkeypatch.delenv(LINE_LANGUAGE_ENV, raising=False)
+    client = StubClient()
+    run(flow.build_graph(client, InMemorySaver()))
+    assert client.systems[0].endswith(LANGUAGE_NOTE["zh-TW"])
+    assert client.systems[0].startswith(flow.SYSTEM_PROMPT), "the measured prompt is unchanged"
+
+    monkeypatch.setenv(LINE_LANGUAGE_ENV, "en")
+    client = StubClient()
+    run(flow.build_graph(client, InMemorySaver()))
+    assert client.systems[0].endswith(LANGUAGE_NOTE["en"])

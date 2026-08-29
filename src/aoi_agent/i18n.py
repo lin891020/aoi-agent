@@ -727,6 +727,38 @@ STRINGS: dict[str, dict[str, str]] = {
 LOCALES: tuple[str, ...] = tuple(STRINGS)
 
 
+#: The language the line reads in, which is what the disposition path's
+#: explanation is written in. A deployment property rather than a per-request
+#: one: the rationale is written once, when the region is assessed, by a CLI
+#: run or by the station, and it is then a record -- the queue shows it in the
+#: language it was written in, whichever way the switch is set. Unset, the
+#: station's default language.
+LINE_LANGUAGE_ENV = "AOI_LINE_LANGUAGE"
+
+
+def line_language() -> str:
+    import os
+
+    return normalise(os.environ.get(LINE_LANGUAGE_ENV) or DEFAULT_LOCALE)
+
+
+#: Appended to a prompt that produces prose a person reads. One sentence, and
+#: only about the language: everything else in those prompts is a constraint
+#: that has been measured, and re-wording a measured constraint invalidates
+#: the measurement it was taken under. Identifiers stay as the data spells
+#: them, in both languages, so a rationale and the record it is stored
+#: against name the same class and the same document.
+LANGUAGE_NOTE = {
+    "zh-TW": "Write all prose you produce in Traditional Chinese (繁體中文). "
+             "Leave identifiers -- defect classes, line, machine and lot ids, "
+             "document numbers, tool names -- exactly as they appear in the "
+             "data.",
+    "en": "Write all prose you produce in English. Leave identifiers -- defect "
+          "classes, line, machine and lot ids, document numbers, tool names -- "
+          "exactly as they appear in the data.",
+}
+
+
 def normalise(locale: str | None) -> str:
     """The locale to use for a value that may have come from a cookie."""
     return locale if locale in STRINGS else DEFAULT_LOCALE

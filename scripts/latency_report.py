@@ -59,6 +59,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from langgraph.checkpoint.memory import InMemorySaver  # noqa: E402
 from sqlalchemy import select  # noqa: E402
 
+from aoi_agent.i18n import line_language  # noqa: E402
 from aoi_agent.graph.flow import (  # noqa: E402
     CONFIDENT,
     DEFAULT_MODEL,
@@ -282,7 +283,10 @@ def main() -> int:
         f"over candidates the router sends to the LLM. The deadline is "
         f"`EXPLANATION_DEADLINE_S`, {EXPLANATION_DEADLINE_S:.0f}s, and the run "
         f"used it rather than overriding it — a call that misses it here is a "
-        f"call that produces no explanation in production.",
+        f"call that produces no explanation in production. Explanations were "
+        f"written in `{line_language()}` (`AOI_LINE_LANGUAGE`); a figure "
+        f"taken in one language says nothing about the other, since the same "
+        f"content is more tokens in Chinese than in English.",
         "",
         f"**This is not WI-300's {RESPONSE_BUDGET_S:.0f}s response budget, and "
         f"comparing it against that budget is the error this script used to "

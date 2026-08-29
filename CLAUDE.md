@@ -345,7 +345,14 @@ board is back under the unscoped reading.
   `synthesis_eval.py` scores both and **refuses to publish a single-language
   report**: a figure written from one surface reads as a claim about the system
   and is a claim about half of it. Held by `tests/test_i18n.py` and
-  `tests/test_analysis_run_languages.py`.
+  `tests/test_analysis_run_languages.py`. The disposition path's rationale is
+  a record of the same kind and, since 2026-08-29, is written in the *line's*
+  language (`AOI_LINE_LANGUAGE`, default the station's) rather than in
+  English regardless -- the queue then shows it as written, whichever way the
+  switch is set. **The explanation deadline was measured on English prose and
+  has not been re-measured on Chinese**; `scripts/latency_report.py` names the
+  language it ran in, and no figure taken before that line existed applies to
+  the other language.
 - **Say what is simulated.** Production metadata is generated with **two
   planted signals, both by assignment** -- the seeder never writes a defect,
   it decides which DeepPCB board went to which machine. The first is M22,

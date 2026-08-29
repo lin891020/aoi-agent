@@ -298,3 +298,15 @@ def test_every_plannable_tool_says_what_it_does_in_both_languages():
         for locale in LOCALES:
             key = f"tool.{name}.does"
             assert STRINGS[locale][key] != key, f"{key} missing from {locale}"
+
+
+def test_the_lines_language_defaults_to_the_stations_and_tolerates_a_bad_value(monkeypatch):
+    from aoi_agent.i18n import DEFAULT_LOCALE, LINE_LANGUAGE_ENV, line_language
+
+    monkeypatch.delenv(LINE_LANGUAGE_ENV, raising=False)
+    assert line_language() == DEFAULT_LOCALE
+    monkeypatch.setenv(LINE_LANGUAGE_ENV, "en")
+    assert line_language() == "en"
+    # A typo must not take the explanations off the line; it falls back.
+    monkeypatch.setenv(LINE_LANGUAGE_ENV, "klingon")
+    assert line_language() == DEFAULT_LOCALE
