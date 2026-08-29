@@ -391,9 +391,15 @@ without, answered 24/42 against 26/42. Five questions that had no route before
 were answered (a shift on one machine, regions flagged today, how many wait on
 a person); one composition was lost -- the M32 before/after that the event
 tools answer, written as a SELECT instead -- and three SELECTs were written
-for questions naming no entity. It stays registered, and the two prompt
-sentences that address the four failures are named in the adjudication entry
-and deliberately not yet made, so the figures describe the prompt that ships.
+for questions naming no entity. The two prompt sentences that address those
+went in the same afternoon and both arms were re-run: SQL arm 28/42 answered
+and 23/28 refused after adjudication, control 25/42 and 25/28 -- the event
+composition is back, the entity-less questions are refused, the five gains
+hold. The re-run also produced the failure the old rule was written for: two
+SELECTs that were valid, read-only, bounded and wrong, each returning a number
+(a state value that does not exist; a column read as a position). The guard
+now refuses an equality on a value no row holds and names the values that
+exist; that rule postdates both arms and is unmeasured.
 
 What makes it admissible is structure, not a prompt asking the model to be
 careful:

@@ -419,20 +419,21 @@ machine state as the graph state's field names under **busy** -- a variable
 reused inside `main` -- and `machine_line` now refuses a dict.
 
 
-**The read-only SQL tool is registered and measured once, and the next prompt
-change is named but not made.** 2026-08-29, both arms of `analysis_eval.py`
-on the independent seventy and the in-house twenty-two, in docs/benchmarks.md
-under "Adjudication — the read-only SQL tool". With the tool: five refused
-questions answered as the exposed tables allow, S25's event composition lost
-to a SELECT, three SELECTs written for questions naming no entity, answer side
-two to three rows down, inside drift. The two sentences that would address the
-four failures -- an entity a SELECT filters on must be named in the question;
-before/after an event is the event tools -- are written in that entry and
-deliberately not in the prompt, so today's figures describe what ships. Making
-them and re-running the SQL arm is the next measurement. The same day's
-`date_from`/`date_to`, `top_n` and eighth few-shot are inside both arms:
-«2026-08-07 前三台» planned correctly on every repeat in both, and
-«2026-07-30» was refused as outside the days held.
+**The read-only SQL tool is registered, measured twice, and its guard has one
+rule that is not yet in a measurement.** 2026-08-29. Morning: both arms on the
+independent seventy, `run_sql` in and out, in docs/benchmarks.md under
+"Adjudication — the read-only SQL tool"; five refused questions gained a
+route, S25's event composition was lost to a SELECT, three SELECTs were
+written for questions naming no entity. Afternoon: the two sentences that
+address those went into the prompt and both arms were re-run -- SQL arm 28/42
+answered and 23/28 refused after adjudication, control 25/42 (four timeouts)
+and 25/28; S25 composes again, S20 refuses again, the five gains hold. What
+the second reading found is the failure the old invariant was written for:
+two SELECTs that were valid, read-only, bounded and wrong -- a state value
+that does not exist, a column read as a position -- each returning a number.
+The guard now refuses a bare `column = literal` that matches no row and names
+the values held; that rule postdates both arms and is unmeasured. The
+per-question report with every SELECT is linked from the benchmarks entry.
 
 Retraining from operator corrections -- now selectable by who made them, which
 is what `reviewer_auth` bought -- deploying the quantised model, demo video.

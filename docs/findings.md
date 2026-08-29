@@ -126,6 +126,12 @@ The set also found two real defects that the score does not contain:
   21/22, with the new dated question planned correctly in both arms. The tool
   stays; the two prompt sentences that address the failures are named in the
   adjudication and not yet made.
+- **2026-08-29, afternoon, re-run under the two sentences.** SQL arm 28/42
+  answered, 23/28 refused after adjudication; control 25/42 (four timeouts)
+  and 25/28. S25 composes on the event tools again, S20 refuses again, the
+  five gains hold. Two SELECTs were valid and wrong -- a state value that does
+  not exist, a column read as a position -- and each returned a number; the
+  guard now refuses an equality on a value no row holds, unmeasured as yet.
 
 What it does not establish: the questions were written by LLM authors working
 from different briefs, not by a real shift supervisor, so this bounds the shapes
