@@ -24,7 +24,7 @@ PCB AOI 複判系統：視覺模型在複判佇列前面，agent 在後面，每
 | **資料** | [DeepPCB](https://github.com/tangsanli5201/DeepPCB) 官方切分：499 片測試板、7,322 個 candidate，41.2% 為真實缺陷。False call 由範本相減產生，非人工編造。 |
 | **結果** | **在 ≤0.5% 的 escape budget 下省去 52.8% 的人工複判。** Escape rate 的 95% 區間上緣 0.82%。 |
 | **技術** | Python 3.12 · PyTorch（MPS / CPU）· LangGraph · MCP · FastAPI + Jinja · SQLite · Ollama（`gpt-oss:20b`） |
-| **驗證** | 1,278 個測試，不需模型或 GPU。每個門檻皆引用出處；每個數字皆註明產生它的腳本。 |
+| **驗證** | 1,353 個測試，不需模型或 GPU。每個門檻皆引用出處；每個數字皆註明產生它的腳本。 |
 | **限制** | 照片板材上，相減前端無法通過第一道閘門；錫膏影像上，YOLO26n 偵測器可定位 92% 的缺陷，但排序只能省 1.2%。見[遷移](#遷移兩份新資料集)。 |
 
 ## Demo
@@ -307,25 +307,42 @@ Planner 做得好不好看上面那份[盲測](docs/findings.zh-TW.md#planner-�
 Wilson 區間。種子種了一個有效果的事件和三個沒效果的，讓工具有機會錯——它在對照組上
 回答「沒差」。
 
-### 為什麼沒有 text-to-SQL
+### 唯讀的 text-to-SQL，當作實驗
 
-生產相關的 tool 都是固定 query set 上的 typed 參數。Model 填參數，它不寫 SQL。
+這一節在 2026-08-29 之前叫「為什麼沒有 text-to-SQL」，而那個理由沒有變：
+一句語法正確但語意錯的 query 會回一個看起來很合理的數字，而且不會報錯；在判定
+的情境下，一個貌似合理的錯數字比 crash 還糟 —— 因為它會被拿去用。typed 工具
+仍然是主要規則，`/ask` 也還是驗參數**值**：`line_id="L4"` 不會噴錯也不會回東西，
+所以圖上少一條線，那個缺口讀起來是一個 finding。
 
-原因在失效模式，不在難度。一句語法正確但語意錯的 query 會回一個看起來很
-合理的數字，而且不會報錯；在判定的情境下，一個貌似合理的錯數字比 crash 還糟 ——
-因為它會被拿去用。填參數一樣考得到 tool calling 的能力，而 query set 還留得住人工
-review。這也是 `/ask` 要驗參數**值**的原因：`line_id="L4"` 不會噴錯也不會回東西，
-所以圖上少一條線，那個缺口讀起來是一個 finding，不是一個答案。
+改變的是獨立題庫照出來的事。七十題主管問題裡有六題落在沒有任何 typed 工具能
+組合的維度上 —— 某台機的某個班別、某個批號跑過哪些機台、標了幾個區域 ——
+每一題都被拒答。`run_sql` 就是為這些題目收一句 SELECT。它是一個有對照組的實驗：
+`AOI_SQL_TOOL=0` 把它從登錄表拿掉，同一套七十題兩種設定各跑一次，才決定它留不留。
+目前還沒有任何數字發布。
+
+讓它可以被接受的是結構，不是一句要模型小心的提示：
+
+- SQL 跑在一份記憶體內的 store 副本上，副本只含工具說明裡列出的欄位。
+  `ground_truth` 不是被過濾掉，而是從來沒被複製進去。
+- 連線是 `PRAGMA query_only`；store 檔案只在複製時以唯讀掛載，query 跑之前就已卸載。
+- 一次一句，由 `sqlglot` 解析：只能是 SELECT（含 CTE 與集合運算），資料表限白名單，
+  不接受帶 schema 的名稱，也不接受會碰檔案系統的函式。
+- 200 列與兩秒的上限是強制的；被截斷的結果會說自己被截斷。
+- 寫出來的 SQL 和實際執行的 SQL 都存在 run 上、印在結果上方。
+- 在登錄表，宣告帶 query language 參數的工具必須把它交給 `sql_guard.guarded_select`
+  而且不能交給任何別的東西 —— 在 import 時讀工具本體檢查，跟之前檢查 `text()` 一樣。
 
 ## Tools
 
-三個 MCP server，每一個都可以被任何 MCP client 單獨使用：
+四個 MCP server，每一個都可以被任何 MCP client 單獨使用：
 
 | server | tools |
 |---|---|
 | `aoi-classify` | `classify_defect`, `list_candidates` |
 | `aoi-production` | `query_defect_history`（帶 `relative_to`/`side` 可取機台事件前後的視窗）, `query_machine_stats`, `query_board_context`, `query_false_call_rate`, `query_machine_events` |
 | `aoi-standards` | `search_standards` |
+| `aoi-sql-readonly` | `run_sql` —— 在沒有答案欄的唯讀副本上跑一句 SELECT；就是上面那個實驗 |
 
 它們是 in-process 直接呼叫 model 跟 query，不是代理到一個 HTTP backend，所以 MCP 這
 一層的成本量得出來，不會被藏在一次網路往返底下。
@@ -442,7 +459,7 @@ uv run python -m aoi_agent corrections                   # 作業員推翻 model
 `gpt-oss:20b`）。全部在本機跑，沒有任何東西離開這台機器 —— 在產線上這是要求，不是
 偏好。
 
-**1,278 個測試。** 其中 1,249 個在乾淨 checkout 上就能在 CI 跑完 —— 它們自己在
+**1,353 個測試。** 其中 1,328 個在乾淨 checkout 上就能在 CI 跑完 —— 它們自己在
 tmpdir 裡建 store、建 Chroma collection、建板子，model 是 stub 掉的。另外 25 個要磁碟
 上有資料集，帶 `dataset` marker；CI job 每次跑完都會把它們列出來，因為「測試
 數量默默變少但綠燈照亮」正是那個 job 要防的事。

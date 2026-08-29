@@ -111,6 +111,16 @@ STRINGS: dict[str, dict[str, str]] = {
             "某一類缺陷的驗收標準寫了什麼。",
         "tool.list_candidates.does":
             "一片 PCB 上 AOI 標出的區域，以及模型對每一區的判定。",
+        "tool.run_sql.does":
+            "上面的工具都不涵蓋的維度（班別、批號對機台、駁回件數…）用一句 SELECT 查；"
+            "只讀一份沒有答案欄的唯讀副本，最多 200 列，SQL 會印在結果旁邊。",
+        "analysis.sql_rows": "回傳 {count} 列（顯示 {shown} 列）",
+        "analysis.sql_truncated": "已達 200 列上限，結果被截斷",
+        "analysis.sql_hidden": "另外 {count} 列未顯示",
+        "chart.title.sql_rows": "查詢結果",
+        "chart.series.sql_column": "{column}",
+        "chart.axis.sql_column": "{column}",
+        "chart.axis.sql_value": "值",
 
         "station.name": '複判站',
         "nav.queue": '待複判',
@@ -356,6 +366,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "tool.query_board_context": "PCB 脈絡",
         "tool.search_standards": "驗收標準檢索",
         "tool.list_candidates": "PCB 區域清單",
+        "tool.run_sql": "唯讀 SQL 查詢",
     },
     "en": {
         # -- charts ---------------------------------------------------------
@@ -437,6 +448,17 @@ STRINGS: dict[str, dict[str, str]] = {
             "What the acceptance criteria say about one defect class.",
         "tool.list_candidates.does":
             "The regions the AOI flagged on one PCB, and what the model called each of them.",
+        "tool.run_sql.does":
+            "One SELECT for a dimension none of the tools above take (a shift, "
+            "the machines of a lot, dismissed counts); over a read-only copy with "
+            "no answer column, at most 200 rows, the SQL printed beside the result.",
+        "analysis.sql_rows": "{count} rows returned ({shown} shown)",
+        "analysis.sql_truncated": "cut at the 200-row cap",
+        "analysis.sql_hidden": "{count} more rows not shown",
+        "chart.title.sql_rows": "query result",
+        "chart.series.sql_column": "{column}",
+        "chart.axis.sql_column": "{column}",
+        "chart.axis.sql_value": "value",
 
         "station.name": 're-verification station',
         "nav.queue": 'Review queue',
@@ -696,6 +718,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "tool.query_board_context": "Board context",
         "tool.search_standards": "Criteria retrieval",
         "tool.list_candidates": "Regions on a board",
+        "tool.run_sql": "Read-only SQL",
     },
 }
 

@@ -1,9 +1,9 @@
-"""What the model is told, and the eight examples that show it the edges.
+"""What the model is told, and the nine examples that show it the edges.
 
 Diversity matters more than count in few-shot, and the useful examples are the
 boundaries rather than the happy path: a question with no stated baseline, a
 causal question the data cannot answer, a window outside the data, a question
-too vague to act on, a request to act. Four of the eight are refusals or
+too vague to act on, a request to act. Four of the nine are refusals or
 hedges, which is the intended lesson. A system that answers everything is more
 dangerous on a factory floor than one that says it cannot. The seventh is the
 opposite lesson, added after the first before/after question asked at the
@@ -11,7 +11,11 @@ station was refused: a comparison across a recorded machine event *is*
 answerable, and the example shows the two-call shape that answers it. The
 eighth is a dated ranking -- a calendar day, a top-N cut -- which is the
 shape of the first question a supervisor wrote down for this page, and which
-no parameter expressed until 2026-08-29.
+no parameter expressed until 2026-08-29. The ninth, from the same day, is the
+SQL fallback: a dimension no typed tool takes, expressed as one SELECT over the
+read-only copy -- and it exists to teach *when*, since the danger of that tool
+is not that it will be used but that it will be reached for where a typed tool
+would have stated its own basis.
 
 Whether this actually helps is a measurement, not an assumption -- see
 `scripts/analysis_eval.py`.
@@ -68,8 +72,17 @@ Rules that matter more than completeness:
   question's key dimension -- a shift, an operator, a trend over time -- has
   no parameter on any tool, do not substitute a neighbouring dimension: a plan
   filtered by the wrong axis answers a different question while looking like
-  it answered this one. Return no calls and name the dimension that is
-  missing.
+  it answered this one. If the tables `run_sql` exposes carry the dimension,
+  write one SELECT there; if they do not, return no calls and name the
+  dimension that is missing.
+- `run_sql` is the last resort, not a shortcut. A typed tool's payload states
+  its own basis, window and interval; a SELECT states nothing about itself.
+  Never use `run_sql` for what a typed tool already answers, and never for a
+  question the tables cannot hold (an operator's skill, a customer return, a
+  cause). Write SQLite syntax, aggregate rather than list, and say in
+  "assumptions" what each column means -- in particular that
+  `predicted_class = 'false_call'` is a region this system dismissed, not a
+  confirmed false call.
 - Before and after something done to one machine *is* expressible: a
   `parameter_change`, `maintenance` or similar is a recorded event, and
   `query_defect_history` takes `relative_to` (the event kind) with `side`
@@ -265,6 +278,34 @@ FEW_SHOT: list[dict[str, Any]] = [
                              "top_n": 5},
                     "why": "every machine's defects per board on that day, "
                            "cut to the top five",
+                },
+            ],
+        },
+    },
+    {
+        "shape": "sql_fallback",
+        "question": "M22 在 A 班跟 C 班被駁回的誤判各有幾個？",
+        "plan": {
+            "interpretation": "On machine M22, how many flagged regions this "
+            "system dismissed as false calls in shift A and in shift C. "
+            "query_false_call_rate groups by shift but cannot restrict to one "
+            "machine, so the count is taken directly from the exposed tables.",
+            "assumptions": [
+                "A dismissed false call is a region the re-verifier classified "
+                "as false_call; nothing here confirms it was one.",
+                "Counted over every board M22 inspected in the span held, "
+                "since the question names no window.",
+            ],
+            "calls": [
+                {
+                    "tool": "run_sql",
+                    "args": {"sql": "SELECT b.shift, COUNT(*) AS flagged, "
+                                    "SUM(c.predicted_class = 'false_call') AS dismissed "
+                                    "FROM candidates c JOIN boards b ON b.id = c.board_id "
+                                    "WHERE b.machine_id = 'M22' AND b.shift IN ('A', 'C') "
+                                    "GROUP BY b.shift ORDER BY b.shift"},
+                    "why": "flagged and dismissed regions on M22, per shift -- "
+                           "the one axis the typed tools do not combine",
                 },
             ],
         },

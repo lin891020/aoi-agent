@@ -80,7 +80,7 @@ from aoi_agent.i18n import (
 )
 from aoi_agent.station.prose import blocks as prose_blocks, lead_and_rest
 from aoi_agent.station import timing_view
-from aoi_agent.station.result_view import clip, error_text, readable_rows, shown_count
+from aoi_agent.station.result_view import clip, error_text, readable_rows, shown_count, sql_table
 from aoi_agent.store import analysis as analysis_store
 from aoi_agent.store import dispositions, escalations
 from aoi_agent.store.boards import (
@@ -880,6 +880,9 @@ def _analysis_context(run: dict | None, locale: str | None = None) -> dict:
         # Same reason: an error is printed as written, and Jinja would `str()`
         # a dict-valued one straight past the guard the rows go through.
         "tool_error": error_text,
+        # A SELECT's rows as a table, and the SQL beside them: the query is
+        # the only account of what the numbers are, so it is on the page.
+        "sql_table": sql_table,
         # How many of the rows are fields the tool returned. The overflow
         # note is a row but not an item, and the summary counted it.
         "shown_count": shown_count,

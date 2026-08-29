@@ -241,6 +241,19 @@ no-SQL invariant one level up: `line_id="L4"` raises nothing and returns
 nothing, so the chart comes back with one fewer line and the gap reads as a
 finding. A plan that fails is shown to the person, not retried.
 
+Since 2026-08-29 there is one tool that takes a query language, `run_sql`,
+and it is admitted on structure rather than trust. The model's SQL is handed
+to `analysis/sql_guard.guarded_select` and to nothing else -- the registry
+reads the tool's body for that at import -- and the guard runs it against an
+in-memory copy of the store that holds only the columns the tool's own
+description lists. `ground_truth` is not filtered out of the result; it was
+never copied in. The connection is `query_only`, the text is parsed to one
+SELECT over allowlisted tables, a row cap and a time cap are imposed, and the
+SQL as run is stored on the run and printed above its rows. What the guard
+cannot hold is meaning, which is why the planner is told the typed tools come
+first and why `AOI_SQL_TOOL=0` exists: the same question set planned with and
+without the tool is the measurement that decides whether it stays.
+
 `Send` is what makes this a scheduler rather than a switch: the branch count
 comes from the plan, not from the graph's shape. It is not a latency
 optimisation and the page does not present it as one -- four real tools take

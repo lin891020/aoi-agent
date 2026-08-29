@@ -31,11 +31,15 @@ src/aoi_agent/
                             the analysis_runs log, and the provenance every
                             automated decision carries -- dispositions.py is
                             the board-level record
-    mcp_servers/            three MCP servers (classify, production, standards)
+    mcp_servers/            four MCP servers (classify, production, standards,
+                            sql_readonly -- the last is the experiment)
     graph/                  LangGraph flow with the human escalation,
                             durable SQLite checkpointer
     analysis/               the /ask flow -- typed plan, validator, Send
-                            fan-out, chart derived from the result shape
+                            fan-out, chart derived from the result shape;
+                            sql_guard.py is the one door model-written SQL
+                            may go through (a copy without the answer key,
+                            one SELECT, capped)
     i18n.py                 the two string tables, and the rule that the
                             switch renders chrome and never rewrites a record
     station/                the review station -- FastAPI + Jinja, the
@@ -55,7 +59,7 @@ scripts/                    gate_check, build_patches, train, report, seed_store
                             analysis_eval, add_operator, render_diagrams, demo_record,
                             build_detector_patches, crop_reverifier_report,
                             mark_unattributed_resolutions, ...
-tests/                      1,278 tests; dataset-dependent ones behind `-m dataset`
+tests/                      1,353 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -70,7 +74,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 1,278 tests, no GPU needed, no model called
+uv run pytest                                    # 1,353 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/gate_check.py --dataset hripcb --split aligned --limit 693 --thresholds 10 15 20 30 45 60 \
     --out eval/results/gate_check_hripcb_aligned.json   # the same gate on photographs (~2 min)
@@ -97,6 +101,8 @@ uv run python scripts/analysis_eval.py           # does the planner plan the rig
 uv run python scripts/analysis_eval.py --plan-only  # the same score, without the tools and the prose nobody scores
 uv run python scripts/analysis_eval.py --questions tests/fixtures/analysis_questions_independent.json
                                                  # the same scorer on seventy questions whose authors never saw the prompt
+AOI_SQL_TOOL=0 uv run python scripts/analysis_eval.py --plan-only --questions tests/fixtures/analysis_questions_independent.json
+                                                 # the control arm: the same seventy with run_sql out of the registry
 uv run python scripts/synthesis_eval.py          # is the prose true of the results it was written from,
                                                  # in both languages? (~50 min; --lang both is the default
                                                  # and the only value it will publish)
@@ -212,11 +218,31 @@ board is back under the unscoped reading.
   routes out of a tool's payload: `result_view.readable_rows` for the table and
   `result_view.strip_hidden` for what the synthesis prompt is shown. A boundary
   with a second door is not a boundary.
-- **No free-form text-to-SQL.** Typed parameters over a fixed query set. A valid
-  but semantically wrong query returns a plausible number and gets acted on.
-  This is why `/ask` validates a plan's argument *values* against the store's
-  real domains and refuses rather than retrying: `line_id="L4"` raises nothing
-  and returns nothing, and the missing series reads as a finding.
+- **Free-form SQL reaches the store only through the read-only guard, and
+  whether it stays is a measurement.** Until 2026-08-29 this read *No
+  free-form text-to-SQL. Typed parameters over a fixed query set.* The typed
+  tools are still the rule, for the reason that bullet gave: a valid but
+  semantically wrong query returns a plausible number and gets acted on, which
+  is why `/ask` validates a plan's argument *values* against the store's real
+  domains and refuses rather than retrying -- `line_id="L4"` raises nothing
+  and returns nothing, and the missing series reads as a finding. What changed
+  is what the independent seventy showed: six supervisor questions sat on
+  dimensions no typed tool combines -- a shift on one machine, a lot's
+  machines, a count of flagged regions -- and every one was refused. `run_sql`
+  takes one SELECT for those, and the model's text is handed to
+  `analysis/sql_guard.guarded_select` and to nothing else: the registry's
+  `sql` account reads the tool's body for that, the way the earlier gate read
+  it for `text()`. The guard is structural, not a prompt asking the model to
+  be careful: the SQL runs against an in-memory copy of the store holding only
+  listed columns, so `ground_truth` is not filtered on the way out but absent
+  on the way in; the connection is `query_only`; one statement, parsed, tables
+  allowlisted, filesystem functions refused; 200 rows and two seconds; the SQL
+  as run is stored on the run and printed beside its rows. What no guard holds
+  is *meaning*, so the planner is told it is the last resort, and
+  `AOI_SQL_TOOL=0` is the control arm of the eval that decides whether it
+  stays. **No `analysis_eval.py` figure in docs/benchmarks.md has been run
+  with it in the registry yet.** Held by `tests/test_sql_guard.py` and
+  `tests/test_analysis_registry.py`.
 - **The fan-out is the shape of the work, not a latency optimisation.** The plan
   expands into `Send` branches because the facts are independent. The tools
   cost milliseconds either side of two model calls costing around 25 seconds,
@@ -380,6 +406,19 @@ for the row the change was made to move. The eval's header had rendered the
 machine state as the graph state's field names under **busy** -- a variable
 reused inside `main` -- and `machine_line` now refuses a dict.
 
+
+**The read-only SQL tool is registered and unmeasured.** 2026-08-29. `run_sql`
+is in the registry by default, the planner has a rule and a ninth few-shot
+saying when to reach for it, and nothing in docs/benchmarks.md has been run
+with it present. The measurement it needs is the same seventy planned both
+ways -- `AOI_SQL_TOOL=1` and `=0` -- read for three things: whether the six
+refused-for-a-missing-dimension rows now plan a SELECT the guard accepts,
+whether any row that had a typed plan now reaches for SQL instead (the failure
+the rule is written against), and whether the drift baseline moves. The same
+day added `date_from`/`date_to`, `top_n`, an unclassed `query_machine_stats`
+and an eighth few-shot, so the next run measures both changes at once and has
+to say so; the two fixture rows added for the dated question make the in-house
+set twenty-two.
 
 Retraining from operator corrections -- now selectable by who made them, which
 is what `reviewer_auth` bought -- deploying the quantised model, demo video.

@@ -300,3 +300,26 @@ def test_a_ranking_over_all_classes_is_drawn_as_defects_per_board():
     # A fleet baseline exists for this ranking too, and it is the per-board one.
     fleet = [s for s in spec["series"] if "fleet" in s["name_key"]]
     assert fleet and fleet[0]["points"][0]["y"] == 2.7
+
+
+
+def test_an_aggregate_select_becomes_bars_named_by_its_columns():
+    payload = {
+        "sql": "...", "sql_run": "...",
+        "columns": ["shift", "flagged", "dismissed"],
+        "rows": [["A", 5, 3], ["C", 3, 1]],
+        "row_count": 2, "truncated": False,
+    }
+    spec = chart_spec_for([ok("run_sql", payload)])
+
+    assert spec["kind"] == "bar"
+    assert [s["name_args"]["column"] for s in spec["series"]] == ["flagged", "dismissed"]
+    assert series_named(spec, column="dismissed") == {"A": 3.0, "C": 1.0}
+    assert spec["x_label_args"] == {"column": "shift"}
+
+
+def test_a_listing_is_not_a_chart():
+    rows = [[n, "open", 0.9] for n in range(60)]
+    payload = {"columns": ["id", "predicted_class", "confidence"], "rows": rows}
+    assert chart_spec_for([ok("run_sql", payload)]) is None
+    assert chart_spec_for([ok("run_sql", {"columns": ["n"], "rows": [[3]]})]) is None

@@ -147,6 +147,26 @@
                thing on the page a reader can check the answer against.
                `readable_data` filters `ground_truth` in Python, at the dict
                boundary -- do not replace this with a JSON dump. #}
+            {% set sql = sql_table(r.data) if r.tool == 'run_sql' else none %}
+            {% if sql %}
+            {# A SELECT's result, as the grid it is, with the SQL that was run
+               printed above it: the query is the whole account of what the
+               numbers mean, so it is not folded away. #}
+            {% set columns, sql_rows, hidden = sql %}
+            <tr><td colspan="5" class="data-cell">
+              <pre class="sql mono">{{ r.data.sql_run }}</pre>
+              <details class="data" open>
+                <summary>{{ t('analysis.sql_rows', count=r.data.row_count, shown=sql_rows|length) }}{% if r.data.truncated %} · {{ t('analysis.sql_truncated') }}{% endif %}</summary>
+                <div class="prose-table"><table class="queue">
+                  <thead><tr>{% for c in columns %}<th class="mono">{{ c }}</th>{% endfor %}</tr></thead>
+                  <tbody>
+                  {% for row in sql_rows %}<tr>{% for cell in row %}<td class="mono">{{ cell }}</td>{% endfor %}</tr>{% endfor %}
+                  {% if hidden %}<tr><td colspan="{{ columns|length }}" class="dim">{{ t('analysis.sql_hidden', count=hidden) }}</td></tr>{% endif %}
+                  </tbody>
+                </table></div>
+              </details>
+            </td></tr>
+            {% else %}
             {% set rows = readable_data(r.data) %}
             {% if rows %}
             <tr><td colspan="5" class="data-cell">
@@ -163,6 +183,7 @@
                 </table>
               </details>
             </td></tr>
+            {% endif %}
             {% endif %}
           {% endif %}
         {% endfor %}

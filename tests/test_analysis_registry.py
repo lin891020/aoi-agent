@@ -157,3 +157,54 @@ def test_no_registered_tool_builds_sql_out_of_a_string(tool):
     from aoi_agent.analysis.plan import _sql_from_a_string
 
     assert _sql_from_a_string(registration) == []
+
+
+
+# --- the sql account, added 2026-08-29 ---------------------------------------
+
+def test_the_read_only_sql_tool_registers_under_the_sql_account():
+    from aoi_agent.mcp_servers.sql_readonly import run_sql
+
+    registration = Registration(run_sql, sql={"sql": "production_readonly"})
+    assert registration_errors((registration,)) == []
+
+
+def test_a_query_language_declared_guarded_but_run_through_text_is_refused():
+    """The declaration is checked against the body: `run_query` hands its
+    parameter to `text()`, not to the guard, and saying otherwise does not
+    make it so."""
+    errors = registration_errors((Registration(run_query, sql={"sql": "production_readonly"}),))
+    assert any("never passes 'sql' to guarded_select" in e for e in errors), errors
+    assert any("text()" in e for e in errors), errors
+
+
+def test_a_guarded_parameter_may_reach_nothing_but_the_guard():
+    """Passing it to the guard *and* somewhere else is refused too -- a log
+    line, a helper, a second query. One door."""
+    from aoi_agent.analysis.sql_guard import guarded_select
+
+    def leaky(sql: str) -> dict:
+        print(sql)
+        return guarded_select(sql)
+
+    errors = registration_errors((Registration(leaky, sql={"sql": "production_readonly"}),))
+    assert any("somewhere other than as the argument of guarded_select()" in e for e in errors), errors
+
+
+def test_a_guard_that_does_not_exist_cannot_be_named():
+    from aoi_agent.analysis.sql_guard import guarded_select
+
+    def fine(sql: str) -> dict:
+        return guarded_select(sql)
+
+    errors = registration_errors((Registration(fine, sql={"sql": "the real database"}),))
+    assert any("not a guard this system has" in e for e in errors), errors
+
+
+def test_the_sql_tool_can_be_left_out_for_the_control_arm(monkeypatch):
+    from aoi_agent.analysis import plan as plan_module
+
+    monkeypatch.setenv(plan_module.SQL_TOOL_ENV, "0")
+    assert plan_module.sql_tool_enabled() is False
+    monkeypatch.setenv(plan_module.SQL_TOOL_ENV, "1")
+    assert plan_module.sql_tool_enabled() is True

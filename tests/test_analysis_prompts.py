@@ -39,8 +39,8 @@ DOMAINS = {
 }
 
 
-def test_there_are_eight_examples():
-    assert len(FEW_SHOT) == 8
+def test_there_are_nine_examples():
+    assert len(FEW_SHOT) == 9
 
 
 def test_every_example_plan_would_pass_validation():
@@ -64,6 +64,7 @@ def test_the_examples_cover_the_seven_shapes():
         "action_request",
         "event_window",
         "dated_top_n",
+        "sql_fallback",
     }
 
 
@@ -204,3 +205,22 @@ def test_the_dated_top_n_example_uses_a_date_the_domain_holds():
     assert call["tool"] == "query_machine_stats"
     assert call["args"]["top_n"] == 5
     assert DOMAINS["date_span"][0] <= call["args"]["date_from"] <= DOMAINS["date_span"][1]
+
+
+def test_the_sql_example_would_be_accepted_by_the_guard():
+    """An example the guard refuses teaches the model to write SQL that is
+    refused; and it must be the shape the tool is for -- an aggregate, on a
+    dimension the typed tools do not combine."""
+    from aoi_agent.analysis.sql_guard import check
+
+    example = next(e for e in FEW_SHOT if e["shape"] == "sql_fallback")
+    sql = example["plan"]["calls"][0]["args"]["sql"]
+    assert check(sql).upper().startswith("SELECT")
+    assert "GROUP BY" in sql.upper()
+
+
+def test_the_planner_is_shown_the_sql_tools_schema():
+    system = build_planning_messages("q", DOMAINS)[0]["content"]
+    assert "run_sql" in system
+    assert "candidates(id, board_id" in system
+    assert "withheld: ground_truth" in system

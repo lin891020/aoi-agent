@@ -24,6 +24,7 @@ from __future__ import annotations
 import ast
 import importlib.util
 import inspect
+import os
 import textwrap
 from dataclasses import dataclass, field
 from functools import lru_cache
@@ -41,6 +42,7 @@ from aoi_agent.mcp_servers.production import (
     query_machine_events,
     query_machine_stats,
 )
+from aoi_agent.mcp_servers.sql_readonly import run_sql
 from aoi_agent.mcp_servers.standards import search_standards
 from aoi_agent.mcp_servers.classify import list_candidates
 from aoi_agent.store.standards import SCOPES
@@ -119,6 +121,28 @@ DOMAIN_OF = {
 #: below stands.
 RETRIEVAL_CORPORA: dict[str, str] = {"standards": "aoi_agent.store.standards"}
 
+#: The one way model-written SQL may reach the store: a guard module and the
+#: function in it that every declared `sql` parameter has to be passed to,
+#: and to nothing else. What the guard does -- a copy of the store without
+#: the answer key, one SELECT, a row cap, a time cap -- is held by
+#: `tests/test_sql_guard.py`; what this table holds is that the declaration
+#: names a guard that exists.
+SQL_GUARDS: dict[str, tuple[str, str]] = {
+    "production_readonly": ("aoi_agent.analysis.sql_guard", "guarded_select"),
+}
+
+#: `AOI_SQL_TOOL=0` leaves `run_sql` out of the registry. That is the control
+#: arm of the measurement that decides whether the tool stays: the same
+#: question set planned with and without it. Default on, because the store
+#: it can reach is a read-only copy with nothing in it that is not already on
+#: the page.
+SQL_TOOL_ENV = "AOI_SQL_TOOL"
+
+
+def sql_tool_enabled() -> bool:
+    return os.environ.get(SQL_TOOL_ENV, "1").strip().lower() not in ("0", "off", "false", "no")
+
+
 #: Importing any of these is what makes a module able to run a query language.
 #: A module that reaches one of them is not a document corpus, whatever its
 #: registration says it is.
@@ -179,6 +203,12 @@ class Registration:
                     it. The tool's own body is checked for SQL built from a
                     string as well, which is what stops the declaration from
                     being a promise.
+    ``sql``         a query language, admissible since 2026-08-29 on one
+                    condition: the parameter is passed to the named guard's
+                    entry function and to nothing else, checked on the tool's
+                    body. The guard is where a wrong query is made harmless;
+                    this account is where a tool that sidesteps the guard is
+                    refused at import.
 
     The last two are declarations, and a determined author can write a false
     one. That is the point of putting them here: the lie is a line of source in
@@ -198,6 +228,9 @@ class Registration:
     identifiers: frozenset[str] = frozenset()
     #: Parameter name -> the corpus in ``RETRIEVAL_CORPORA`` its text reaches.
     retrieval: Mapping[str, str] = field(default_factory=dict)
+    #: Parameter name -> the guard in ``SQL_GUARDS`` that is the only thing
+    #: allowed to receive it.
+    sql: Mapping[str, str] = field(default_factory=dict)
 
     @property
     def name(self) -> str:
@@ -270,6 +303,50 @@ def _sql_from_a_string(registration: Registration) -> list[str]:
     return problems
 
 
+def _reaches_only_the_guard(registration: Registration, parameter: str, entry: str) -> list[str]:
+    """Every use of `parameter` in the tool's body is `entry(parameter)`.
+
+    A declared query-language parameter may be handed to the guard and to
+    nothing else -- not printed, not concatenated, not passed to a helper
+    that might be the guard under another name. Read off the body, so the
+    declaration is checked against what the tool does rather than trusted.
+    """
+    try:
+        source = textwrap.dedent(inspect.getsource(registration.tool))
+    except (OSError, TypeError) as error:
+        return [f"{registration.name}: its source cannot be read ({error}), so nothing "
+                f"can say where {parameter!r} goes"]
+    tree = ast.parse(source)
+    function = next(
+        (n for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))),
+        None,
+    )
+    if function is None:
+        return []
+
+    guarded: set[int] = set()
+    for node in ast.walk(function):
+        if isinstance(node, ast.Call):
+            called = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", "")
+            if called == entry:
+                guarded.update(id(a) for a in node.args if isinstance(a, ast.Name))
+    problems = []
+    for node in ast.walk(function.body[0] if False else function):
+        if isinstance(node, ast.Name) and node.id == parameter and isinstance(node.ctx, ast.Load):
+            if id(node) not in guarded:
+                problems.append(
+                    f"{registration.name} uses its {parameter!r} parameter somewhere "
+                    f"other than as the argument of {entry}(): a query language may "
+                    "reach the guard and nothing else"
+                )
+    if not guarded:
+        problems.append(
+            f"{registration.name} never passes {parameter!r} to {entry}(), so the "
+            "declaration that it is guarded SQL describes nothing the tool does"
+        )
+    return problems
+
+
 @lru_cache(maxsize=None)
 def _imports_of(module_name: str) -> frozenset[str]:
     """Every module a module imports, read statically -- nothing is executed."""
@@ -319,6 +396,8 @@ def registration_errors(registrations: tuple[Registration, ...]) -> list[str]:
                 continue
             if parameter.name in registration.retrieval:
                 continue
+            if parameter.name in registration.sql:
+                continue
             errors.append(
                 f"{name}({parameter.name}: {parameter.annotation}) can carry "
                 "arbitrary text and the registration does not say what that text "
@@ -350,6 +429,23 @@ def registration_errors(registrations: tuple[Registration, ...]) -> list[str]:
                         "reach"
                     )
 
+        for parameter_name, guard in registration.sql.items():
+            if parameter_name not in parameters:
+                errors.append(f"{name} has no parameter {parameter_name!r} to declare")
+                continue
+            if guard not in SQL_GUARDS:
+                errors.append(
+                    f"{name}({parameter_name}) is declared a query language over "
+                    f"{guard!r}, which is not a guard this system has "
+                    f"(known: {', '.join(sorted(SQL_GUARDS))})"
+                )
+                continue
+            module_name, entry = SQL_GUARDS[guard]
+            if importlib.util.find_spec(module_name) is None:
+                errors.append(f"{name}({parameter_name}): the guard module {module_name} does not exist")
+                continue
+            errors += _reaches_only_the_guard(registration, parameter_name, entry)
+
         errors += _sql_from_a_string(registration)
 
     return errors
@@ -369,6 +465,9 @@ REGISTRATIONS: tuple[Registration, ...] = (
     #: SQL string and it is legitimate.
     Registration(search_standards, retrieval={"query": "standards"}),
     Registration(list_candidates, identifiers=frozenset({"board"})),
+    #: The experiment. One SELECT, and the only thing it may be handed to is
+    #: the guard; whether it stays is `analysis_eval.py`'s to say.
+    *((Registration(run_sql, sql={"sql": "production_readonly"}),) if sql_tool_enabled() else ()),
 )
 
 def registry(registrations: tuple[Registration, ...]) -> dict[str, Callable]:

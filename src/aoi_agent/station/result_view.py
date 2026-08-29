@@ -422,3 +422,20 @@ def error_text(data: Any) -> str | None:
     if _is_scalar(value):
         return _scalar(value)
     return "工具回報了一個無法顯示的錯誤"
+
+
+def sql_table(data: dict | None) -> tuple[list[str], list[list[str]], int] | None:
+    """A `run_sql` payload's columns and rows, clipped for the page.
+
+    The rows are positional, not keyed, so the hidden-key walk has nothing to
+    read in them -- and nothing to hide, because the column was never on the
+    database they came from (`analysis/sql_guard.py`). Cells still go through
+    `clip`, and at most `MAX_ROWS` rows are shown with the rest counted.
+    """
+    if not isinstance(data, dict) or not isinstance(data.get("columns"), list):
+        return None
+    rows = data.get("rows") or []
+    if not isinstance(rows, list):
+        return None
+    shown = [[clip(_scalar(cell)) for cell in row] for row in rows[:MAX_ROWS]]
+    return [clip(str(c), MAX_LABEL) for c in data["columns"]], shown, max(len(rows) - MAX_ROWS, 0)

@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from mcp import ClientSession, StdioServerParameters, stdio_client  # noqa: E402
 
-SERVERS = ["classify", "production", "standards"]
+SERVERS = ["classify", "production", "standards", "sql_readonly"]
 
 
 async def check(module: str) -> tuple[str, list[str]]:

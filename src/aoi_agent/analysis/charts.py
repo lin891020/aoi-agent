@@ -260,8 +260,57 @@ def _event_windows(payloads: list[dict]) -> dict | None:
     }
 
 
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _sql_rows(payloads: list[dict]) -> dict | None:
+    """A SELECT's rows as bars, when the result has that shape.
+
+    The shape: a first column of labels and at least one numeric column, in
+    at most forty rows -- an aggregate, which is what the tool is for. A
+    listing of two hundred candidate rows is not a chart and gets none. One
+    series per numeric column (the first three), named by the column, because
+    the column name is the only thing the payload says about the number.
+    """
+    usable = [p for p in payloads if p.get("columns") and p.get("rows")]
+    if not usable:
+        return None
+    payload = usable[0]
+    columns, rows = payload["columns"], payload["rows"]
+    if len(columns) < 2 or len(rows) > 40:
+        return None
+    numeric = [
+        index for index in range(1, len(columns))
+        if all(_is_number(row[index]) or row[index] is None for row in rows)
+        and any(_is_number(row[index]) for row in rows)
+    ][:3]
+    if not numeric:
+        return None
+    series = [
+        {
+            "name_key": "chart.series.sql_column",
+            "name_args": {"column": columns[index]},
+            "points": [
+                {"x": str(row[0]), "y": round(float(row[index]), 4)}
+                for row in rows if _is_number(row[index])
+            ],
+        }
+        for index in numeric
+    ]
+    return {
+        "kind": "bar",
+        "title_key": "chart.title.sql_rows",
+        "x_label_key": "chart.axis.sql_column",
+        "x_label_args": {"column": columns[0]},
+        "y_label_key": "chart.axis.sql_value",
+        "series": series,
+    }
+
+
 BUILDERS = {
     "query_machine_stats": _machine_comparison,
+    "run_sql": _sql_rows,
     "query_defect_history": _defect_breakdown,
     "query_false_call_rate": _false_call_rates,
 }

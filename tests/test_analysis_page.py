@@ -1074,3 +1074,28 @@ def test_the_finished_page_shows_how_long_each_stage_took_in_seconds(client):
     assert "規劃" in page and "撰寫回答" in page and "繪圖" in page
     assert "合計" in page
     assert "其中模型推論" in page
+
+
+def test_a_select_result_is_shown_as_a_grid_with_the_sql_that_ran(client, monkeypatch):
+    sql_plan = {
+        "interpretation": "dismissed per shift on M22",
+        "assumptions": ["dismissed means classified false_call"],
+        "calls": [{"tool": "run_sql",
+                   "args": {"sql": "SELECT shift, count(*) FROM boards GROUP BY shift"},
+                   "why": "per shift"}],
+    }
+    monkeypatch.setitem(
+        analysis.PLANNABLE_TOOLS, "run_sql",
+        lambda **kw: {"sql": kw["sql"], "sql_run": kw["sql"] + " LIMIT 201",
+                      "columns": ["shift", "count(*)"], "rows": [["A", 5], ["C", 3]],
+                      "row_count": 2, "truncated": False, "basis": "b"},
+    )
+    monkeypatch.setattr(station_app, "_analysis_graph",
+                        analysis.build_analysis_graph(StubClient(plan=sql_plan), DOMAINS))
+    page = client.post("/ask", data={"question": "M22 各班駁回幾個"},
+                       follow_redirects=True).text
+
+    assert "GROUP BY shift LIMIT 201" in page, "the SQL as run is on the page"
+    assert "<th class=\"mono\">shift</th>" in page
+    assert "<td class=\"mono\">5</td>" in page
+    assert "<svg" in page, "an aggregate is charted"

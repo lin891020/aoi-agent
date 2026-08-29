@@ -225,9 +225,19 @@ REGISTRY: tuple[Entry, ...] = (
         proved_by="ground_truth added to store.boards._as_dict: 1 failed",
     ),
     Entry(
-        match="No free-form text-to-SQL",
+        match="Free-form SQL reaches the store only through the read-only guard",
         status=ENFORCED,
         tests=(
+            "tests/test_sql_guard.py::test_the_snapshot_holds_no_ground_truth_column_on_any_table",
+            "tests/test_sql_guard.py::test_selecting_the_answer_key_fails_at_the_database_not_at_a_filter",
+            "tests/test_sql_guard.py::test_the_snapshot_connection_refuses_writes_even_without_the_parser",
+            "tests/test_sql_guard.py::test_anything_but_one_select_is_refused_before_the_connection_sees_it",
+            "tests/test_sql_guard.py::test_tables_outside_the_allowlist_and_qualified_names_are_refused",
+            "tests/test_sql_guard.py::test_a_query_that_never_finishes_is_stopped_at_the_time_cap",
+            "tests/test_sql_guard.py::test_the_payload_carries_the_sql_as_written_and_as_run",
+            "tests/test_analysis_registry.py::test_the_read_only_sql_tool_registers_under_the_sql_account",
+            "tests/test_analysis_registry.py::test_a_query_language_declared_guarded_but_run_through_text_is_refused",
+            "tests/test_analysis_registry.py::test_a_guarded_parameter_may_reach_nothing_but_the_guard",
             "tests/test_analysis_plan.py::test_an_unknown_tool_is_rejected",
             "tests/test_analysis_plan.py::test_an_unknown_argument_name_is_rejected",
             "tests/test_analysis_plan.py::test_a_legal_looking_value_outside_its_domain_is_rejected",
@@ -240,25 +250,31 @@ REGISTRY: tuple[Entry, ...] = (
             "tests/test_analysis_registry.py::test_search_standards_still_registers_with_its_free_text_intact",
         ),
         note=(
-            "Both the call and the surface. The validator is held hard against "
-            "the registry that exists -- unknown tool, unknown argument, "
-            "out-of-domain value all refused before anything runs -- and the "
-            "registry itself now has to account for every parameter it exposes, "
-            "at import, or the module does not load. A signature cannot tell a "
-            "retrieval query from a query language, so the account is declared "
-            "per parameter and backed by what can be checked: the corpus has to "
-            "exist, the tool's module and the corpus module are checked "
-            "statically for a route to the store, and the tool's body for SQL "
-            "built out of a string. The last test is the control -- "
-            "search_standards takes arbitrary prose and must go on registering."
+            "Three things, and the first is the one the 2026-08-29 relaxation "
+            "rests on. The guard: the database the SQL runs against is a copy "
+            "holding only listed columns (ground_truth absent, asserted per "
+            "table), the connection is query_only (asserted with the parser "
+            "bypassed), one parsed SELECT over allowlisted tables, a row cap "
+            "and a time cap, the SQL as run in the payload. The registry: a "
+            "query-language parameter registers only under the sql account, "
+            "and the tool's body is read to check it reaches guarded_select() "
+            "and nothing else -- run_query through text() is still refused, "
+            "and so is passing the parameter to the guard *and* to print(). "
+            "The validator: unknown tool, unknown argument, out-of-domain value "
+            "all refused before anything runs, as before. What none of these "
+            "hold is meaning -- a valid, bounded, wrong SELECT returns a "
+            "plausible number -- which is why the tool's stay is a measurement "
+            "and not a test."
         ),
         proved_by=(
-            "run_query(sql: str) added to production.py and to the registry, "
-            "three ways: undeclared, declared an identifier, and declared a "
-            "retrieval query over the standards corpus. 691 passed before this "
-            "gate existed; each of the three now stops the module importing, on "
-            "the unaccounted parameter, on text(), and on the module's route to "
-            "the store respectively."
+            "Before 2026-08-29: run_query(sql: str) added to production.py and "
+            "to the registry three ways (undeclared, identifier, retrieval "
+            "corpus) -- 691 passed before the gate existed, each way now stops "
+            "the import. After: the same run_query declared sql= is refused on "
+            "its body (never passes sql to guarded_select; calls text()), a "
+            "tool that also prints the parameter is refused, and on the guard "
+            "'SELECT ground_truth FROM candidates' fails with 'no such column' "
+            "rather than being filtered."
         ),
     ),
     Entry(

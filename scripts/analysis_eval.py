@@ -254,6 +254,14 @@ def machine_state(model: str) -> list[str]:
     return [m for m in _resident_models() if model not in m] + _competing_processes()
 
 
+def sql_tool_line() -> str:
+    """Whether `run_sql` was in the registry for this run, read off it."""
+    registered = {registration.name for registration in REGISTRATIONS}
+    if "run_sql" in registered:
+        return "Registry: `run_sql` **in** (the SQL arm; `AOI_SQL_TOOL=0` for the control)."
+    return "Registry: `run_sql` **out** (the control arm, `AOI_SQL_TOOL=0`)."
+
+
 def machine_line(state: list[str]) -> str:
     """One derived line for the section header, in place of a note somebody
     remembers to type. The latency skill's rule is that a timing number taken
@@ -589,6 +597,11 @@ def main() -> int:
         *(["", args.note] if args.note else []),
         "",
         machine_line(machine),
+        "",
+        # Named on every entry from here on, because the two arms of the SQL
+        # measurement differ in nothing else and a figure that does not say
+        # which arm it is cannot be compared with anything.
+        sql_tool_line(),
         "",
         "| | questions | correct |",
         "|---|---|---|",
