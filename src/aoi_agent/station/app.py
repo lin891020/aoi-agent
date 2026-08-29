@@ -75,6 +75,7 @@ from aoi_agent.llm.ollama import OllamaClient
 from aoi_agent.station import auth, images, service
 from aoi_agent.station.chart_svg import render_svg
 from aoi_agent.i18n import (
+    line_language,
     LOCALE_COOKIE,
     LOCALES,
     STRINGS,
@@ -446,6 +447,9 @@ def queue_page(request: Request):
             # Not `waiting > len(queue)` at the template: the template should be
             # given the fact, not the arithmetic that derives it.
             "not_shown": max(waiting - len(queue), 0),
+            # Read at request time, not at start: the setting is an env var
+            # and the notice has to say what the next run will do.
+            "rationale_language": line_language(),
         },
     )
 

@@ -76,3 +76,14 @@ def test_the_queue_shows_two_sentences_and_folds_the_rest(queue):
     assert page.index("WI-201 規定") > folded, "the third sentence is inside the disclosure"
     assert page.index("差異圖上的斷點不完整。") < folded, "the lead is outside it"
     assert page.count("<details") == 1, "a short rationale gets no disclosure"
+
+
+def test_the_queue_says_which_language_the_rationale_is_written_in_and_what_it_costs(queue, monkeypatch):
+    from aoi_agent.i18n import LINE_LANGUAGE_ENV
+
+    monkeypatch.delenv(LINE_LANGUAGE_ENV, raising=False)
+    page = queue.get("/").text
+    assert "以中文撰寫" in page and "3.7" in page
+    monkeypatch.setenv(LINE_LANGUAGE_ENV, "en")
+    page = queue.get("/").text
+    assert "以英文撰寫" in page

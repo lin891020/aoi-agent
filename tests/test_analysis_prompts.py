@@ -234,3 +234,15 @@ def test_the_planner_is_told_it_does_not_choose_charts():
 
     assert "You do not choose charts" in SYSTEM_PROMPT
     assert "pie chart" in SYSTEM_PROMPT
+
+
+def test_the_sql_rule_names_the_two_failures_the_first_measurement_found():
+    """2026-08-29, SQL arm against control: S25 (M32 before/after) was written
+    as a SELECT where the event tools were the answer, and S20/S23/A22 were
+    SELECTs over questions naming no entity. The two sentences are the fix,
+    and the re-run is what says whether they cost the five rows the tool
+    bought."""
+    from aoi_agent.analysis.prompts import SYSTEM_PROMPT
+
+    assert "may filter only on entities the question names" in SYSTEM_PROMPT
+    assert "Before and after a machine event is never `run_sql`" in SYSTEM_PROMPT

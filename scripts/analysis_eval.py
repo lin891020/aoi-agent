@@ -479,6 +479,10 @@ def main() -> int:
                        "no_plan": first is None,
                        "planned": render_plan(first),
                        "every_plan": [render_plan(p) for p in plans],
+                       # The plans themselves, for `--raw`: `render_plan`
+                       # keeps only the scored arguments, and a SELECT's text
+                       # is the whole of what a reader of the SQL arm needs.
+                       "plans": plans,
                        "reject_reasons": errors if first is not None else []})
         stable.append(len({signature(p) for p in plans}) == 1)
 

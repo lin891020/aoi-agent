@@ -4,6 +4,12 @@
 <section class="panel">
   <h1>{{ t('queue.title') }}</h1>
   <p class="sub">{{ t('queue.sub') }}</p>
+  {# The rationale is written once, in the line's language, and read as a
+     record; the switch does not move it. Said here with what the choice
+     costs, measured, so a reader who sees English under a Chinese station
+     -- or waits longer per region under a Chinese one -- knows why and
+     where to change it. #}
+  <p class="sub dim">{{ t('queue.rationale_language', lang=t('lang.name.' + rationale_language)) }}</p>
 
   {% if unexplained %}
   <p class="sub warn-line">

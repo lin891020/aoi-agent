@@ -83,6 +83,12 @@ Rules that matter more than completeness:
   "assumptions" what each column means -- in particular that
   `predicted_class = 'false_call'` is a region this system dismissed, not a
   confirmed false call.
+- `run_sql` may filter only on entities the question names. A question that
+  names no board, machine, lot, shift or reviewer has nothing to filter on,
+  and a SELECT over everyone is not its answer: return no calls, as before.
+- Before and after a machine event is never `run_sql`. `query_machine_events`
+  and `query_defect_history` with `relative_to` and `side` are the answer,
+  and they carry the interval a SELECT does not.
 - Before and after something done to one machine *is* expressible: a
   `parameter_change`, `maintenance` or similar is a recorded event, and
   `query_defect_history` takes `relative_to` (the event kind) with `side`

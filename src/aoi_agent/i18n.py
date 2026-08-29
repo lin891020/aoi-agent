@@ -176,6 +176,11 @@ STRINGS: dict[str, dict[str, str]] = {
         "queue.why_handed_over": '為什麼交給人',
         "queue.waiting_since": '等候起點（UTC）',
         "queue.no_explanation": '無說明',
+        "queue.rationale_language":
+            '「為什麼交給人」以{lang}撰寫（環境變數 AOI_LINE_LANGUAGE，切換語言不會改寫既有紀錄）。'
+            '量測（2026-08-29）：中文一則約 32 秒、英文約 9 秒，慢 3.7 倍；判定不等它，只影響一片 PCB 跑完的時間。',
+        "lang.name.zh-TW": "中文",
+        "lang.name.en": "英文",
         "queue.review": '複判 →',
         "queue.start_at_top": '從第一件開始 →',
         "queue.unattributed": '{count} 件已關閉的項目背後沒有人的判定',
@@ -516,6 +521,13 @@ STRINGS: dict[str, dict[str, str]] = {
         "queue.why_handed_over": 'why it was handed over',
         "queue.waiting_since": 'Waiting since (UTC)',
         "queue.no_explanation": 'no explanation',
+        "queue.rationale_language":
+            'The "why it was handed over" text is written in {lang} (AOI_LINE_LANGUAGE; '
+            'the switch never rewrites a stored one). Measured 2026-08-29: about 32 s per '
+            'region in Chinese, 9 s in English, 3.7x; the verdict does not wait on it, '
+            'only a board run takes longer.',
+        "lang.name.zh-TW": "Chinese",
+        "lang.name.en": "English",
         "queue.review": 'review →',
         "queue.start_at_top": 'Start at the top →',
         "queue.unattributed": '{count} closed entries carry no human decision',
