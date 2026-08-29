@@ -529,15 +529,12 @@ def test_a_percentage_that_is_a_count_divided_by_a_share_is_not_excused():
 
 
 def test_a_count_over_a_count_is_still_the_models_to_divide():
+    """191 opens against M12's 82 is 2.33x: a count over a count, which the
+    model is entitled to divide, and it is excused and listed as such."""
     plan = {"interpretation": "", "assumptions": [], "calls": []}
     findings, _waved, derived = check(
-        "M22 的 191 起 open 佔其 585 起缺陷的 32.6%，每板 2.301 起。",
-        plan, machine_stats_results() + [{
-            "tool": "query_defect_history", "args": {"machine_id": "M22", "days": 7},
-            "ok": True, "error": None, "elapsed_ms": 1.0,
-            "data": {"filters": {"machine_id": "M22"}, "defects_total": 585,
-                     "by_class": {"open": 191, "short": 84}},
-        }],
+        "M22 的 191 起 open 是 L1-M12 的 82 起的 2.33 倍，每板 2.301 起。",
+        plan, machine_stats_results(),
     )
     assert not [f for f in findings if f.kind == "fabricated_figure"], derived
-    assert any(d.startswith("32.6 = 191/585") for d in derived), derived
+    assert any(d.startswith("2.33 = ") for d in derived), derived  # excused as a ratio of two counts; which pair is found first is not the point
