@@ -17,6 +17,9 @@ guarantees are structural, and each is held by a test in
    that is not a single SELECT (CTEs and set operations included) is refused
    before the connection sees it. So are tables outside `EXPOSED`, schema-
    qualified names, and the handful of functions that reach the filesystem.
+   Since the first measurement, an equality against a value no row holds is
+   refused too, naming the values that exist -- `validate_plan`'s rule for
+   `line_id="L4"`, applied to a literal in a WHERE clause.
 4. **Bounded.** A `LIMIT` of at most `ROW_CAP` is imposed, and a progress
    handler aborts a statement that runs past `TIME_CAP_S` -- a recursive CTE
    with no floor is a denial of service on the machine the station shares with
@@ -99,11 +102,13 @@ def _table_name(node: exp.Table) -> str:
     return (node.name or "").lower()
 
 
-def check(sql: str) -> str:
+def check(sql: str, connection: sqlite3.Connection | None = None) -> str:
     """The SQL this guard will run for the text given, or `RefusedSQL`.
 
     Returns the statement with the row cap applied, rendered by the parser, so
-    what runs is what was parsed and not what was typed.
+    what runs is what was parsed and not what was typed. Given the snapshot,
+    also refuses an equality against a value no row holds -- see
+    `_literal_errors`.
     """
     text = (sql or "").strip().rstrip(";").strip()
     if not text:
@@ -147,7 +152,111 @@ def check(sql: str) -> str:
         if name in DENIED_FUNCTIONS:
             raise RefusedSQL(f"function {name}() is refused")
 
+    if connection is not None:
+        problem = _literal_errors(statement, connection)
+        if problem:
+            raise RefusedSQL(problem)
+
     return _capped(statement).sql(dialect="sqlite")
+
+
+#: How many distinct values a refusal will list. Above this the column is an
+#: identifier column and the message names the count instead.
+_LIST_VALUES = 12
+
+
+def _literal_errors(statement: exp.Query, connection: sqlite3.Connection) -> str | None:
+    """A `column = literal` (or `IN`) that matches no row is refused, and the
+    refusal says which values exist.
+
+    The semantic failure text-to-SQL is feared for, caught at the one place it
+    is mechanical. The first measurement produced `disposition = 'pending'` --
+    no such value; the states are held and released -- and `boards.id =
+    '20085294'` -- the board number is `stem`, `id` is an integer -- and both
+    returned zero rows that read as an answer. `validate_plan` refuses
+    `line_id="L4"` for exactly this reason on the typed tools, and a query
+    language does not get a looser rule than a parameter.
+
+    Only bare columns are checked: `DATE(inspected_at) = '...'` has a
+    function on the left and a day with no boards is a legitimate answer of
+    zero. A column that cannot be resolved to one exposed table is skipped
+    rather than guessed at.
+    """
+    aliases: dict[str, str] = {}
+    for table in statement.find_all(exp.Table):
+        name = _table_name(table)
+        if name in EXPOSED:
+            aliases[(table.alias or name).lower()] = name
+
+    def resolve(column: exp.Column) -> tuple[str, str] | None:
+        col = column.name.lower()
+        if column.table:
+            table = aliases.get(column.table.lower())
+        else:
+            homes = [t for t, cols in EXPOSED.items() if col in cols and t in aliases.values()]
+            table = homes[0] if len(homes) == 1 else None
+        if table and col in EXPOSED[table]:
+            return table, col
+        return None
+
+    def literal_value(node: exp.Expression) -> object:
+        if isinstance(node, exp.Literal):
+            if node.is_string:
+                return node.this
+            try:
+                return int(node.this) if node.is_int else float(node.this)
+            except ValueError:
+                return node.this
+        if isinstance(node, exp.Neg) and isinstance(node.this, exp.Literal):
+            inner = literal_value(node.this)
+            return -inner if isinstance(inner, (int, float)) else None
+        return None
+
+    checks: list[tuple[str, str, object]] = []
+    for eq in statement.find_all(exp.EQ):
+        left, right = eq.left, eq.right
+        column, other = (left, right) if isinstance(left, exp.Column) else (right, left)
+        if not isinstance(column, exp.Column):
+            continue
+        value = literal_value(other)
+        if value is None:
+            continue
+        home = resolve(column)
+        if home:
+            checks.append((*home, value))
+    for member in statement.find_all(exp.In):
+        column = member.this
+        if not isinstance(column, exp.Column):
+            continue
+        home = resolve(column)
+        if not home:
+            continue
+        for item in member.expressions or []:
+            value = literal_value(item)
+            if value is not None:
+                checks.append((*home, value))
+
+    for table, col, value in checks:
+        held = connection.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE {col} = ?", (value,)
+        ).fetchone()[0]
+        if held:
+            continue
+        distinct = connection.execute(
+            f"SELECT COUNT(DISTINCT {col}) FROM {table}"
+        ).fetchone()[0]
+        if distinct <= _LIST_VALUES:
+            values = [row[0] for row in connection.execute(
+                f"SELECT DISTINCT {col} FROM {table} ORDER BY 1"
+            )]
+            known = ", ".join(repr(v) for v in values) or "none"
+            return (f"no row in {table} has {col} = {value!r}; the values held are "
+                    f"{known}. A query on a value that does not exist would return "
+                    f"nothing and read as an answer")
+        return (f"no row in {table} has {col} = {value!r} ({distinct} distinct values "
+                f"exist). A query on a value that does not exist would return nothing "
+                f"and read as an answer")
+    return None
 
 
 def _capped(statement: exp.Query) -> exp.Query:
@@ -239,14 +348,15 @@ def snapshot(path: str | None = None) -> sqlite3.Connection:
 def guarded_select(sql: str) -> dict[str, Any]:
     """Run one SELECT under every guard above; a refusal is a value."""
     try:
-        to_run = check(sql)
-    except RefusedSQL as refused:
-        return {"error": f"refused: {refused}", "sql": sql}
-
-    try:
         connection = snapshot()
     except (RefusedSQL, sqlite3.Error) as error:
         return {"error": f"the store could not be snapshotted: {error}", "sql": sql}
+
+    try:
+        with _lock:
+            to_run = check(sql, connection)
+    except RefusedSQL as refused:
+        return {"error": f"refused: {refused}", "sql": sql}
 
     deadline = time.monotonic() + TIME_CAP_S
 

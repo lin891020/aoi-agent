@@ -210,3 +210,45 @@ def test_the_tools_docstring_lists_exactly_the_snapshots_tables(store):
         assert f"{table}({', '.join(columns)})" in doc
     assert "withheld: ground_truth" in doc
     assert str(ROW_CAP) in doc
+
+
+
+# --- a literal no row holds is refused, with the values that exist ----------
+
+def test_an_equality_on_a_value_no_row_holds_is_refused_and_the_values_are_named(store):
+    """S11 on the first measurement: `board_dispositions.disposition =
+    'pending'`, a state that does not exist, returned 0 and read as "nothing
+    is waiting". The guard refuses it the way `validate_plan` refuses
+    `line_id='L4'`, and says what the values are."""
+    out = guarded_select("SELECT count(*) FROM boards WHERE shift = 'D'")
+    assert out["error"].startswith("refused")
+    assert "shift = 'D'" in out["error"] and "'A', 'C'" in out["error"]
+
+
+def test_a_board_number_compared_to_the_integer_id_is_refused(store):
+    """A12 and A22 on the first measurement wrote `boards.id = '20085294'`;
+    `id` is the integer key and `stem` is the board number, so the query
+    returned nothing and read as "no such board"."""
+    out = guarded_select("SELECT * FROM boards b WHERE b.id = '22000010'")
+    assert out["error"].startswith("refused") and "id = '22000010'" in out["error"]
+    assert "error" not in guarded_select("SELECT * FROM boards b WHERE b.stem = '22000010'")
+
+
+def test_a_value_that_exists_passes_and_a_function_on_the_column_is_not_checked(store):
+    assert "error" not in guarded_select("SELECT count(*) FROM boards WHERE machine_id = 'M22'")
+    # A day with no boards is a legitimate zero; the left side is not a bare column.
+    out = guarded_select("SELECT count(*) FROM boards WHERE DATE(inspected_at) = '2026-08-30'")
+    assert "error" not in out and out["rows"] == [[0]]
+
+
+def test_one_bad_member_of_an_in_list_is_refused(store):
+    out = guarded_select("SELECT count(*) FROM boards WHERE shift IN ('A', 'Z')")
+    assert out["error"].startswith("refused") and "shift = 'Z'" in out["error"]
+
+
+def test_a_column_through_an_alias_is_resolved_to_its_table(store):
+    out = guarded_select(
+        "SELECT b.shift, count(*) FROM candidates c JOIN boards b ON b.id = c.board_id "
+        "WHERE c.predicted_class = 'scratch' GROUP BY b.shift"
+    )
+    assert out["error"].startswith("refused") and "candidates has predicted_class = 'scratch'" in out["error"]
