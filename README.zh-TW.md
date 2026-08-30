@@ -88,6 +88,7 @@ DeepPCB 官方測試切分：499 片未見過的板、7,322 個 AOI candidate，
 
 六項量測推翻了先前的主張或設計決定，每一項都改了程式。下表每項一列；完整經過與
 改前改後的數字在 [docs/findings.zh-TW.md](docs/findings.zh-TW.md)。
+同一條路做成投影片：[docs/deck/](docs/deck/) —— 每個實驗的為什麼做／怎麼設計／量到什麼／錯在哪／規則，附面試官會問的題；從 `scripts/deck_content.py` 產生，投影片上的數字必須是文件裡發表過的。
 
 | 量了什麼 | 量到什麼 | 改了什麼 |
 |---|---|---|

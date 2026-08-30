@@ -101,6 +101,7 @@ last. Detail on interval and class split:
 Six measurements contradicted an earlier claim or design decision; each
 changed the code. One row each below; the full account, with the figures
 before and after, is in [docs/findings.md](docs/findings.md).
+The same road as a deck, for a room: [docs/deck/](docs/deck/) — every experiment as why / design / numbers / mistake / rule, with the questions an interviewer asks; built from `scripts/deck_content.py`, so a figure on a slide is a figure a document published.
 
 | what was measured | what it said | what changed |
 |---|---|---|

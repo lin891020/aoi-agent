@@ -61,6 +61,9 @@ scripts/                    gate_check, build_patches, train, report, seed_store
                             mark_unattributed_resolutions, ...
 tests/                      1,382 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
+docs/deck/                  the project-journey deck (pptx, html with a self-test
+                            mode, study guide) -- built from scripts/deck_content.py,
+                            whose figures must exist in a published document
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
 ```
@@ -86,6 +89,8 @@ uv run python scripts/train.py --patches data/patches_pcbaoi --out models/pcbaoi
                                                  # the same ResNet-18, minus the template channel
 uv run python scripts/crop_reverifier_report.py  # its ordering against the detector's, same boxes
 uv run python scripts/render_diagrams.py         # the two README flow diagrams, from the graphs' constants
+uv run --with python-pptx --with playwright python scripts/build_deck.py [--embed-video]
+                                                 # the journey deck: docs/deck/*.pptx, .html, study guide
 uv run --with playwright python scripts/demo_record.py --lang zh-TW --stem <stem>
                                                  # the demo video: Playwright + say + ffmpeg, ~5 min, macOS only
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
