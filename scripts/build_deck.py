@@ -467,6 +467,15 @@ def build_pptx(target: Path, images: dict[str, Path], embed_video: bool) -> Path
         y = top
         for (key, label), row_h in zip(rows, heights):
             colour = WARN if key == "mistake" else ACCENT
+            if key in ("mistake", "rule"):
+                # Two colours for the whole deck: the problem sits on a warm
+                # band, the answer on the accent band. Nothing else is tinted.
+                band = slide.shapes.add_shape(1, left - Inches(0.15), y - Inches(0.04),
+                                              width + Inches(0.3), row_h + Inches(0.08))
+                band.fill.solid()
+                band.fill.fore_color.rgb = rgb("2B2416" if key == "mistake" else "16292B")
+                band.line.fill.background()
+                band.shadow.inherit = False
             text(slide, left, y, Inches(1.45), row_h,
                  [[(label, {"bold": True, "color": colour, "size": 13})]])
             text(slide, left + Inches(1.5), y, width - Inches(1.5), row_h,
@@ -652,6 +661,9 @@ ul {{ padding-left:1.2rem; }} li {{ margin:.35rem 0; max-width:80ch; }}
 dl.five {{ display:grid; grid-template-columns:7rem 1fr; gap:.5rem 1rem; margin:0 0 1rem; }}
 dl.five dt {{ color:var(--accent); font-weight:700; font-size:.9rem; padding-top:.15rem; }}
 dl.five dt.mistake {{ color:var(--warn); }}
+dl.five dt.mistake, dl.five dt.mistake + dd {{ background:#2B2416; }}
+dl.five dt.rule, dl.five dt.rule + dd {{ background:#16292B; }}
+dl.five dt, dl.five dd {{ padding:.35rem .6rem; border-radius:4px; }}
 dl.five dd {{ margin:0; max-width:85ch; }}
 .scroll {{ overflow-x:auto; margin:0 0 1rem; }}
 table {{ border-collapse:collapse; width:100%; font-size:.9rem; }}

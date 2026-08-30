@@ -467,7 +467,7 @@ SLIDES: list[Slide] = [
     ),
     Slide(
         key="shot-queue", kind="image", layer=LAYERS[4], hero=True,
-        title="站台長這樣：待複判清單",
+        title="待複判清單：作業員的第一頁",
         plain="每一列一個看不準的區域：模型判定、信心、誤判機率、產線機台，右邊是 agent 寫的說明——等最久的在最上面。",
         image="shot_queue.png",
         caption="http://aoi.test — 2026-08-30 的站台，說明以產線語言（中文）寫，數字不在證據裡的會標出來",
@@ -482,7 +482,7 @@ SLIDES: list[Slide] = [
     ),
     Slide(
         key="shot-region", kind="image", layer=LAYERS[4], hero=True,
-        title="站台長這樣：一個區域怎麼判",
+        title="區域頁：一個判定的全部證據",
         plain="上面是 agent 的理由，中間三張圖（樣板、待測、差異），下面三欄證據，再下面是七個判定鍵和「我不確定」。",
         image="shot_region.png",
         caption="/c/20085299/2 — 沒有 ground truth；作業員的答案是下一輪的訓練標籤",
@@ -540,7 +540,7 @@ SLIDES: list[Slide] = [
     # ------------------------------------------------------- 第五層 /ask
     Slide(
         key="shot-ask", kind="image", layer=LAYERS[6], hero=True,
-        title="站台長這樣：主管問一句話",
+        title="產線查詢：一句話到一張有區間的圖",
         plain="問「M32 參數變更前後 open 的比例有沒有變」，回來的是它怎麼理解、假設了什麼、查了什麼、一張有區間的圖、一段每個數字都查得到的話、和花了多久。",
         image="shot_ask.png",
         caption="/ask/36 — 圖從結果的形狀推；兩根柱的 95% 區間畫成鬚線，重疊就是「未證明有差」",
