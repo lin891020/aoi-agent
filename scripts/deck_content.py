@@ -60,6 +60,7 @@ class Slide:
     caption: str = ""
     core: int | None = None         # ★ 主線 n/9
     table: list[list[str]] | None = None   # first row is the header
+    wide: bool = False              # image slides: picture across the full width, bullets under it
 
 
 SLIDES: list[Slide] = [
@@ -81,8 +82,8 @@ SLIDES: list[Slide] = [
         plain="在漏網率不超過千分之五的前提下，省掉一半的人工複判——而且每個數字都有出處。",
         bullets=[
             "52.8% 的人工複判被拿掉 —— 在 ≤0.5% 的漏網率預算下（7,322 個候選、3,018 個真缺陷）",
-            "漏網率 0.50% 是這個 split 的點估計；讀成未知資料上的比例，95% 區間到 0.82%，不排除超預算",
-            "六類裡 short 的漏網率 1.55%，是平均的 3.1 倍 —— 平均數字不能單獨報",
+            "0.82% 是漏網率的 95% 區間上緣——0.50% 只是這個 split 的點估計，讀成未知資料上的比例就不排除超預算",
+            "1.55% 是 short 這一類的漏網率，平均的 3.1 倍——平均數字不能單獨報",
             "82.2% 的區域不經過語言模型就處置完；LLM 只解釋，不決定",
             "1,401 個測試，不用 GPU、不呼叫模型；19 條 invariant 有 audit 腳本說哪一條沒被守住",
         ],
@@ -140,20 +141,40 @@ SLIDES: list[Slide] = [
         ],
     ),
     Slide(
-        key="flows", kind="image", layer=LAYERS[0],
-        title="兩條流程：處置路徑與分析路徑",
-        plain="左邊是「一個紅框怎麼被判」，右邊是「主管的一句話怎麼變成答案」；兩張圖都是程式自己畫的。",
-        image="flows.png",
-        caption="docs/diagrams/*.svg，由 scripts/render_diagrams.py 從 graph 的常數產生",
+        key="flow-disposition", kind="image", layer=LAYERS[0],
+        title="處置路徑：一個紅框怎麼被判",
+        plain="分類器先判，兩個門檻決定誰直接處置；看不準的拿脈絡、請 LLM 寫說明，最後交給人——而且交給人的那一步會存檔，程式重啟還在。",
+        image="flow_disposition.png",
+        caption="docs/diagrams/disposition-flow-light.zh-TW.svg，由 scripts/render_diagrams.py 從 graph/flow.py 的常數產生",
         bullets=[
-            "處置路徑：classify → 依信心分路 → gather context → LLM 說明 → 依信心決定或交給人（interrupt，checkpoint 到 SQLite）",
-            "分析路徑：規劃（LLM #1）→ 驗證工具簽名與值域 → Send 平行展開 → 收集 → 圖從結果形狀推 → 撰寫（LLM #2）",
-            "兩條路上 LLM 的位置一樣：選擇與撰寫，不決定",
+            "classify → 依信心分路：P(誤判) ≥ 0.961 排除、缺陷 ≥ 0.996 且非 open 確認——82.2% 在這裡結束",
+            "其餘：取得脈絡（3 個 MCP 工具，標準依類別限定）→ LLM 寫說明（僅說明，60 秒上限）→ 信心 ≥ 0.961 決定，否則交給人",
+            "交給人 = LangGraph interrupt()，checkpoint 存 SQLite；作業員兩天後回來續跑，不重跑工具",
         ],
-        notes=["兩張圖，兩條路，同一個原則：語言模型負責語言，程式負責其他一切。",
-               "左邊注意「交給人」那個框，它是 LangGraph 的 interrupt，存在 SQLite，程式重啟還在——一個死掉的升級只是穿著 graph 衣服的 prompt。",
-               "右邊注意「驗證」那個菱形：規劃器寫的每個參數值都對照資料庫真實存在的值，L4 這種不存在的產線直接拒絕，不重試。",
-               "這兩張圖不是我畫的，是腳本從 graph 的常數畫的，門檻改了圖就跟著改。"],
+        notes=["這張是處置路徑，程式自己畫的。",
+               "第一個菱形是兩個門檻：夠像誤判就排除、夠像缺陷就確認，八成二在這裡結束，沒碰語言模型。",
+               "剩下的拿產線脈絡和驗收標準、請 LLM 寫一段說明，然後還是用分類器的信心決定——LLM 不在決策格子裡。",
+               "交給人那個框是 interrupt，存 SQLite，程式重啟還在；死掉的升級只是穿著 graph 衣服的 prompt。"],
+        questions=[
+            ("圖上哪一格是 LLM 決定的？", "沒有。兩個菱形都讀分類器的信心（0.961 / 0.996），LLM 只在「產生說明」那一格；量過它決定會比較差（71.7% 對 85.0%）。"),
+            ("為什麼要 checkpoint 到 SQLite？", "因為作業員可能兩天後才回來答。InMemorySaver 跟著 CLI 一起死，那個升級就消失了；SQLite checkpoint 讓它活過程序重啟，第二個程序 resume 過，測試釘著。"),
+        ],
+    ),
+    Slide(
+        key="flow-analysis", kind="image", layer=LAYERS[0],
+        title="分析路徑：主管的一句話怎麼變成答案",
+        plain="模型只做兩件事——決定查什麼、把結果寫成話；中間的驗證、平行查詢、畫圖、存檔都是程式。",
+        image="flow_analysis.png", wide=True,
+        caption="docs/diagrams/analysis-flow-light.zh-TW.svg，同一支腳本產生",
+        bullets=[
+            "規劃（LLM #1）→ 驗證：工具名、參數名、參數值都對照真實簽名與值域，L4 這種不存在的產線直接拒絕、不重試",
+            "Send 平行展開——因為那幾個事實彼此獨立，不是為了快；工具幾毫秒，模型呼叫二十幾秒",
+            "收集 → 圖從結果的形狀推（模型不能選圓餅圖）→ 撰寫（LLM #2）→ 存 analysis_runs，圖從存的資料重畫、不重跑計畫",
+        ],
+        notes=["這張是 /ask 的路徑。",
+               "規劃器寫一份型別化計畫，驗證器對照真實的工具簽名和資料庫裡真的存在的值，不存在就拒絕，不重試。",
+               "平行展開是因為那幾個查詢彼此獨立，不是加速；每次 run 都記工具總時間和最長分支，不准把它說成加速。",
+               "圖是從結果的形狀推的，答案存在 analysis_runs，之後重畫圖不重跑模型。"],
         questions=[
             ("為什麼分析路徑沒有 checkpointer？", "因為它沒有任何地方會停下來等人。處置路徑要等作業員判，可能等兩天，所以要 SQLite checkpoint；/ask 什麼都不處置，需要的是可重現，所以存的是 analysis_runs 表，圖從存的資料重畫，不重跑計畫。"),
             ("Send 平行展開是為了快嗎？", "不是。工具幾毫秒，兩次模型呼叫二十幾秒，省下的是雜訊。展開是因為那幾個事實彼此獨立，這是工作的形狀。每次 run 都記 tools_wall 和最長分支，不准把它說成加速。"),
@@ -594,7 +615,7 @@ SLIDES: list[Slide] = [
     ),
     # ------------------------------------------------------- 附錄 · 備查
     Slide(
-        key="ax-training", kind="image", layer=LAYERS[8],
+        key="ax-training", kind="image", layer=LAYERS[8], wide=True,
         title="附錄 A · 主線複判模型的訓練曲線",
         plain="十個 epoch、四分鐘；看的不是準確率那條，是「在漏網預算下省掉多少」那條。",
         image="training_curves.png",
@@ -690,7 +711,7 @@ SLIDES: list[Slide] = [
         ],
     ),
     Slide(
-        key="ax-detector", kind="image", layer=LAYERS[8],
+        key="ax-detector", kind="image", layer=LAYERS[8], wide=True,
         title="附錄 E · 偵測器與無樣板複判器的訓練",
         plain="偵測器訓 56 分鐘找得到瑕疵；拿它的框訓同一個 ResNet、沒有樣板通道，曲線根本爬不起來。",
         image="crop_curves.png",
@@ -712,7 +733,7 @@ SLIDES: list[Slide] = [
         ],
     ),
     Slide(
-        key="ax-gate", kind="image", layer=LAYERS[8],
+        key="ax-gate", kind="image", layer=LAYERS[8], wide=True,
         title="附錄 F · S0 gate 的三條曲線：DeepPCB 過、HRIPCB 不過",
         plain="同一個相減、同一組門檻掃過去：二值圖上 recall 96% 且誤報穩定；照片上要 recall 就要付 860 個誤報一張。",
         image="gate_curves.png",

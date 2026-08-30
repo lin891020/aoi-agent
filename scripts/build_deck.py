@@ -89,34 +89,36 @@ def _render_pages() -> dict[str, Path]:
               "(pass --with playwright)")
         return {}
     made: dict[str, Path] = {}
-    flows_html = IMG / "_flows.html"
-    svgs = [
-        (DIAGRAMS / "disposition-flow-light.zh-TW.svg").read_text(),
-        (DIAGRAMS / "analysis-flow-light.zh-TW.svg").read_text(),
-    ]
-    flows_html.write_text(
-        "<!doctype html><meta charset='utf-8'>"
-        "<body style='margin:0;background:#f5f5f5;display:grid;grid-template-columns:1fr 1fr;"
-        "gap:24px;padding:24px;width:2000px;box-sizing:border-box'>"
-        + "".join(f"<div>{svg}</div>" for svg in svgs) + "</body>"
-    )
     with sync_playwright() as p:
         browser = p.chromium.launch()
+        # The architecture page: only its diagram, not the page's margins --
+        # on a slide the margins were most of the picture.
         page = browser.new_page(viewport={"width": 1600, "height": 1000}, device_scale_factor=2)
         page.goto(ARCH_PAGE.as_uri())
         page.wait_for_load_state("networkidle")
         page.wait_for_timeout(800)
         target = IMG / "architecture.png"
-        page.screenshot(path=str(target), full_page=True)
+        svg = page.locator("svg").first
+        if svg.count():
+            svg.screenshot(path=str(target))
+        else:
+            page.screenshot(path=str(target), full_page=True)
         made["architecture.png"] = target
-        page = browser.new_page(viewport={"width": 2000, "height": 700}, device_scale_factor=2)
-        page.goto(flows_html.as_uri())
-        page.wait_for_timeout(800)
-        target = IMG / "flows.png"
-        page.screenshot(path=str(target), full_page=True)
-        made["flows.png"] = target
+        # One flow per picture, each at full width of its own slide.
+        for name, file in (("flow_disposition.png", "disposition-flow-light.zh-TW.svg"),
+                           ("flow_analysis.png", "analysis-flow-light.zh-TW.svg")):
+            html_path = IMG / f"_{name}.html"
+            html_path.write_text("<!doctype html><meta charset='utf-8'><body style='margin:0;"
+                                 "background:#f5f5f5;padding:16px;width:1400px;box-sizing:border-box'>"
+                                 + (DIAGRAMS / file).read_text() + "</body>")
+            page = browser.new_page(viewport={"width": 1400, "height": 900}, device_scale_factor=2)
+            page.goto(html_path.as_uri())
+            page.wait_for_timeout(600)
+            target = IMG / name
+            page.locator("svg").first.screenshot(path=str(target))
+            made[name] = target
+            html_path.unlink(missing_ok=True)
         browser.close()
-    flows_html.unlink(missing_ok=True)
     return made
 
 
@@ -370,18 +372,26 @@ def build_pptx(target: Path, images: dict[str, Path], embed_video: bool) -> Path
              spacing=1.25)
 
     def five_box(slide, s: Slide, left, top, width, height):
+        # Rows take the height their text needs, so a two-line rule does not
+        # sit in a five-line box with a gap under it; the type is 14pt, or
+        # 13pt when the five cells together would not otherwise fit.
         rows = list(FIVE_LABELS.items())
-        row_h = int(height / len(rows))
+        chars_per_line = 50          # CJK at 15pt across ~10.7in, mixed with ASCII
+        total_lines = sum(max(1, -(-len(s.five[k]) // chars_per_line)) for k, _ in rows)
+        size = 15 if total_lines <= 14 else 14
+        line_h = Inches(0.31 if size == 15 else 0.29)
+        gap = Inches(0.16)
         y = top
         for key, label in rows:
+            body = s.five[key]
+            lines = max(1, -(-len(body) // (chars_per_line if size == 15 else 54)))
+            row_h = line_h * lines + Inches(0.1)
             colour = WARN if key == "mistake" else ACCENT
             text(slide, left, y, Inches(1.45), row_h,
-                 [[(label, {"bold": True, "color": colour, "size": 12})]])
-            body = s.five[key]
-            size = 11 if len(body) > 150 else 12.5
+                 [[(label, {"bold": True, "color": colour, "size": 13})]])
             text(slide, left + Inches(1.5), y, width - Inches(1.5), row_h,
-                 [[(body, {"size": size})]], spacing=1.1)
-            y += row_h
+                 [[(body, {"size": size})]], spacing=1.12)
+            y += row_h + gap
 
     for number, s in enumerate(SLIDES, 1):
         slide = prs.slides.add_slide(blank)
@@ -391,12 +401,37 @@ def build_pptx(target: Path, images: dict[str, Path], embed_video: bool) -> Path
                  [[(s.title, {"bold": True, "size": 40})]])
             text(slide, Inches(0.8), Inches(3.9), Inches(11.7), Inches(1.6),
                  [[(b, {"color": DIM, "size": 16})] for b in s.bullets])
-        elif s.kind in ("headline", "text", "closing"):
+        elif s.kind == "headline":
+            title_line(slide, s)
+            # Five numbers a manager reads in thirty seconds: the figure large,
+            # its sentence small, one tile each. Bullets of prose at 17pt left
+            # two thirds of the page empty and the numbers buried mid-sentence.
+            tiles = []
+            for b in s.bullets:
+                head, _, rest = b.partition(" ")
+                tiles.append((head, rest))
+            n = len(tiles)
+            cols = 3 if n > 4 else n
+            tile_w = (W - Inches(1.2) - Inches(0.3) * (cols - 1)) / cols
+            tile_h = Inches(2.4)
+            for i, (head, rest) in enumerate(tiles):
+                r, c = divmod(i, cols)
+                x = Inches(0.6) + c * (tile_w + Inches(0.3))
+                y = Inches(1.5) + r * (tile_h + Inches(0.3))
+                box = slide.shapes.add_shape(1, x, y, tile_w, tile_h)  # 1 = rectangle
+                box.fill.solid(); box.fill.fore_color.rgb = rgb(PANEL)
+                box.line.color.rgb = rgb("33383D")
+                box.shadow.inherit = False
+                text(slide, x + Inches(0.25), y + Inches(0.2), tile_w - Inches(0.5), Inches(1.0),
+                     [[(head, {"bold": True, "size": 34, "color": ACCENT, "font": MONO})]])
+                text(slide, x + Inches(0.25), y + Inches(1.15), tile_w - Inches(0.5), tile_h - Inches(1.25),
+                     [[(rest, {"size": 13, "color": INK})]], spacing=1.2)
+        elif s.kind in ("text", "closing"):
             title_line(slide, s)
             top = Inches(1.5)
             if s.table:
                 rows, cols = len(s.table), len(s.table[0])
-                row_h = Inches(0.42)
+                row_h = Inches(0.5)
                 shape = slide.shapes.add_table(rows, cols, Inches(0.6), top, Inches(12.1), row_h * rows)
                 tbl = shape.table
                 for r, row in enumerate(s.table):
@@ -407,7 +442,7 @@ def build_pptx(target: Path, images: dict[str, Path], embed_video: bool) -> Path
                         run = para.add_run()
                         run.text = cell_text
                         run.font.name = FONT
-                        run.font.size = Pt(10.5 if r else 10)
+                        run.font.size = Pt(13 if r else 11.5)
                         run.font.bold = r == 0
                         run.font.color.rgb = rgb(ACCENT if r == 0 else INK)
                         cell.fill.solid()
@@ -415,33 +450,49 @@ def build_pptx(target: Path, images: dict[str, Path], embed_video: bool) -> Path
                         cell.margin_top = cell.margin_bottom = Inches(0.04)
                 top = top + row_h * rows + Inches(0.25)
             bullets(slide, s.bullets, Inches(0.6), top, Inches(12.1), H - top - Inches(0.6),
-                    size=17 if s.kind == "headline" else (12.5 if s.table else 15))
+                    size=14 if s.table else 18)
         elif s.kind in ("image", "video"):
             title_line(slide, s)
             img = images.get(s.image or "")
-            if s.kind == "video" and embed_video and VIDEO.exists():
-                poster = str(SCREENSHOTS / "region-zh.png")
-                slide.shapes.add_movie(str(VIDEO), Inches(0.6), Inches(1.4), Inches(7.4),
-                                       Inches(4.2), poster_frame_image=poster,
-                                       mime_type="video/mp4")
-            elif img:
-                pic = slide.shapes.add_picture(str(img), Inches(0.6), Inches(1.4), width=Inches(7.4))
-                if pic.height > Inches(4.6):
-                    ratio = Inches(4.6) / pic.height
-                    pic.height = Inches(4.6)
+
+            def place(path, left, top, max_w, max_h):
+                pic = slide.shapes.add_picture(str(path), left, top, width=max_w)
+                if pic.height > max_h:
+                    ratio = max_h / pic.height
+                    pic.height = max_h
                     pic.width = Emu(int(pic.width * ratio))
+                return pic
+
+            if s.wide and img:
+                # The picture across the whole width, the bullets in two
+                # columns under it -- a flow diagram at half width was a
+                # thumbnail nobody in the room could read.
+                pic = place(img, Inches(0.6), Inches(1.3), Inches(12.1), Inches(3.9))
+                pic.left = Emu(int((W - pic.width) / 2))
+                y = pic.top + pic.height + Inches(0.15)
+                half = len(s.bullets) - len(s.bullets) // 2
+                bullets(slide, s.bullets[:half], Inches(0.6), y, Inches(5.95), Inches(6.35) - y, size=12)
+                bullets(slide, s.bullets[half:], Inches(6.75), y, Inches(5.95), Inches(6.35) - y, size=12)
             else:
-                text(slide, Inches(0.6), Inches(3.0), Inches(7.4), Inches(1),
-                     [[(f"（{s.image} 未產生）", {"color": DIM})]])
-            if s.kind == "video" and not embed_video:
-                text(slide, Inches(0.6), Inches(5.7), Inches(7.4), Inches(0.5),
-                     [[(f"影片：{VIDEO_LINK}", {"color": ACCENT, "size": 11, "font": MONO})]])
-            bullets(slide, s.bullets, Inches(8.3), Inches(1.4), Inches(4.6), Inches(4.8), size=12.5)
-            text(slide, Inches(0.6), Inches(6.2), Inches(12.2), Inches(0.5),
-                 [[(s.caption, {"color": DIM, "size": 10, "font": MONO})]])
+                if s.kind == "video" and embed_video and VIDEO.exists():
+                    poster = str(SCREENSHOTS / "region-zh.png")
+                    slide.shapes.add_movie(str(VIDEO), Inches(0.6), Inches(1.3), Inches(8.4),
+                                           Inches(4.75), poster_frame_image=poster,
+                                           mime_type="video/mp4")
+                elif img:
+                    place(img, Inches(0.6), Inches(1.3), Inches(8.4), Inches(5.0))
+                else:
+                    text(slide, Inches(0.6), Inches(3.0), Inches(8.4), Inches(1),
+                         [[(f"（{s.image} 未產生）", {"color": DIM})]])
+                if s.kind == "video" and not embed_video:
+                    text(slide, Inches(0.6), Inches(6.05), Inches(8.4), Inches(0.4),
+                         [[(f"影片：{VIDEO_LINK}", {"color": ACCENT, "size": 11, "font": MONO})]])
+                bullets(slide, s.bullets, Inches(9.2), Inches(1.3), Inches(3.7), Inches(5.2), size=13)
+            text(slide, Inches(0.6), Inches(6.45), Inches(12.2), Inches(0.4),
+                 [[(s.caption, {"color": DIM, "size": 9.5, "font": MONO})]])
         elif s.kind == "five":
             title_line(slide, s, size=24)
-            five_box(slide, s, Inches(0.5), Inches(1.35), Inches(12.3), Inches(5.55))
+            five_box(slide, s, Inches(0.5), Inches(1.3), Inches(12.3), Inches(5.6))
         chrome(slide, s, number)
         slide.notes_slide.notes_text_frame.text = _notes_text(s)
 
