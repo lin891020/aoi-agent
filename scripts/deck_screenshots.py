@@ -14,7 +14,7 @@ for _ in range(60):
 BASE = "http://127.0.0.1:8111"   # start one with: uv run python -m aoi_agent station --port 8111
 with sync_playwright() as p:
     b = p.chromium.launch()
-    ctx = b.new_context(viewport={"width": 1200, "height": 1200}, color_scheme="dark", device_scale_factor=3)
+    ctx = b.new_context(viewport={"width": 1200, "height": 2000}, color_scheme="dark", device_scale_factor=3)
     pg = ctx.new_page()
     pg.goto(BASE + "/login"); pg.fill("input[name=name]", "mike"); pg.fill("input[name=secret]", "0000")
     pg.click("button[type=submit]"); pg.wait_for_load_state("networkidle")
@@ -24,7 +24,10 @@ with sync_playwright() as p:
         pg.goto(BASE + path); pg.wait_for_load_state("networkidle"); pg.wait_for_timeout(600)
         top = pg.evaluate(js_top); bottom = pg.evaluate(js_bottom)
         h = max(120, bottom - top)
-        pg.screenshot(path=str(OUT / name), clip={"x": 0, "y": top, "width": 1200, "height": h})
+        # full_page, or the clip is silently truncated at the viewport's bottom
+        # edge and the shot ends mid-content with no error.
+        pg.screenshot(path=str(OUT / name), full_page=True,
+                      clip={"x": 0, "y": top, "width": 1200, "height": h})
         print(f"{name}: {1200}x{round(h)}  aspect {1200 / h:.2f}")
 
     # The queue: from the top of the page to the end of the second row.
@@ -38,5 +41,11 @@ with sync_playwright() as p:
         print(name, "element", selector)
 
     element("shot_region.png", "/c/20085299/2", "figure.triptych")
+    # The seven answers and the eighth button. The triptych alone is the
+    # evidence; this is the thing the operator actually presses, and the
+    # deferral button is one of the deck's own stories.
+    band("shot_verdict.png", "/c/20085299/2",
+         "document.querySelector('form.verdict').getBoundingClientRect().top + window.scrollY - 6",
+         "document.querySelector('form.defer').getBoundingClientRect().bottom + window.scrollY + 12")
     element("shot_ask.png", "/ask/36", "figure.chart")
     b.close()
