@@ -86,6 +86,10 @@ Rules that matter more than completeness:
 - `run_sql` may filter only on entities the question names. A question that
   names no board, machine, lot, shift or reviewer has nothing to filter on,
   and a SELECT over everyone is not its answer: return no calls, as before.
+  "This board" (這片) without a stem, "whoever judged it", "that lot" name
+  nothing; never invent a stem or an id to fill the WHERE clause. Boards,
+  lots and reviewers are not listed sets, and the listed-set rule below does
+  not apply to them.
 - Before and after a machine event is never `run_sql`. `query_machine_events`
   and `query_defect_history` with `relative_to` and `side` are the answer,
   and they carry the interval a SELECT does not.
@@ -95,6 +99,23 @@ Rules that matter more than completeness:
   (`before` or `after`). Plan one call per side on the same `machine_id`, and
   `query_machine_events` to say what the event was and when. Only when no
   event of that kind is recorded on that machine is the boundary missing.
+
+- An unnamed member of a small, listed set is not a missing entity. "The
+  worst machine", "the line with the most opens", "every machine that had an
+  event": the machines, lines and event kinds are enumerated below, so plan
+  the lookup that ranks or identifies over all of them, and then the
+  dependent lookup for *every* member -- three lines are three
+  `query_defect_history` calls, and `query_machine_events` with no
+  `machine_id` lists every machine's events. Do not guess one member, and do
+  not refuse for want of a name. Every argument is a concrete value from the
+  lists below: there is no way to pass one call's result into another, so a
+  placeholder such as `<machine_id_from_previous_call>` is rejected before
+  anything runs -- write the six calls instead. Two limits. When one tool
+  already ranks the whole set in a single call -- `query_machine_stats` for
+  "which machine is worst" -- that call is the plan, not one history call
+  per machine. And only machines, lines, shifts and event kinds are listed
+  sets. Refuse when what picks the member out is not in the data at all --
+  "the machine that had trouble last time" names no measurable thing.
 
 - You do not choose charts. The page derives one chart from the shape of the
   results -- bars for a comparison, before/after pairs for an event window --
@@ -268,6 +289,33 @@ FEW_SHOT: list[dict[str, Any]] = [
                              "side": "after"},
                     "why": "the same, after it, to compare the two intervals",
                 },
+            ],
+        },
+    },
+    {
+        "shape": "unnamed_member_of_a_listed_set",
+        "question": "哪條線的 open 最多？那條線的缺陷組成是什麼？",
+        "plan": {
+            "interpretation": "Which line's machines carry the largest share of "
+            "opens over the recent window, and what that line's defect mix "
+            "looks like. The line is not named; it is the top of a ranking "
+            "over the three lines the store holds, so the mix is fetched for "
+            "all three and the answer names the one the ranking picks.",
+            "assumptions": [
+                "Most opens means the highest share of a machine's defects that "
+                "are opens, read off the machine comparison; the line is the "
+                "line of the top machine.",
+                "Recent means the last 7 days.",
+            ],
+            "calls": [
+                {"tool": "query_machine_stats", "args": {"defect_type": "open", "days": 7},
+                 "why": "rank every machine by open share; the line is read off the top row"},
+                {"tool": "query_defect_history", "args": {"line_id": "L1", "days": 7},
+                 "why": "L1's defect mix, in case L1 is the line"},
+                {"tool": "query_defect_history", "args": {"line_id": "L2", "days": 7},
+                 "why": "L2's defect mix, in case L2 is the line"},
+                {"tool": "query_defect_history", "args": {"line_id": "L3", "days": 7},
+                 "why": "L3's defect mix, in case L3 is the line"},
             ],
         },
     },

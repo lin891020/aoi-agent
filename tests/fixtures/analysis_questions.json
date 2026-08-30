@@ -142,6 +142,17 @@
             "pin-hole"
           ]
         }
+      },
+      {
+        "why": "2026-08-29's unclassed query_machine_stats ranks every machine by defects_per_board in one call (defect_type absent -- a single classed call is one class, not every class)",
+        "expect_tools": [
+          "query_machine_stats"
+        ],
+        "expect_args": {
+          "defect_type": [
+            null
+          ]
+        }
       }
     ]
   },
@@ -215,5 +226,36 @@
   {
     "question": "2026-07-30 缺陷數量前 5 名的機台",
     "expect_refusal": true
+  },
+  {
+    "question": "最差的那台機台，最近有沒有發生什麼事？",
+    "expect_tools": [
+      "query_machine_stats",
+      "query_machine_events"
+    ],
+    "reason": "2026-08-30: the machine is the top of a ranking over six listed machines, not a missing entity; events for all machines is one call",
+    "expect_refusal": false
+  },
+  {
+    "question": "哪條線的 open 最多？那條線的缺陷組成是什麼？",
+    "expect_tools": [
+      "query_machine_stats",
+      "query_defect_history"
+    ],
+    "expect_args": {
+      "line_id": [
+        "L1",
+        "L2",
+        "L3"
+      ]
+    },
+    "reason": "2026-08-30: the dependent lookup is planned for every member of the listed set, not for a guessed one",
+    "expect_refusal": false,
+    "in_prompt": "verbatim"
+  },
+  {
+    "question": "上次出問題的那台機台現在怎麼樣？",
+    "expect_refusal": true,
+    "reason": "2026-08-30: 'had trouble last time' is not a measurable thing in the store, so no ranking picks the machine out; still a refusal"
   }
 ]

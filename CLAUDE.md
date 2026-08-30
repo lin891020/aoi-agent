@@ -451,6 +451,25 @@ plans near-identical) it refuses S11's wrong state and A22's `boards.id =
 the prompt rule and the SQL on the page. The
 per-question report with every SELECT is linked from the benchmarks entry.
 
+**The planner fans out over a listed set instead of guessing a member or
+refusing, since 2026-08-30, and the question it still cannot plan is the one
+that names the next mechanism.** "The worst machine", "the line with the most
+opens": the machines, lines, shifts and event kinds are enumerated in the
+prompt, so the rule is the ranking call plus the dependent call for every
+member; two limits (a tool that ranks the set in one call is the plan; boards,
+lots and reviewers are not listed sets). Measured three wordings deep, final
+against the 08-29 baseline: independent 28/42 unchanged, refusals 17/28 from
+15, stable 64/70 from 58, in-house 14/16 and 9/9. What it does not buy is
+"最差的那台機台，最近有沒有發生什麼事？" -- the planner wants the ranking's top
+row passed into the events call, writes a placeholder or refuses, and the
+architecture has no such channel. That is the dependent-argument mechanism:
+a typed reference resolved by code after the first branch returns, validated
+like any other value. Not built; not a loop. `validate_plan` refuses
+placeholders in typed arguments and inside a SELECT
+(`<machine_id_from_previous_call>`, `'YOUR_BOARD_ID'`), and the guard refuses
+`b.id = '這片'` at run time, so the page shows a refusal rather than an
+empty answer. docs/benchmarks.md, "Adjudication — the listed-set rule".
+
 Retraining from operator corrections -- now selectable by who made them, which
 is what `reviewer_auth` bought -- deploying the quantised model, demo video.
 

@@ -40,7 +40,7 @@ DOMAINS = {
 
 
 def test_there_are_nine_examples():
-    assert len(FEW_SHOT) == 9
+    assert len(FEW_SHOT) == 10
 
 
 def test_every_example_plan_would_pass_validation():
@@ -65,6 +65,7 @@ def test_the_examples_cover_the_seven_shapes():
         "event_window",
         "dated_top_n",
         "sql_fallback",
+        "unnamed_member_of_a_listed_set",
     }
 
 

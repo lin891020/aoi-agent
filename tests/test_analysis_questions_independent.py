@@ -348,7 +348,7 @@ def test_the_published_twenty_are_still_what_the_script_runs_by_default():
     # Twenty until 2026-08-29, when two dated rows were added for the
     # parameters that did not exist before -- a date and a top-N cut -- and
     # the next published figure is over twenty-two, said so in its entry.
-    assert len(load_questions(QUESTIONS)) == 22
+    assert len(load_questions(QUESTIONS)) == 25
     assert QUESTIONS != FIXTURE
 
 

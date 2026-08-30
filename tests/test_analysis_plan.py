@@ -223,3 +223,11 @@ def test_a_placeholder_argument_is_refused_not_looked_up():
     plan = {"calls": [{"tool": "query_board_context", "args": {"board": "<board_id>"}, "why": ""}]}
     errors = validate_plan(plan, DOMAINS)
     assert any("placeholder" in e for e in errors), errors
+
+
+def test_a_placeholder_inside_a_select_is_refused_too():
+    from aoi_agent.analysis.plan import validate_plan
+    sql = "SELECT reviewer FROM review_decisions rd JOIN candidates c ON rd.candidate_id = c.id JOIN boards b ON c.board_id = b.id WHERE b.id = 'YOUR_BOARD_ID'"
+    plan = {"calls": [{"tool": "run_sql", "args": {"sql": sql}, "why": ""}]}
+    errors = validate_plan(plan, DOMAINS)
+    assert any("placeholder" in e for e in errors), errors

@@ -655,7 +655,11 @@ def _date_error(key: str, value: object, span: tuple[str, str] | None, position:
     return None
 
 
-_PLACEHOLDER = re.compile(r"<[^<>]{1,40}>|\{[a-z_]{1,40}\}|\.\.\.")
+#: `<board_id>` and `{machine_id}` in a typed argument; `'YOUR_BOARD_ID'` and
+#: `<machine_id_from_previous_call>` inside a SELECT. All four were written by
+#: the planner on 2026-08-30 for questions that named no entity, and each is
+#: the model marking the slot it could not fill.
+_PLACEHOLDER = re.compile(r"<[^<>]{1,40}>|\{[a-z_]{1,40}\}|\.\.\.|\bYOUR_[A-Z_]{2,40}\b|'[A-Z]{2,20}_ID'")
 
 
 def _domain_errors(name: str, args: dict, domains: Domains, position: int) -> list[str]:

@@ -244,6 +244,10 @@ def test_the_fixture_only_pins_argument_values_that_exist():
             for value in args.get("line_id", []) + args.get("machine_id", []):
                 assert value in known_values(), f"{question['question']}: {value}"
             for value in args.get("defect_type", []):
+                # `null` pins the *absence* of the argument -- the unclassed
+                # ranking -- and is not a class the seed has to create.
+                if value is None:
+                    continue
                 assert value in defects, f"{question['question']}: {value}"
 
 
@@ -257,26 +261,30 @@ def test_an_answerable_question_naming_a_defect_class_pins_it():
     assert len(pinned) >= 3
 
 
-def test_the_overall_machine_rate_question_accepts_both_equivalent_plans():
-    """Two plans fetch the overall per-machine rate and the fixture takes either.
+def test_the_overall_machine_rate_question_accepts_the_three_equivalent_plans():
+    """Three plans fetch the overall per-machine rate and the fixture takes any.
 
     `query_defect_history` per machine returns `defects_per_board` directly.
     `query_machine_stats` per defect class returns `per_board` for one class, and
     the six classes are exactly the non-`false_call` set, so summing them is the
-    same rate. A single `query_machine_stats` call is not equivalent and must
-    still miss."""
+    same rate. Since 2026-08-29 `query_machine_stats` with no class ranks every
+    machine by `defects_per_board` in one call, and that is the third. A single
+    *classed* `query_machine_stats` call is one class, not every class, and
+    must still miss -- which is what `defect_type: [null]` on the third
+    alternative holds."""
     machines = {m for ms in seed.LINES.values() for m in ms}
     question = next(q for q in load_questions(FIXTURE)
                     if q["question"].startswith("哪一台機器"))
-
-    shapes = {
-        tuple(alternative["expect_tools"]): alternative["expect_args"]
-        for alternative in question["expect_any_of"]
-    }
-    assert shapes[("query_defect_history",)]["machine_id"] == sorted(machines)
-    assert set(shapes[("query_machine_stats",)]["defect_type"]) == {
+    alternatives = question["expect_any_of"]
+    assert len(alternatives) == 3
+    history = next(a for a in alternatives if a["expect_tools"] == ["query_defect_history"])
+    assert history["expect_args"]["machine_id"] == sorted(machines)
+    classed, unclassed = [a for a in alternatives if a["expect_tools"] == ["query_machine_stats"]]
+    assert set(classed["expect_args"]["defect_type"]) == {
         "open", "short", "mousebite", "spur", "copper", "pin-hole"
     }
+    assert unclassed["expect_args"]["defect_type"] == [None]
+    assert score_plan(plan(("query_machine_stats", {"top_n": 1})), question)["ok"] is True
 
 
 def test_a_per_machine_history_fan_out_scores_a_hit():
