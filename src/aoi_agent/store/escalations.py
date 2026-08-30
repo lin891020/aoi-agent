@@ -116,7 +116,14 @@ def raise_escalation(
             existing.agent_verdict = agent_verdict
             existing.explanation_status = explanation_status
             existing.rationale_flags = _flags_column(rationale_flags)
-            existing.status = PENDING
+            # A deferred region stays deferred. Somebody looked at it and
+            # said they could not judge it; re-running the board rewrites
+            # the agent's paragraph, not that person's statement. Until
+            # 2026-08-30 this line reset it to pending, and a region six
+            # people had handed back went to the front of the ordinary
+            # queue -- to the seventh person with the same training.
+            if existing.status != DEFERRED:
+                existing.status = PENDING
             existing.resolved_at = None
         else:
             session.add(

@@ -598,3 +598,19 @@ def test_a_senior_sees_the_verdict_buttons_on_a_handed_back_region(station, seni
     body = read_in(client, "en").get(f"/c/{STEM}/0").text
 
     assert 'class="verdict"' in body
+
+
+def test_re_running_a_board_does_not_undo_a_deferral(queued):
+    """The agent's paragraph is rewritten; the person's 'I cannot judge this' is not.
+
+    Found 2026-08-30 re-running twenty boards to rewrite their rationales in
+    the line's language: a region six operators had handed back came out of
+    it as an ordinary pending row.
+    """
+    escalations.defer(THREAD, "watcher", "signed_in", "cannot tell")
+    assert escalations.get(THREAD)["status"] == escalations.DEFERRED
+
+    escalations.raise_escalation(REFERENCE, THREAD, "second reason", "open", "ok")
+    row = escalations.get(THREAD)
+    assert row["status"] == escalations.DEFERRED
+    assert row["reason"] == "second reason"
