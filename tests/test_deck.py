@@ -112,3 +112,15 @@ def test_keys_are_unique():
 def test_the_builder_refuses_politely_without_python_pptx():
     """The build is not a test dependency; the script says what to install."""
     pytest.importorskip("pptx", reason="python-pptx is passed with --with, not installed")
+
+
+def test_every_slide_that_names_a_picture_has_one():
+    """A missing picture renders as a blank slide, and nothing else complains.
+
+    The station screenshots come from `scripts/deck_screenshots.py` rather than
+    from the deck build, so a build that returned only its own renders dropped
+    them from three slides silently.
+    """
+    img = ROOT / "docs" / "deck" / "img"
+    missing = [s.image for s in SLIDES if s.image and not (img / s.image).exists()]
+    assert not missing, f"slides name pictures that are not in docs/deck/img: {missing}"

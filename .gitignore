@@ -21,3 +21,6 @@ __pycache__/
 
 # demo recordings are produced locally (scratch demo_record.py) and published to YouTube
 docs/demo/
+
+# deck slide rasters, a local layout check (scripts/deck_preview.py)
+docs/deck/preview/

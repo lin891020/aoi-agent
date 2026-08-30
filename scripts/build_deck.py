@@ -66,7 +66,10 @@ MONO = "IBM Plex Mono"
 
 def render_images(need_playwright: bool = True) -> dict[str, Path]:
     IMG.mkdir(parents=True, exist_ok=True)
-    made: dict[str, Path] = {}
+    # Start from what is already on disk: the station screenshots come from
+    # scripts/deck_screenshots.py, not from here, and a build that returned only
+    # its own renders dropped them from three slides without saying so.
+    made: dict[str, Path] = {p.name: p for p in IMG.glob("*.png")}
     made.update(_render_pages() if need_playwright else {})
     curve = _render_operating_point()
     if curve:
@@ -127,6 +130,9 @@ def _render_pages() -> dict[str, Path]:
                                     device_scale_factor=2)
             page.goto(REACH_PAGE.as_uri())
             page.wait_for_load_state("networkidle")
+            # The page's own headline is for the standalone read; on a slide the
+            # slide already has a title and two headlines is one too many.
+            page.add_style_tag(content="header{display:none}.wrap{padding-top:26px}")
             page.wait_for_timeout(700)
             target = IMG / "planner_reach.png"
             page.screenshot(path=str(target), full_page=True)
@@ -336,6 +342,32 @@ def _compose_screens() -> Path | None:
 
 # ------------------------------------------------------------------ pptx
 
+def _typeface(run, latin: str, cjk: str = FONT) -> None:
+    """Name the East Asian typeface as well as the Latin one.
+
+    `run.font.name` writes only `<a:latin>`. Chinese glyphs then fall to the
+    theme's East Asian default: PowerPoint quietly substitutes something that
+    has them, LibreOffice substitutes something that does not and every CJK
+    character in the run vanishes. Setting `<a:ea>` explicitly is what makes
+    the file render the same on a machine that is not this one -- and it is
+    always the sans face, so a run set in the mono face keeps mono digits and
+    readable Chinese.
+    """
+    from pptx.oxml.ns import qn
+
+    run.font.name = latin
+    rPr = run._r.get_or_add_rPr()
+    anchor = rPr.find(qn("a:latin"))
+    for tag in ("a:ea", "a:cs"):
+        el = rPr.find(qn(tag))
+        if el is None:
+            el = rPr.makeelement(qn(tag), {})
+            anchor.addnext(el)
+        el.set("typeface", cjk)
+        anchor = el
+
+
+
 def _notes_text(slide: Slide) -> str:
     lines = [f"白話：{slide.plain}", ""]
     if slide.hero and slide.bullets:
@@ -378,7 +410,7 @@ def build_pptx(target: Path, images: dict[str, Path], embed_video: bool) -> Path
             for chunk, style in parts:
                 r = p.add_run()
                 r.text = chunk
-                r.font.name = style.get("font", font)
+                _typeface(r, style.get("font", font))
                 r.font.size = Pt(style.get("size", size))
                 r.font.bold = style.get("bold", bold)
                 r.font.color.rgb = rgb(style.get("color", color))
@@ -541,7 +573,7 @@ def build_pptx(target: Path, images: dict[str, Path], embed_video: bool) -> Path
                         para = cell.text_frame.paragraphs[0]
                         run = para.add_run()
                         run.text = cell_text
-                        run.font.name = FONT
+                        _typeface(run, FONT)
                         run.font.size = Pt(13 if r else 11.5)
                         run.font.bold = r == 0
                         run.font.color.rgb = rgb(ACCENT if r == 0 else INK)
@@ -569,6 +601,9 @@ def build_pptx(target: Path, images: dict[str, Path], embed_video: bool) -> Path
                 # its right are in the notes, where the speaker reads them.
                 pic = place(img, Inches(0.4), Inches(1.1), Inches(12.5), Inches(5.3))
                 pic.left = Emu(int((W - pic.width) / 2))
+                # A picture wider than the frame leaves its slack at the bottom,
+                # which reads as an unfinished slide rather than a margin.
+                pic.top = Emu(int(Inches(1.1) + (Inches(5.3) - pic.height) / 2))
             elif s.wide and img:
                 # The picture across the whole width, the bullets in two
                 # columns under it -- a flow diagram at half width was a
@@ -780,8 +815,14 @@ def main() -> int:
         images = {p.name: p for p in IMG.glob("*.png")}
     else:
         images = render_images()
-    for name, path in images.items():
+    for name, path in sorted(images.items()):
         print(f"image  {path.relative_to(ROOT)}  {path.stat().st_size // 1024} KB")
+    missing = sorted({s.image for s in SLIDES if s.image and s.image not in images})
+    if missing:
+        print(f"slides name images that do not exist: {missing}\n"
+              "A slide whose picture is missing renders blank and says nothing.",
+              file=sys.stderr)
+        return 2
 
     pptx_path = build_pptx(OUT / "aoi-agent-journey.zh-TW.pptx", images, embed_video=False)
     print(f"pptx   {pptx_path.relative_to(ROOT)}  {pptx_path.stat().st_size // 1024} KB")
