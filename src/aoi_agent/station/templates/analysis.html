@@ -1,14 +1,6 @@
 {% extends "base.html" %}
 {% block title %}{{ t('analysis.title') }}{% endblock %}
-{% macro spans(items) -%}
-{#- One run of text. `strong` and `code` are elements; everything else is the
-    model's characters, escaped by Jinja like any other variable. -#}
-{%- for span in items -%}
-{%- if span.kind == 'strong' %}<strong>{{ span.text }}</strong>
-{%- elif span.kind == 'code' %}<code>{{ span.text }}</code>
-{%- else %}{{ span.text }}{% endif -%}
-{%- endfor -%}
-{%- endmacro %}
+{% from "_prose.html" import spans with context %}
 {%- macro as_asked(run) -%}
 {#- The badge on a section the switch does not touch. Shown only when the run
     was asked in another language, because on a run asked in this one there is
@@ -97,7 +89,7 @@
     {% if run.plan and run.plan.assumptions %}
     <div class="answer-block">
       <h2>{{ t('analysis.s3') }} {{ as_asked(run) }}</h2>
-      <ul>{% for a in run.plan.assumptions %}<li>{{ a }}</li>{% endfor %}</ul>
+      <ul>{% for a in assumption_items(run.plan.assumptions) %}<li>{{ a }}</li>{% endfor %}</ul>
     </div>
     {% endif %}
 

@@ -178,3 +178,43 @@ def test_a_bar_is_a_mark_not_a_panel():
     ])
     widths = [float(w) for w in re.findall(r'<rect x="[0-9.]+" y="[0-9.]+" width="([0-9.]+)"[^>]*><title>', render_svg(spec))]
     assert widths and max(widths) <= 72
+
+
+def test_a_reference_series_is_one_dashed_line_not_a_bar_per_slot():
+    """The fleet average was six orange columns all reading the same number."""
+    payload = {
+        "tool": "query_machine_stats", "args": {}, "ok": True, "elapsed_ms": 1.0, "error": None,
+        "data": {
+            "defect_type": "open", "days": 7, "fleet_share_of_defects": 0.21,
+            "machines": [
+                {"machine": "L2-M22", "share_of_defects": 0.326, "defects_per_board": 2.3},
+                {"machine": "L1-M11", "share_of_defects": 0.193, "defects_per_board": 1.1},
+            ],
+        },
+    }
+    spec = chart_spec_for([payload])
+    assert [s.get("role") for s in spec["series"]] == [None, "reference"]
+    svg = render_svg(spec, locale="en")
+    assert svg.count('class="reference"') == 1
+    assert len(bar_centres(svg)) == 2
+    assert "fleet average: 0.21" in svg
+
+
+def test_the_hover_text_carries_the_interval():
+    spec = chart_spec_for([event_window("before", 0.2509, 0.2045, 0.3037)])
+    svg = render_svg(spec, locale="en")
+    assert "before: 0.2509 (95% 0.2045–0.3037)" in svg
+
+
+def test_a_stored_fleet_series_without_the_role_field_is_still_drawn_as_a_line():
+    spec = {
+        "kind": "bar", "title_key": "chart.title.share_by_machine",
+        "series": [
+            {"name_key": "chart.series.share_of", "name_args": {"defect_type": "open"},
+             "points": [{"x": "L2-M22", "y": 0.326}, {"x": "L1-M11", "y": 0.193}]},
+            {"name_key": "chart.series.fleet_average", "name_args": {},
+             "points": [{"x": "L2-M22", "y": 0.21}, {"x": "L1-M11", "y": 0.21}]},
+        ],
+    }
+    svg = render_svg(spec, locale="en")
+    assert svg.count('class="reference"') == 1 and len(bar_centres(svg)) == 2

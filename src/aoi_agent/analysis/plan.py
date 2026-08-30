@@ -21,6 +21,8 @@ holding a value with no domain to be outside of.
 
 from __future__ import annotations
 
+import re
+
 import ast
 import importlib.util
 import inspect
@@ -653,9 +655,24 @@ def _date_error(key: str, value: object, span: tuple[str, str] | None, position:
     return None
 
 
+_PLACEHOLDER = re.compile(r"<[^<>]{1,40}>|\{[a-z_]{1,40}\}|\.\.\.")
+
+
 def _domain_errors(name: str, args: dict, domains: Domains, position: int) -> list[str]:
     errors = []
     for key, value in args.items():
+        if isinstance(value, str) and _PLACEHOLDER.search(value):
+            # `board='<board_id>'` ran on 2026-08-30: the question named no
+            # board, the model wrote the slot instead of a value, the tool
+            # answered "no board '<board_id>'" and the page rendered a
+            # complete-looking answer around a lookup that could not have
+            # found anything. A placeholder means the question did not
+            # supply the value; that is a refusal, not a lookup.
+            errors.append(
+                f"call {position}: {key}={value!r} is a placeholder, not a value -- "
+                f"the question does not say which {key} is meant"
+            )
+            continue
         domain_key = DOMAIN_OF.get(key)
         if domain_key == "date_span":
             if value is not None:

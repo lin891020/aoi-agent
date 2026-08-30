@@ -335,8 +335,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "analysis.as_asked_title":
             "這一段是規劃那次呼叫寫下的。規劃不會重跑，所以它是當時發生的事的"
             "紀錄，不會跟著語言切換重寫。",
-        "analysis.s2": '2 · 它呼叫了什麼',
-        "analysis.s3": '3 · 它假設了什麼',
+        "analysis.s2": '3 · 它呼叫了什麼',
+        "analysis.s3": '2 · 它假設了什麼',
         "analysis.s5": '5 · 回答',
         "analysis.tool": '工具',
         "analysis.args": '參數',
@@ -707,8 +707,8 @@ STRINGS: dict[str, dict[str, str]] = {
             "This section is what the planning call wrote. The planning call "
             "is not made again, so it is a record of what happened and is not "
             "rewritten when the language changes.",
-        "analysis.s2": '2 · What it called',
-        "analysis.s3": '3 · What it assumed',
+        "analysis.s2": '3 · What it called',
+        "analysis.s3": '2 · What it assumed',
         "analysis.s5": '5 · Answer',
         "analysis.tool": 'tool',
         "analysis.args": 'arguments',

@@ -62,6 +62,15 @@ def _plottable(series: object) -> list[dict]:
                     "name": one.get("name", ""),
                     "name_key": one.get("name_key"),
                     "name_args": one.get("name_args"),
+                    # A stored chart from before the field existed still names
+                    # the fleet series by its key; that key is what the series
+                    # is, so it is drawn as the line it always meant.
+                    "role": (
+                        "reference"
+                        if one.get("role") == "reference"
+                        or one.get("name_key") == "chart.series.fleet_average"
+                        else None
+                    ),
                     "points": points,
                 }
             )
@@ -196,6 +205,28 @@ def render_svg(
     for index, one in enumerate(series):
         colour = PALETTE[index % len(PALETTE)]
         name = label_from(one, "name", locale)
+        if one.get("role") == "reference":
+            # A baseline: one dashed line at the series' value, labelled at
+            # the right edge, and a dashed swatch in the legend. It takes no
+            # slot, so the bars keep their width.
+            level = one["points"][0]["y"]
+            y = pad_top + plot_h - level * scale
+            parts.append(
+                f'<line class="reference" x1="{pad_left}" y1="{y:.1f}" '
+                f'x2="{width - pad_right}" y2="{y:.1f}" stroke="{colour}" '
+                f'stroke-width="1.5" stroke-dasharray="6,4"><title>{_text(name)}: '
+                f'{_text(_fmt(level))}</title></line>'
+                f'<text class="value" text-anchor="end" x="{width - pad_right}" '
+                f'y="{y - 4:.1f}" fill="{colour}" font-size="10">{_text(_fmt(level))}</text>'
+            )
+            parts.append(
+                f'<line x1="{pad_left + index * 92}" y1="{height - 9.5}" '
+                f'x2="{pad_left + index * 92 + 9}" y2="{height - 9.5}" stroke="{colour}" '
+                f'stroke-width="2" stroke-dasharray="3,2"/>'
+                f'<text x="{pad_left + index * 92 + 14}" y="{height - 6}" '
+                f'fill="#8b8b96" font-size="10">{_text(name)}</text>'
+            )
+            continue
         for point in one["points"]:
             # By slot, not by enumerate: a series missing a class must leave a
             # gap under that class, not close it up.
@@ -203,15 +234,19 @@ def render_svg(
             slot_x = pad_left + slots.index(point["x"]) * group_w + group_w / 2
             x = slot_x - cluster_w / 2 + index * bar_w
             y = pad_top + plot_h - bar_h
+            low, high = point.get("y_low"), point.get("y_high")
+            # The hover text: the value, and the interval when there is one.
+            tip = f'{name} {point["x"]}: {_fmt(point["y"])}'
+            if low is not None and high is not None:
+                tip += f' (95% {_fmt(low)}–{_fmt(high)})'
             parts.append(
                 f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_w:.1f}" '
                 f'height="{bar_h:.1f}" fill="{colour}" rx="2"><title>'
-                f'{_text(name)} {_text(point["x"])}: {_text(point["y"])}</title></rect>'
+                f'{_text(tip)}</title></rect>'
             )
             # The number itself, on the bar. A chart without it sends the
             # reader back to the table for the one figure the chart is about.
             label_y = y - 4
-            low, high = point.get("y_low"), point.get("y_high")
             if low is not None and high is not None:
                 # The interval as a whisker. Two overlapping whiskers are the
                 # finding on the event-window chart; without them the chart

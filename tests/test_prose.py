@@ -181,3 +181,25 @@ def test_backticks_win_over_asterisks_so_an_expression_survives():
 def test_an_empty_answer_is_no_blocks_rather_than_an_empty_paragraph():
     assert blocks("") == []
     assert blocks("   \n\n  \n") == []
+
+
+def test_a_wrapped_list_item_stays_one_item():
+    """The standards documents are hard-wrapped; a bullet's second line is
+    the same bullet, not a paragraph after it."""
+    from aoi_agent.station.prose import blocks
+    text = ("- Confirmed open: scrap or route to rework for jumper repair, per the product's\n"
+            "repair class. Class 3 product may not be jumper-repaired.\n"
+            "- Suspected open that measures continuous on electrical test: record as a\n"
+            "cosmetic thinning.")
+    out = blocks(text)
+    assert [b["kind"] for b in out] == ["list"]
+    items = ["".join(s["text"] for s in item) for item in out[0]["items"]]
+    assert len(items) == 2
+    assert items[0].endswith("may not be jumper-repaired.")
+    assert items[1].endswith("cosmetic thinning.")
+
+
+def test_a_blank_line_still_ends_a_list():
+    from aoi_agent.station.prose import blocks
+    out = blocks("- one\n\nA paragraph.")
+    assert [b["kind"] for b in out] == ["list", "paragraph"]

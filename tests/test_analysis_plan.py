@@ -215,3 +215,11 @@ def test_a_date_that_does_not_parse_is_refused():
 def test_a_top_n_below_one_is_refused_before_it_runs():
     errors = validate_plan(plan(("query_machine_stats", {"top_n": 0})), DOMAINS)
     assert errors and "top_n" in errors[0]
+
+
+def test_a_placeholder_argument_is_refused_not_looked_up():
+    """`board='<board_id>'` is the model writing the slot, not a value."""
+    from aoi_agent.analysis.plan import validate_plan
+    plan = {"calls": [{"tool": "query_board_context", "args": {"board": "<board_id>"}, "why": ""}]}
+    errors = validate_plan(plan, DOMAINS)
+    assert any("placeholder" in e for e in errors), errors

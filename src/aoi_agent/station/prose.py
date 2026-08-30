@@ -182,6 +182,16 @@ def blocks(answer: str) -> list[dict]:
             at += 1
             continue
 
+        if items is not None and not paragraph:
+            # A plain line directly under a list item continues that item --
+            # Markdown's lazy continuation. The standards documents are
+            # hard-wrapped at 72 columns, so without this every bullet longer
+            # than a line was cut into a bullet and a stray paragraph on the
+            # region page ("...per the product's" / "repair class. Class 3...").
+            items[-1] = f"{items[-1]} {line.strip()}"
+            at += 1
+            continue
+
         flush_list()
         paragraph.append(line.strip())
         at += 1
@@ -195,6 +205,27 @@ def blocks(answer: str) -> list[dict]:
 #: ASCII one only when followed by a space or the end of the text, because
 #: ``0.61`` is not two sentences. ``！？`` and ``!?`` are read the same way.
 _SENTENCE_END = re.compile(r"[。！？]|[.!?](?=\s|$)")
+
+
+def assumption_items(items: object) -> list[str]:
+    """The planner's assumptions, one per line, however the model packed them.
+
+    The schema asks for a list. `gpt-oss:20b` sometimes returns one string
+    holding the whole list with the characters backslash-n between items --
+    not a newline, the two characters -- and the page then showed
+    "；\\n2. 前後窗口…" as one bullet. Split on both, drop a leading "1."
+    the model wrote itself, keep the text otherwise unchanged: these are
+    records and are never rewritten.
+    """
+    out: list[str] = []
+    for item in items if isinstance(items, list) else [items]:
+        if not isinstance(item, str):
+            continue
+        for line in re.split(r"\\n|\n", item):
+            line = re.sub(r"^\s*\d+[.、)]\s*", "", line).strip()
+            if line:
+                out.append(line)
+    return out
 
 
 def lead_and_rest(text: str, sentences: int = 2) -> tuple[str, str]:

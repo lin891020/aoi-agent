@@ -265,18 +265,19 @@ def test_the_answer_is_never_marked_safe_in_the_template():
     use site, which is the shape `result_view.py` spent five review rounds
     getting out of.
     """
-    template = (
-        pathlib.Path(station_app.__file__).parent / "templates" / "analysis.html"
-    ).read_text()
+    templates = pathlib.Path(station_app.__file__).parent / "templates"
+    template = (templates / "analysis.html").read_text()
 
-    # The macro and the block that calls it, both. Scanning only from
+    # The macros and the block that calls them, all three. Scanning only from
     # `class="prose"` missed the macro above it -- which is where every span
     # is actually written, and so where a `|safe` would do its damage. Checked
     # by putting one there: the escaping test caught it and this one did not.
-    macro = template.split("{% macro spans(")[1].split("{%- endmacro %}")[0]
+    # Since 2026-08-30 the macros live in `_prose.html`, shared with the
+    # region page's criteria, and the whole of that file is the boundary.
+    macros = (templates / "_prose.html").read_text()
     body = template.split('class="prose"')[1].split("最近問過的")[0]
 
-    for region in (macro, body):
+    for region in (macros, body):
         assert "|safe" not in region and "| safe" not in region
 
     # And `chart_svg` is the one thing on this page that is marked safe, which

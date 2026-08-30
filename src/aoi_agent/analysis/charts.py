@@ -153,6 +153,10 @@ def _machine_comparison(payloads: list[dict]) -> dict | None:
             {
                 "name_key": "chart.series.fleet_average",
                 "name_args": {},
+                # One value across every machine is a line, and the renderer
+                # draws it as one; as bars it was six orange columns all
+                # reading 0.21 and the eye compared them with each other.
+                "role": "reference",
                 "points": [
                     {"x": m["machine"], "y": round(float(fleet), 4)}
                     for m in first["machines"]

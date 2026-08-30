@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_prose.html" import render as prose with context %}
 {% block title %}{{ reference }} &middot; review{% endblock %}
 {% block content %}
 
@@ -143,7 +144,10 @@
       {% for p in state.get('standards') or [] %}
         <article class="passage">
           <span class="label mono">{{ p.document }} &middot; {{ p.heading }}</span>
-          <p>{{ p.text }}</p>
+          {# The documents are Markdown; "**critical defect**" reached the
+             operator with its asterisks until 2026-08-30. Same boundary as
+             the answer page: structure from prose.py, elements from here. #}
+          <div class="prose">{{ prose(prose_blocks(p.text)) }}</div>
         </article>
       {% else %}
         <p class="dim">{{ t('region.criteria_none') }}</p>

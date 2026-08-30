@@ -1,0 +1,35 @@
+{#- Model-written text as elements. The structure comes from
+    `station/prose.py`, which returns spans and blocks and never markup; every
+    piece of text here is escaped by Jinja like any other variable, so no
+    template that imports this needs to mark anything safe. -#}
+{% macro spans(items) -%}
+{%- for span in items -%}
+{%- if span.kind == 'strong' %}<strong>{{ span.text }}</strong>
+{%- elif span.kind == 'code' %}<code>{{ span.text }}</code>
+{%- else %}{{ span.text }}{% endif -%}
+{%- endfor -%}
+{%- endmacro %}
+{% macro render(blocks) -%}
+{%- for block in blocks %}
+  {%- if block.kind == 'heading' %}
+    <h{{ block.level }}>{{ spans(block.spans) }}</h{{ block.level }}>
+  {%- elif block.kind == 'list' %}
+    <{{ 'ol' if block.ordered else 'ul' }}>
+      {%- for item in block['items'] %}<li>{{ spans(item) }}</li>{% endfor %}
+    </{{ 'ol' if block.ordered else 'ul' }}>
+  {%- elif block.kind == 'table' %}
+    <div class="prose-table">
+      <table class="queue">
+        <thead><tr>
+          {%- for cell in block.head %}<th>{{ spans(cell) }}</th>{% endfor %}
+        </tr></thead>
+        <tbody>
+          {%- for row in block.rows %}<tr>{% for cell in row %}<td>{{ spans(cell) }}</td>{% endfor %}</tr>{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {%- else %}
+    <p>{{ spans(block.spans) }}</p>
+  {%- endif %}
+{%- endfor %}
+{%- endmacro %}
