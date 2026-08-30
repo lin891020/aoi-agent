@@ -650,8 +650,10 @@ explanation step needs the container to be able to reach it.
   Re-measured under the shipped configuration: median 8.6 s, p90 11.1 s, **0 of
   24 calls without an explanation** -- in English. Since 2026-08-29 the
   rationale is written in the line's language, Chinese by default, and the
-  same measurement reads median 31.9 s, p90 35.9 s, 0 of 20 past the deadline:
-  3.7x, all of it generation, none of it waited on. A missing one is a first-class state now,
+  same measurement read median 31.9 s, p90 35.9 s until 2026-08-30 -- 3.7x, most
+  of it a prompt that never named the thresholds. With them named and one
+  paragraph asked for: Chinese median 16.7 s, p90 19.7 s; English 11.8 s, 16.1 s;
+  0 of 20 past the deadline in either, none of it waited on. A missing one is a first-class state now,
   shown as a notice and counted by `uv run python -m aoi_agent explanations` —
   [the run](docs/benchmarks.md#agent-layer-latency--does-the-reason-node-fit-the-explanation-deadline).
 - **Production context is simulated, with two planted signals and three

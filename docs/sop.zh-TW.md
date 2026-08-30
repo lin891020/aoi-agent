@@ -17,7 +17,7 @@ AOI 在每片 PCB 上標出的紅框，只有四成是真的瑕疵。這個系�
 | 檢查 | 怎麼看 | 不對的話 |
 |---|---|---|
 | Ollama 活著 | `ollama ps`，列出 `gpt-oss:20b` 或空的都可以 | `launchctl kickstart -k gui/$(id -u)/local.ollama` |
-| 沒有人在佔 GPU | `lsof -nP -iTCP:11434` 只有 ollama 自己 | 等它跑完，或問持有的人。翻譯工作在跑時，每段說明會從 30 秒變成幾分鐘 |
+| 沒有人在佔 GPU | `lsof -nP -iTCP:11434` 只有 ollama 自己 | 等它跑完，或問持有的人。翻譯工作在跑時，每段說明會從 17 秒變成幾分鐘 |
 | 站台開著 | 瀏覽器開 <http://aoi.test> 看到登入頁 | `uv run python -m aoi_agent station`（在 `~/Projects/aoi-agent`） |
 
 ## 1 · 登入
@@ -43,7 +43,7 @@ uv run python -m aoi_agent board 20085294 --queue
 |---|---|---|
 | `DISMISSED` | 誤報，排掉 | 視覺模型，幾毫秒 |
 | `DEFECT` | 瑕疵，確認 | 視覺模型，幾毫秒 |
-| `escalated … left on the review station's queue` | 看不準，交給人 | 進待複判清單，附一段 agent 寫的說明（中文約 30 秒） |
+| `escalated … left on the review station's queue` | 看不準，交給人 | 進待複判清單，附一段 agent 寫的說明（中文約 17 秒、英文約 12 秒） |
 
 一片板子大約 10–30 個紅框，通常八成以上是前兩種，剩下的進清單。
 

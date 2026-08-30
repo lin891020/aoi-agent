@@ -179,7 +179,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "queue.unsourced_figures": '{count} 個數字不在證據裡',
         "queue.rationale_language":
             '「為什麼交給人」以{lang}撰寫（環境變數 AOI_LINE_LANGUAGE，切換語言不會改寫既有紀錄）。'
-            '判定不等這段文字，2.5 ms 就出來了；文字本身中文一則約 32 秒、英文約 9 秒（2026-08-29 量測），'
+            '判定不等這段文字，2.5 ms 就出來了；文字本身中文一則約 17 秒、英文約 12 秒（2026-08-30 量測），'
             '只影響一片 PCB 全部跑完的時間。',
         "lang.name.zh-TW": "中文",
         "lang.name.en": "英文",
@@ -529,8 +529,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "queue.rationale_language":
             'The "why it was handed over" text is written in {lang} (AOI_LINE_LANGUAGE; '
             'the switch never rewrites a stored one). The verdict does not wait on this text '
-            '-- it is decided in 2.5 ms; the text itself takes about 32 s per region in Chinese '
-            'and 9 s in English (measured 2026-08-29); the only thing that moves is how long '
+            '-- it is decided in 2.5 ms; the text itself takes about 17 s per region in Chinese '
+            'and 12 s in English (measured 2026-08-30); the only thing that moves is how long '
             'a whole board takes to finish.',
         "lang.name.zh-TW": "Chinese",
         "lang.name.en": "English",

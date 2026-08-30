@@ -6441,3 +6441,83 @@ values exist and only the meaning is wrong -- that class is left to the prompt
 rule and to the SQL printed above its rows. Nothing else moved. The tool
 stays registered with the guard as it is; the report beside the previous
 entry carries this table with the SQL in full.
+
+### Agent-layer latency — does the reason node fit the explanation deadline?
+
+`gpt-oss:20b` at `think="low"`, 20 real reason-node calls over candidates the router sends to the LLM. The deadline is `EXPLANATION_DEADLINE_S`, 60s, and the run used it rather than overriding it — a call that misses it here is a call that produces no explanation in production. Explanations were written in `zh-TW` (`AOI_LINE_LANGUAGE`); a figure taken in one language says nothing about the other, since the same content is more tokens in Chinese than in English.
+
+**This is not WI-300's 10s response budget, and comparing it against that budget is the error this script used to make.** The budget covers the verdict, which is `classify_node`'s at 2.5ms per candidate. The LLM writes the operator's explanation and dispositions nothing, so what bounds it is a resource limit, not a promise.
+
+Latency here is **service time**: Ollama's `total_duration` less `load_duration`. It is not `eval_ms`. Measured on this model, `eval_duration` does not account for thinking tokens at all, and reports under half the time the station waits.
+
+```
+ollama ps before the run
+NAME           ID              SIZE     PROCESSOR    CONTEXT    UNTIL               
+gpt-oss:20b    17052f91a42e    12 GB    100% GPU     32768      29 minutes from now
+
+busy processes before the run
+(none)
+
+ollama ps after the run
+NAME           ID              SIZE     PROCESSOR    CONTEXT    UNTIL               
+gpt-oss:20b    17052f91a42e    12 GB    100% GPU     32768      29 minutes from now
+
+busy processes after the run
+(none)
+```
+
+| | calls | median | mean | p90 | max |
+|---|---|---|---|---|---|
+| first 60s | 5 | 13.3s | 13.9s | 13.3s | 18.6s |
+| steady state | 15 | 17.4s | 17.0s | 21.1s | 22.1s |
+| all | 20 | 16.7s | 16.2s | 19.7s | 22.1s |
+
+**Inside the deadline.** p90 is 19.7s against 60s, and 0 of 20 calls produced no explanation.
+
+Against WI-300's 10s response budget, for reference and not as the verdict: 20 of 20 explanations took longer than the budget allows a *verdict* to take. No verdict waited on any of them — `classify_node` had already produced the disposition before the reason node was entered.
+
+Of that service time, `eval_duration` accounts for 11.0s and prompt ingestion for 0.1s on average. The remaining 5.1s is thinking tokens, which Ollama generates and bills to nobody. Reporting `eval_ms` as the latency would have understated this run by 32%.
+
+Queueing check: 0.0% of mean wall time is not load, prompt or generation — the request went straight to the GPU, so the run is not contended.
+
+No request was served after an eviction.
+
+### Agent-layer latency — does the reason node fit the explanation deadline?
+
+`gpt-oss:20b` at `think="low"`, 20 real reason-node calls over candidates the router sends to the LLM. The deadline is `EXPLANATION_DEADLINE_S`, 60s, and the run used it rather than overriding it — a call that misses it here is a call that produces no explanation in production. Explanations were written in `en` (`AOI_LINE_LANGUAGE`); a figure taken in one language says nothing about the other, since the same content is more tokens in Chinese than in English.
+
+**This is not WI-300's 10s response budget, and comparing it against that budget is the error this script used to make.** The budget covers the verdict, which is `classify_node`'s at 2.5ms per candidate. The LLM writes the operator's explanation and dispositions nothing, so what bounds it is a resource limit, not a promise.
+
+Latency here is **service time**: Ollama's `total_duration` less `load_duration`. It is not `eval_ms`. Measured on this model, `eval_duration` does not account for thinking tokens at all, and reports under half the time the station waits.
+
+```
+ollama ps before the run
+NAME           ID              SIZE     PROCESSOR    CONTEXT    UNTIL               
+gpt-oss:20b    17052f91a42e    12 GB    100% GPU     32768      29 minutes from now
+
+busy processes before the run
+(none)
+
+ollama ps after the run
+NAME           ID              SIZE     PROCESSOR    CONTEXT    UNTIL               
+gpt-oss:20b    17052f91a42e    12 GB    100% GPU     32768      29 minutes from now
+
+busy processes after the run
+(none)
+```
+
+| | calls | median | mean | p90 | max |
+|---|---|---|---|---|---|
+| first 60s | 7 | 9.3s | 8.9s | 10.2s | 10.4s |
+| steady state | 13 | 13.2s | 13.7s | 16.5s | 16.6s |
+| all | 20 | 11.8s | 12.0s | 16.1s | 16.6s |
+
+**Inside the deadline.** p90 is 16.1s against 60s, and 0 of 20 calls produced no explanation.
+
+Against WI-300's 10s response budget, for reference and not as the verdict: 15 of 20 explanations took longer than the budget allows a *verdict* to take. No verdict waited on any of them — `classify_node` had already produced the disposition before the reason node was entered.
+
+Of that service time, `eval_duration` accounts for 7.5s and prompt ingestion for 0.1s on average. The remaining 4.4s is thinking tokens, which Ollama generates and bills to nobody. Reporting `eval_ms` as the latency would have understated this run by 37%.
+
+Queueing check: 0.0% of mean wall time is not load, prompt or generation — the request went straight to the GPU, so the run is not contended.
+
+No request was served after an eviction.

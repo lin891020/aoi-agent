@@ -354,10 +354,15 @@ board is back under the unscoped reading.
   a record of the same kind and, since 2026-08-29, is written in the *line's*
   language (`AOI_LINE_LANGUAGE`, default the station's) rather than in
   English regardless -- the queue then shows it as written, whichever way the
-  switch is set. Re-measured in Chinese the same day: **median 31.9 s, p90
-  35.9 s, 0 of 20 past the 60 s deadline**, against 8.6 s / 11.1 s in English
-  -- 3.7x, and it is generation, not queueing. `scripts/latency_report.py`
-  names the language it ran in; neither figure applies to the other language.
+  switch is set. Measured in Chinese that day at median 31.9 s / p90 35.9 s
+  against 8.6 s / 11.1 s in English, 3.7x -- and that gap was mostly the
+  prompt: the model was never told the station's thresholds, so every Chinese
+  rationale wrote an outline of both cases. Since 2026-08-30 the prompt states
+  the two cuts and asks for one plain paragraph, and the same measurement
+  reads **Chinese median 16.7 s, p90 19.7 s; English median 11.8 s, p90
+  16.1 s; 0 of 20 past the 60 s deadline in either** -- 1.4x, all of it
+  generation. `scripts/latency_report.py` names the language it ran in;
+  neither figure applies to the other language.
   The same day's first Chinese rationale cited "a 0.85 threshold" that no
   document and no line of its prompt contains, so since 2026-08-30 the reason
   node checks every figure in the rationale against the prompt it composed
@@ -600,8 +605,10 @@ is decided from `model_class` and `model_confidence`, both of which exist before
 the reason node is entered. Re-measured at that deadline: median 8.6s, p90
 11.1s, max 13.0s, **0 of 24 calls without an explanation**. That figure is
 English; with the rationale written in Chinese (the default since 2026-08-29)
-the same measurement reads median 31.9s, p90 35.9s, max 36.8s, 0 of 20 past
-the deadline -- 3.7x, all of it generation. A missing
+the same measurement read median 31.9s, p90 35.9s, max 36.8s until
+2026-08-30, when the prompt was given the thresholds and asked for one
+paragraph: now Chinese median 16.7s / p90 19.7s and English 11.8s / 16.1s,
+0 of 20 past the deadline in either. A missing
 explanation is now `explanation_status`, shown to the operator as a notice
 rather than an exception name, and counted by `uv run python -m aoi_agent
 explanations`. Do not re-merge the two constants;

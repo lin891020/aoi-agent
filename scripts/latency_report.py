@@ -136,8 +136,25 @@ def contention(model: str) -> list[str]:
         name for name in resident_models(ollama_ps())
         if not name.startswith(model.split(":")[0])
     ]
-    busy = competing_processes(process_table(), os.getpid())
+    busy = [
+        line for line in competing_processes(process_table(), os.getpid())
+        if not is_ollama_runner(line)
+    ]
     return [f"resident model: {name}" for name in others] + busy
+
+
+#: The path Ollama launches its own model runner under. That process *is* the
+#: model being measured -- it was seen at 6% CPU in the sweep taken right
+#: after a run, still releasing the last call's buffers, and two English
+#: measurements on 2026-08-30 were refused for it. A runner serving some
+#: *other* model is the residency check's job, one line above, and is still
+#: refused there.
+OLLAMA_RUNNER_MARKER = "/ollama/llama-server"
+
+
+def is_ollama_runner(process_line: str) -> bool:
+    """Is this sweep line Ollama's own runner, rather than a competitor?"""
+    return OLLAMA_RUNNER_MARKER in process_line or " ollama runner " in process_line
 
 
 def investigated_candidates(limit: int) -> list[str]:
