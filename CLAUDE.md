@@ -63,7 +63,9 @@ tests/                      1,382 tests; dataset-dependent ones behind `-m datas
 docs/benchmarks.md          every measurement run, newest last
 docs/deck/                  the project-journey deck (pptx, html with a self-test
                             mode, study guide) -- built from scripts/deck_content.py,
-                            whose figures must exist in a published document
+                            whose figures must exist in a published document;
+                            planner-reach.zh-TW.html is a hand-authored diagram
+                            page the build screenshots onto its slide
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
 ```

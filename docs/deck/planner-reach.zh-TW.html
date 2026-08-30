@@ -1,0 +1,151 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>規劃器的射程</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --ground:#15171A; --panel:#1E2125; --panel-2:#23272C;
+    --ink:#E8E6E1; --dim:#9AA0A6; --rule:#2E333A;
+    --accent:#6FC7CF; --accent-dim:#3C6A70; --warn:#E2B45F; --warn-dim:#6B5628;
+    --sans:"Noto Sans TC",-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+       -webkit-font-smoothing:antialiased;line-height:1.6}
+  .wrap{max-width:1820px;margin:0 auto;padding:40px 36px 34px}
+
+  header{margin-bottom:26px}
+  h1{margin:0 0 6px;font-size:31px;font-weight:700;letter-spacing:.01em;text-wrap:balance}
+  .sub{margin:0;color:var(--dim);font-size:16px}
+
+  .cols{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;align-items:start}
+  .col{background:var(--panel);border:1px solid var(--rule);border-radius:8px;
+       padding:20px 20px 18px;display:flex;flex-direction:column;gap:14px;height:100%}
+  .col.now{border-color:var(--accent-dim)}
+  .col.gap{border-color:var(--warn-dim)}
+
+  .eyebrow{display:flex;align-items:baseline;gap:10px;font-family:var(--mono);
+           font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim)}
+  .eyebrow b{font-family:var(--sans);font-size:19px;font-weight:700;letter-spacing:.02em;color:var(--ink)}
+  .col.now .eyebrow b{color:var(--accent)}
+  .col.gap .eyebrow b{color:var(--warn)}
+
+  .ask{background:var(--panel-2);border-left:3px solid var(--rule);border-radius:0 6px 6px 0;
+       padding:11px 14px;font-size:17px;font-weight:500}
+  .col.now .ask{border-left-color:var(--accent)}
+  .col.gap .ask{border-left-color:var(--warn)}
+  .ask .same{display:block;font-size:12px;color:var(--dim);font-weight:400;margin-top:4px}
+
+  .label{font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--dim);
+         text-transform:uppercase;margin-bottom:-6px}
+
+  .plan{display:flex;flex-direction:column;gap:6px}
+  .call{display:flex;gap:9px;align-items:flex-start;background:var(--panel-2);
+        border:1px solid var(--rule);border-radius:6px;padding:8px 11px;font-size:14.5px}
+  .call .n{font-family:var(--mono);font-size:12px;color:var(--dim);padding-top:2px;min-width:14px}
+  .call code{font-family:var(--mono);font-size:13px;color:var(--accent)}
+  .call.more{color:var(--dim);font-size:13px;border-style:dashed}
+  .call.void{border-style:dashed;border-color:var(--rule);color:var(--dim);font-style:normal}
+  .call.blocked{border-style:dashed;border-color:var(--warn);background:rgba(226,180,95,.06)}
+  .call.blocked code{color:var(--warn)}
+
+  .backchannel{display:flex;gap:9px;align-items:center;font-size:13.5px;color:var(--warn);
+               background:rgba(226,180,95,.07);border-radius:6px;padding:8px 11px}
+  .backchannel .glyph{font-family:var(--mono);font-size:15px;font-weight:500;
+                      border:1px solid var(--warn);border-radius:50%;width:22px;height:22px;
+                      display:flex;align-items:center;justify-content:center;flex:0 0 22px}
+  .backchannel b{font-weight:500;color:var(--warn)}
+
+  .why{font-size:15px;color:var(--ink);margin:0}
+  .why em{font-style:normal;color:var(--accent);font-weight:500}
+  .col.gap .why em{color:var(--warn)}
+  .note{font-size:13.5px;color:var(--dim);margin:0}
+
+  .score{margin-top:auto;padding-top:12px;border-top:1px solid var(--rule);
+         display:flex;flex-wrap:wrap;gap:6px 16px}
+  .score div{font-size:13px;color:var(--dim)}
+  .score b{font-family:var(--mono);font-size:15px;font-weight:500;color:var(--ink);margin-right:6px}
+  .col.now .score b{color:var(--accent)}
+
+  .foot{margin-top:22px;border-top:1px solid var(--rule);padding-top:14px;
+        display:flex;gap:14px;align-items:baseline;flex-wrap:wrap}
+  .foot .key{font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--dim);
+             text-transform:uppercase;white-space:nowrap}
+  .foot p{margin:0;font-size:16.5px}
+  .foot b{color:var(--accent);font-weight:500}
+
+  @media (max-width:900px){
+    .wrap{padding:26px 18px}
+    h1{font-size:24px}
+    .cols{grid-template-columns:1fr;gap:14px}
+  }
+</style>
+<div class="wrap">
+  <header>
+    <h1>問到「沒指名的那一台」，規劃器會怎麼做</h1>
+    <p class="sub">同一種問句，三個階段。/ask 的計畫是<b>在任何查詢跑之前一次寫完</b>的——這一件事決定了哪些題答得出來。</p>
+  </header>
+
+  <div class="cols">
+
+    <section class="col">
+      <div class="eyebrow"><b>以前</b><span>— 08-30 之前</span></div>
+      <div class="ask">「哪一台機台的誤判最多？」</div>
+      <div class="label">它產生的計畫</div>
+      <div class="plan">
+        <div class="call void"><span class="n">—</span><span>拒答：「沒有工具可以不指名機台查」</span></div>
+        <div class="call void"><span class="n">—</span><span>或自己挑一台去查，答得像真的</span></div>
+      </div>
+      <p class="why">prompt 只教它<em>「參數必須是存在的值」</em>，沒教它「集合很小的時候可以整個掃一遍」。所以沒指名的題，它要嘛不敢動，要嘛猜。</p>
+      <p class="note">這不是模型笨。它被交代的是「不要編造不存在的機台」，而「把整個集合掃一遍」是另一件事，從來沒有人跟它說過可以。</p>
+      <div class="score">
+        <div><b>15/28</b>該拒的有拒</div>
+        <div><b>58/70</b>三遍答案一致</div>
+      </div>
+    </section>
+
+    <section class="col now">
+      <div class="eyebrow"><b>現在</b><span>— 08-30 起</span></div>
+      <div class="ask">「哪一台機台的誤判最多？」<span class="same">同一句話，沒有改題目</span></div>
+      <div class="label">它產生的計畫</div>
+      <div class="plan">
+        <div class="call"><span class="n">1</span><span>排序：全部機台的誤判率</span></div>
+        <div class="call"><span class="n">2</span><span>查 <code>M11</code> 的細節</span></div>
+        <div class="call"><span class="n">3</span><span>查 <code>M22</code> 的細節</span></div>
+        <div class="call more"><span class="n">…</span><span>prompt 裡列出的機台，每一台各一次</span></div>
+      </div>
+      <p class="why">機台、線別、班別、事件種類都<em>列在 prompt 裡</em>，而且數量小。規則因此是「排序一次 ＋ 每個成員各查一次」：仍然一次規劃，同時展開。</p>
+      <p class="note">兩條煞車：一個工具就排得完的題不准拆成六個查詢；板子、批號、複判人員不是列出的集合，照樣拒答。</p>
+      <div class="score">
+        <div><b>28/42</b>該答的（不變）</div>
+        <div><b>17/28</b>該拒的（從 15）</div>
+        <div><b>64/70</b>三遍一致（從 58）</div>
+      </div>
+    </section>
+
+    <section class="col gap">
+      <div class="eyebrow"><b>還做不到</b><span>— 已命名，刻意沒做</span></div>
+      <div class="ask">「<b>最差的那台</b>機台，最近有沒有發生什麼事？」</div>
+      <div class="label">它想產生的計畫</div>
+      <div class="plan">
+        <div class="call"><span class="n">1</span><span>排序：全部機台的誤判率</span></div>
+        <div class="call blocked"><span class="n">2</span><span>查 <code>&lt;第一步的第一名&gt;</code> 最近的事件</span></div>
+      </div>
+      <div class="backchannel"><span class="glyph">✕</span><span>第二步要用第一步的答案，而計畫早就寫完了——<b>這條通道不存在</b></span></div>
+      <p class="why">計畫在第一個查詢跑之前就寫完了，所以<em>第一步的結果沒有地方可以流回計畫裡</em>。模型的反應是寫一個佔位符，或乾脆拒答。</p>
+      <p class="note">兩種現在都會被擋下來（驗證擋佔位符、守門擋 <code style="font-family:var(--mono);color:var(--warn)">b.id='這片'</code>），所以頁面顯示「規劃不出來」，不是一個看起來像答案的空答案。</p>
+      <div class="score">
+        <div><b>3 種</b>措辭都教不會</div>
+        <div><b>1 題</b>留在題庫裡當標靶</div>
+      </div>
+    </section>
+
+  </div>
+
+  <div class="foot">
+    <span class="key">下一個機制</span>
+    <p><b>依賴參數</b>：計畫裡允許寫「機台 = 第一步的第一名」，程式在第一步回來之後填入真值、照樣過驗證、再跑第二步。規劃還是一次，LLM 還是只負責選查詢——<b>不是 agent 迴圈</b>。等真的有人問出這種題再做。</p>
+  </div>
+</div>
