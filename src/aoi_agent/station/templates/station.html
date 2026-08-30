@@ -26,6 +26,12 @@
     {% if escalation.agent_verdict %}
       <span class="label">{{ t('region.leaned_towards', verdict=escalation.agent_verdict) }}</span>
     {% endif %}
+    {% if escalation.rationale_flags %}
+    <div class="unsourced">
+      <span class="label">{{ t('region.unsourced_figures', count=escalation.rationale_flags|length) }}</span>
+      <p><span class="mono">{{ escalation.rationale_flags|join(' · ') }}</span> — {{ t('region.unsourced_figures_note') }}</p>
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 

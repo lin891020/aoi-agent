@@ -142,6 +142,18 @@ class ReviewDecision(Base):
 
     rationale: Mapped[str | None] = mapped_column(String(2048), nullable=True)
 
+    rationale_flags: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    """JSON list of figures the rationale cites that its prompt never held.
+
+    ``"[]"`` is a rationale that was checked and cites nothing it was not
+    shown. ``NULL`` is a row with no rationale to check -- a human answer, a
+    model dismissal that never reached the LLM -- or one written before the
+    column existed; those two collapse here on purpose, because
+    ``explanation_status`` and ``source`` already tell them apart and a third
+    word would be a second source of the same fact. Written by the reason node
+    against the prompt it composed (``graph.rationale_check``); nothing here
+    can recompute it, since the prompt is not stored."""
+
     measurement: Mapped[str | None] = mapped_column(String(256), nullable=True)
     """What the operator measured on screen, and against which rule.
 
@@ -227,6 +239,9 @@ class Escalation(Base):
 
     agent_verdict: Mapped[str | None] = mapped_column(String(16), nullable=True)
     """What the agent leaned towards. A suggestion, never pre-selected."""
+
+    rationale_flags: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    """Same meaning as ``ReviewDecision.rationale_flags``, for the queue row."""
 
     explanation_status: Mapped[str | None] = mapped_column(
         String(16), nullable=True, index=True
@@ -489,8 +504,9 @@ ADDED_COLUMNS: dict[str, dict[str, str]] = {
         "code_version": "VARCHAR(64)",
         "reviewer_auth": "VARCHAR(16)",
         "measurement": "VARCHAR(256)",
+        "rationale_flags": "VARCHAR(512)",
     },
-    "escalations": {"explanation_status": "VARCHAR(16)"},
+    "escalations": {"explanation_status": "VARCHAR(16)", "rationale_flags": "VARCHAR(512)"},
     "analysis_runs": {"asked_lang": "VARCHAR(16)", "answers_json": "TEXT"},
 }
 

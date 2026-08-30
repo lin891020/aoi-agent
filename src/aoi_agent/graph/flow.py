@@ -34,6 +34,7 @@ from langgraph.types import interrupt
 
 from aoi_agent.i18n import LANGUAGE_NOTE, line_language
 from aoi_agent.graph.checkpoint import make_checkpointer
+from aoi_agent.graph.rationale_check import unsourced_figures
 from aoi_agent.graph.state import ReviewState
 from aoi_agent.llm.ollama import EXPLANATION_DEADLINE_S, OllamaClient
 from aoi_agent.provenance import DecisionProvenance, code_version
@@ -443,6 +444,11 @@ Give your verdict."""
             "agent_verdict": parsed["verdict"],
             "agent_confident": bool(parsed["confident"]),
             "agent_rationale": parsed["rationale"],
+            # Checked against the prompt the model was actually handed, here,
+            # because this is the only place that string exists. Stored on the
+            # row beside the rationale so the queue can warn without re-running
+            # anything.
+            "rationale_flags": unsourced_figures(parsed["rationale"], prompt),
             "explanation_status": EXPLAINED,
             "timings_ms": state["timings_ms"],
             "trace": state["trace"],
@@ -506,6 +512,7 @@ def escalate_node(state: ReviewState) -> dict[str, Any]:
             "candidate_ref": state["candidate_ref"],
             "reason": reason,
             "explanation_status": state.get("explanation_status", EXPLAINED),
+            "rationale_flags": list(state.get("rationale_flags") or []),
             "model_class": state["model_class"],
             "model_confidence": state["model_confidence"],
             "agent_verdict": state.get("agent_verdict"),

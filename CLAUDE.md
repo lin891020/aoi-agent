@@ -59,7 +59,7 @@ scripts/                    gate_check, build_patches, train, report, seed_store
                             analysis_eval, add_operator, render_diagrams, demo_record,
                             build_detector_patches, crop_reverifier_report,
                             mark_unattributed_resolutions, ...
-tests/                      1,353 tests; dataset-dependent ones behind `-m dataset`
+tests/                      1,382 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/architecture.md        layers, thresholds and where they come from
 .claude/skills/             project skills -- procedures with gates, not notes
@@ -74,7 +74,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 1,353 tests, no GPU needed, no model called
+uv run pytest                                    # 1,382 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/gate_check.py --dataset hripcb --split aligned --limit 693 --thresholds 10 15 20 30 45 60 \
     --out eval/results/gate_check_hripcb_aligned.json   # the same gate on photographs (~2 min)
@@ -358,6 +358,14 @@ board is back under the unscoped reading.
   35.9 s, 0 of 20 past the 60 s deadline**, against 8.6 s / 11.1 s in English
   -- 3.7x, and it is generation, not queueing. `scripts/latency_report.py`
   names the language it ran in; neither figure applies to the other language.
+  The same day's first Chinese rationale cited "a 0.85 threshold" that no
+  document and no line of its prompt contains, so since 2026-08-30 the reason
+  node checks every figure in the rationale against the prompt it composed
+  (`graph/rationale_check.py`), stores the unsourced ones on the queue row and
+  the decision (`rationale_flags`), and the queue and region page show them
+  as a warning -- the analysis page's figure check, one path over. It cannot
+  see a real figure compared wrongly; it says so. Held by
+  `tests/test_rationale_check.py`.
 - **Say what is simulated.** Production metadata is generated with **two
   planted signals, both by assignment** -- the seeder never writes a defect,
   it decides which DeepPCB board went to which machine. The first is M22,

@@ -41,6 +41,14 @@ class ReviewState(TypedDict, total=False):
     agent_verdict: str
     agent_confident: bool
 
+    rationale_flags: list[str]
+    """Figures the rationale cites that the prompt never contained.
+
+    Empty when every figure was shown to the model. See
+    ``graph.rationale_check``; the queue and the region page render it as a
+    warning beside the rationale, the way the analysis page does.
+    """
+
     explanation_status: str
     """``ok``, or why no explanation was written.
 

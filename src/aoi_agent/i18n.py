@@ -176,9 +176,11 @@ STRINGS: dict[str, dict[str, str]] = {
         "queue.why_handed_over": '為什麼交給人',
         "queue.waiting_since": '等候起點（UTC）',
         "queue.no_explanation": '無說明',
+        "queue.unsourced_figures": '{count} 個數字不在證據裡',
         "queue.rationale_language":
             '「為什麼交給人」以{lang}撰寫（環境變數 AOI_LINE_LANGUAGE，切換語言不會改寫既有紀錄）。'
-            '量測（2026-08-29）：中文一則約 32 秒、英文約 9 秒，慢 3.7 倍；判定不等它，只影響一片 PCB 跑完的時間。',
+            '判定不等這段文字，2.5 ms 就出來了；文字本身中文一則約 32 秒、英文約 9 秒（2026-08-29 量測），'
+            '只影響一片 PCB 全部跑完的時間。',
         "lang.name.zh-TW": "中文",
         "lang.name.en": "英文",
         "queue.review": '複判 →',
@@ -194,6 +196,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "region.handed_over_because": 'agent 交出來的理由',
         "region.leaned_towards": '它傾向 {verdict}，但沒有把握',
         "region.no_explanation": '沒有書面說明',
+        "region.unsourced_figures": '說明裡有 {count} 個數字，模型看到的證據裡沒有',
+        "region.unsourced_figures_note": '這些數字不在分類結果、產線資料或任何準則段落裡。判定不受影響；讀說明時把它們當成未經證實。',
         "region.triptych_alt": '旗標區域周圍的樣板、待測與差異影像',
         "region.template": '黃金樣板',
         "region.under_test": '待測 PCB',
@@ -521,11 +525,13 @@ STRINGS: dict[str, dict[str, str]] = {
         "queue.why_handed_over": 'why it was handed over',
         "queue.waiting_since": 'Waiting since (UTC)',
         "queue.no_explanation": 'no explanation',
+        "queue.unsourced_figures": '{count} figure(s) not in the evidence',
         "queue.rationale_language":
             'The "why it was handed over" text is written in {lang} (AOI_LINE_LANGUAGE; '
-            'the switch never rewrites a stored one). Measured 2026-08-29: about 32 s per '
-            'region in Chinese, 9 s in English, 3.7x; the verdict does not wait on it, '
-            'only a board run takes longer.',
+            'the switch never rewrites a stored one). The verdict does not wait on this text '
+            '-- it is decided in 2.5 ms; the text itself takes about 32 s per region in Chinese '
+            'and 9 s in English (measured 2026-08-29); the only thing that moves is how long '
+            'a whole board takes to finish.',
         "lang.name.zh-TW": "Chinese",
         "lang.name.en": "English",
         "queue.review": 'review →',
@@ -541,6 +547,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "region.handed_over_because": 'the agent handed this over because',
         "region.leaned_towards": 'it leaned towards {verdict}, without confidence',
         "region.no_explanation": 'no written explanation',
+        "region.unsourced_figures": 'The explanation cites {count} figure(s) the model was never shown',
+        "region.unsourced_figures_note": 'None of these appears in the classifier reading, the production context or any retrieved criterion. The disposition is unaffected; read them as unverified.',
         "region.triptych_alt":
             'template, test and difference around the flagged region',
         "region.template": 'golden template',

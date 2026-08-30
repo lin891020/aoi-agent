@@ -78,6 +78,12 @@
           {% if row.explanation_status and row.explanation_status != 'ok' %}
             <span class="chip warn">{{ t('queue.no_explanation') }}</span>
           {% endif %}
+          {# A figure the model was never shown, flagged where it is read. The
+             first Chinese rationale measured cited "a 0.85 threshold" that no
+             document and no line of its prompt contains. #}
+          {% if row.rationale_flags %}
+            <span class="chip warn" title="{{ row.rationale_flags|join(', ') }}">{{ t('queue.unsourced_figures', count=row.rationale_flags|length) }}</span>
+          {% endif %}
         </td>
         <td><a class="go" href="/c/{{ row.board_stem }}/{{ row.index }}">{{ t('queue.review') }}</a></td>
       </tr>

@@ -76,6 +76,7 @@ def start_review(graph, reference: str) -> dict[str, Any]:
             # where a rationale belongs -- and so the absences can be counted,
             # which WI-300's rationale-deadline clause requires and nothing did.
             payload.get("explanation_status"),
+            rationale_flags=payload.get("rationale_flags"),
         )
     else:
         record_decision(
@@ -84,6 +85,11 @@ def start_review(graph, reference: str) -> dict[str, Any]:
             state["decided_by"],
             rationale=state.get("agent_rationale") or None,
             explanation_status=state.get("explanation_status"),
+            # Only a row that carries a rationale carries its check.
+            rationale_flags=(
+                state.get("rationale_flags")
+                if state.get("agent_rationale") else None
+            ),
             # From the run's own state, not looked up now: the digest that read
             # this region is the one that goes on the record beside its number.
             provenance=DecisionProvenance.from_dict(state.get("provenance")),

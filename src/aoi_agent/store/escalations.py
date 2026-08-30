@@ -12,6 +12,8 @@ the graph itself. ``interrupt`` re-runs its node on resume, so a write inside
 
 from __future__ import annotations
 
+import json
+
 from sqlalchemy import func, select
 
 from aoi_agent.store.boards import session_factory
@@ -54,6 +56,7 @@ def _as_dict(escalation: Escalation, candidate: CandidateRecord, board: Board) -
         "reason": escalation.reason,
         "agent_verdict": escalation.agent_verdict,
         "explanation_status": escalation.explanation_status,
+        "rationale_flags": json.loads(escalation.rationale_flags or "[]"),
         "status": escalation.status,
         "raised_at": escalation.raised_at.isoformat() if escalation.raised_at else None,
         "model_class": candidate.predicted_class,
@@ -82,12 +85,18 @@ def _resolve(session, reference: str) -> CandidateRecord | None:
     ).scalar()
 
 
+def _flags_column(flags: list[str] | None) -> str | None:
+    """``None`` stays ``NULL`` -- no rationale was checked -- and a list is stored as JSON."""
+    return None if flags is None else json.dumps(list(flags), ensure_ascii=False)
+
+
 def raise_escalation(
     reference: str,
     thread_id: str,
     reason: str,
     agent_verdict: str | None = None,
     explanation_status: str | None = None,
+    rationale_flags: list[str] | None = None,
 ) -> bool:
     """Put a suspended run on the queue, or refresh one already there.
 
@@ -106,6 +115,7 @@ def raise_escalation(
             existing.reason = reason
             existing.agent_verdict = agent_verdict
             existing.explanation_status = explanation_status
+            existing.rationale_flags = _flags_column(rationale_flags)
             existing.status = PENDING
             existing.resolved_at = None
         else:
@@ -116,6 +126,7 @@ def raise_escalation(
                     reason=reason,
                     agent_verdict=agent_verdict,
                     explanation_status=explanation_status,
+                    rationale_flags=_flags_column(rationale_flags),
                     status=PENDING,
                 )
             )

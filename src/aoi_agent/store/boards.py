@@ -6,6 +6,8 @@ serialise cleanly and never leak a live session.
 
 from __future__ import annotations
 
+import json
+
 from functools import lru_cache
 
 import numpy as np
@@ -126,6 +128,7 @@ def record_decision(
     explanation_status: str | None = None,
     provenance: DecisionProvenance | None = None,
     measurement: str | None = None,
+    rationale_flags: list[str] | None = None,
 ) -> bool:
     """Append a verdict to a candidate's decision history.
 
@@ -224,6 +227,10 @@ def record_decision(
                 rationale=rationale,
                 explanation_status=explanation_status,
                 measurement=measurement,
+                rationale_flags=(
+                    None if rationale_flags is None
+                    else json.dumps(list(rationale_flags), ensure_ascii=False)
+                ),
                 **identity.columns(),
                 **provenance.columns(),
             )

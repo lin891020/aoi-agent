@@ -83,7 +83,7 @@ def test_the_queue_says_which_language_the_rationale_is_written_in_and_what_it_c
 
     monkeypatch.delenv(LINE_LANGUAGE_ENV, raising=False)
     page = queue.get("/").text
-    assert "以中文撰寫" in page and "3.7" in page
+    assert "以中文撰寫" in page and "32 秒" in page and "9 秒" in page
     monkeypatch.setenv(LINE_LANGUAGE_ENV, "en")
     page = queue.get("/").text
     assert "以英文撰寫" in page
