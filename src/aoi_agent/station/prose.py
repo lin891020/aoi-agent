@@ -214,6 +214,16 @@ def blocks(answer: str) -> list[dict]:
 _SENTENCE_END = re.compile(r"[。！？]|[.!?](?=\s|$)")
 
 
+def inline(text: str) -> list[dict]:
+    """One line's spans, for text that is a record and may not be restructured.
+
+    The planner's interpretation and assumptions are shown as written; the
+    only thing this changes is that `per_board` reads as code rather than
+    as two backticks. No headings, lists or tables are recognised here.
+    """
+    return _spans(text or "")
+
+
 def plain_text(text: str) -> str:
     """The same text with Markdown structure flattened to sentences.
 

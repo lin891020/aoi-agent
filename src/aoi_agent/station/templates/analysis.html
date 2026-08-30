@@ -83,13 +83,13 @@
   {% if run %}
     <div class="answer-block">
       <h2>{{ t('analysis.s1') }} {{ as_asked(run) }}</h2>
-      <p>{{ run.plan.interpretation if run.plan else run.answer }}</p>
+      <p>{{ spans(prose_inline(run.plan.interpretation)) if run.plan else run.answer }}</p>
     </div>
 
     {% if run.plan and run.plan.assumptions %}
     <div class="answer-block">
       <h2>{{ t('analysis.s3') }} {{ as_asked(run) }}</h2>
-      <ul>{% for a in assumption_items(run.plan.assumptions) %}<li>{{ a }}</li>{% endfor %}</ul>
+      <ul>{% for a in assumption_items(run.plan.assumptions) %}<li>{{ spans(prose_inline(a)) }}</li>{% endfor %}</ul>
     </div>
     {% endif %}
 

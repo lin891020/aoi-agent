@@ -218,3 +218,18 @@ def test_a_stored_fleet_series_without_the_role_field_is_still_drawn_as_a_line()
     }
     svg = render_svg(spec, locale="en")
     assert svg.count('class="reference"') == 1 and len(bar_centres(svg)) == 2
+
+
+def test_the_reference_line_is_drawn_before_the_bars():
+    payload = {
+        "tool": "query_machine_stats", "args": {}, "ok": True, "elapsed_ms": 1.0, "error": None,
+        "data": {
+            "defect_type": "open", "days": 7, "fleet_share_of_defects": 0.21,
+            "machines": [
+                {"machine": "L2-M22", "share_of_defects": 0.326, "defects_per_board": 2.3},
+                {"machine": "L1-M11", "share_of_defects": 0.193, "defects_per_board": 1.1},
+            ],
+        },
+    }
+    svg = render_svg(chart_spec_for([payload]), locale="en")
+    assert svg.index('class="reference"') < svg.index('<rect x=')

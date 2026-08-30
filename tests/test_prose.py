@@ -218,3 +218,10 @@ def test_single_asterisks_are_emphasis_and_a_lone_asterisk_is_text():
     kinds = [(s["kind"], s["text"]) for s in _spans("分類為 *false_call*，2 * 3")]
     assert ("em", "false_call") in kinds
     assert any(k == "text" and "2 * 3" in t for k, t in kinds)
+
+
+def test_inline_renders_code_marks_without_restructuring():
+    from aoi_agent.station.prose import inline
+    spans = inline("- 以 `per_board` 為指標。")
+    assert [s["kind"] for s in spans] == ["text", "code", "text"]
+    assert spans[0]["text"] == "- 以 "   # a leading dash is text, not a list

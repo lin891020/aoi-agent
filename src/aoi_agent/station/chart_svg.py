@@ -202,7 +202,11 @@ def render_svg(
             f'font-size="9" text-anchor="end">{_text(_fmt(tick))}</text>'
         )
 
-    for index, one in enumerate(series):
+    # Reference lines are drawn before the bars, so a bar's value label is
+    # never struck through by the fleet line -- the labels at 6.182 and 6
+    # were, on the first chart that had one.
+    ordered = sorted(enumerate(series), key=lambda item: item[1].get("role") != "reference")
+    for index, one in ordered:
         colour = PALETTE[index % len(PALETTE)]
         name = label_from(one, "name", locale)
         if one.get("role") == "reference":
