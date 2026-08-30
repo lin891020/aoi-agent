@@ -119,7 +119,29 @@ def _render_pages() -> dict[str, Path]:
             made[name] = target
             html_path.unlink(missing_ok=True)
         browser.close()
+    for name in ("architecture.png", "flow_disposition.png", "flow_analysis.png"):
+        if name in made:
+            _trim(made[name])
     return made
+
+
+def _trim(path: Path, margin: int = 24) -> None:
+    """Cut a rendered diagram down to its ink plus a small margin.
+
+    The pages carry their own padding inside the element, and on a slide that
+    padding was a third of the picture -- the diagram everyone came to see
+    sat small in the middle of a grey box.
+    """
+    from PIL import Image, ImageChops
+    im = Image.open(path).convert("RGB")
+    bg = Image.new("RGB", im.size, im.getpixel((2, 2)))
+    diff = ImageChops.difference(im, bg).convert("L").point(lambda v: 255 if v > 12 else 0)
+    box = diff.getbbox()
+    if not box:
+        return
+    left, top, right, bottom = box
+    im.crop((max(0, left - margin), max(0, top - margin),
+             min(im.width, right + margin), min(im.height, bottom + margin))).save(path)
 
 
 def _cjk_font(matplotlib) -> None:
@@ -303,6 +325,8 @@ def _compose_screens() -> Path | None:
 
 def _notes_text(slide: Slide) -> str:
     lines = [f"白話：{slide.plain}", ""]
+    if slide.hero and slide.bullets:
+        lines += ["頁面上只有圖；要點："] + [f"• {b}" for b in slide.bullets] + [""]
     lines += [f"講稿 {i}. {s}" for i, s in enumerate(slide.notes, 1)]
     if slide.questions:
         lines += ["", "面試官會問："]
@@ -463,7 +487,13 @@ def build_pptx(target: Path, images: dict[str, Path], embed_video: bool) -> Path
                     pic.width = Emu(int(pic.width * ratio))
                 return pic
 
-            if s.wide and img:
+            if s.hero and img:
+                # The diagram is the slide: as large as the page allows,
+                # centred, nothing beside it. The bullets that used to sit at
+                # its right are in the notes, where the speaker reads them.
+                pic = place(img, Inches(0.4), Inches(1.1), Inches(12.5), Inches(5.3))
+                pic.left = Emu(int((W - pic.width) / 2))
+            elif s.wide and img:
                 # The picture across the whole width, the bullets in two
                 # columns under it -- a flow diagram at half width was a
                 # thumbnail nobody in the room could read.

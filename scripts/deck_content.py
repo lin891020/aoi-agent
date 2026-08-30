@@ -61,6 +61,7 @@ class Slide:
     core: int | None = None         # ★ 主線 n/9
     table: list[list[str]] | None = None   # first row is the header
     wide: bool = False              # image slides: picture across the full width, bullets under it
+    hero: bool = False              # image slides: the picture is the slide; bullets go to the notes
 
 
 SLIDES: list[Slide] = [
@@ -119,7 +120,7 @@ SLIDES: list[Slide] = [
         ],
     ),
     Slide(
-        key="architecture", kind="image", layer=LAYERS[0], core=3,
+        key="architecture", kind="image", layer=LAYERS[0], hero=True, core=3,
         title="架構：一個紅框往哪裡走",
         plain="一個紅框進來，先被幾毫秒的模型分成三種：明顯誤報、明顯缺陷、看不準；看不準的才走到 agent，agent 寫完說明交給人。",
         image="architecture.png",
@@ -141,7 +142,7 @@ SLIDES: list[Slide] = [
         ],
     ),
     Slide(
-        key="flow-disposition", kind="image", layer=LAYERS[0],
+        key="flow-disposition", kind="image", layer=LAYERS[0], hero=True,
         title="處置路徑：一個紅框怎麼被判",
         plain="分類器先判，兩個門檻決定誰直接處置；看不準的拿脈絡、請 LLM 寫說明，最後交給人——而且交給人的那一步會存檔，程式重啟還在。",
         image="flow_disposition.png",
@@ -161,10 +162,10 @@ SLIDES: list[Slide] = [
         ],
     ),
     Slide(
-        key="flow-analysis", kind="image", layer=LAYERS[0],
+        key="flow-analysis", kind="image", layer=LAYERS[0], hero=True,
         title="分析路徑：主管的一句話怎麼變成答案",
         plain="模型只做兩件事——決定查什麼、把結果寫成話；中間的驗證、平行查詢、畫圖、存檔都是程式。",
-        image="flow_analysis.png", wide=True,
+        image="flow_analysis.png",
         caption="docs/diagrams/analysis-flow-light.zh-TW.svg，同一支腳本產生",
         bullets=[
             "規劃（LLM #1）→ 驗證：工具名、參數名、參數值都對照真實簽名與值域，L4 這種不存在的產線直接拒絕、不重試",
