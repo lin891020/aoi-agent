@@ -221,7 +221,13 @@ Also give your own reading in "verdict" and "confident". They are kept for the
 record and compared against the classifier when the layer is re-evaluated;
 nothing downstream acts on them. Answer them honestly rather than tactically:
 set "confident" false when the evidence genuinely does not settle the class,
-not to push the region towards a person."""
+not to push the region towards a person.
+
+Write "rationale" as one plain paragraph of three to six sentences, for a
+queue row and a screen beside the images: no Markdown, no headings, no bullet
+or numbered lists, no bold. Do not restate the verdict or confident fields
+inside it, and do not quote the schema. Say what the reading and the context
+show and what would settle the class."""
 
 
 def decision_provenance(model_digest: str | None) -> DecisionProvenance | None:
@@ -367,6 +373,12 @@ Vision model reading:
   class      {state['model_class']}
   confidence {state['model_confidence']:.3f}
   P(false call) {state['false_call_probability']:.3f}
+
+Station thresholds (from the operating-point sweep, docs/architecture.md):
+  a region is dismissed without review when P(false call) >= {ESCALATE_BELOW:.3f}
+  a defect is confirmed without review when its confidence >= {CONFIDENT:.3f} (never for open)
+  anything else is explained here, and handed to an operator when confidence < {ESCALATE_BELOW:.3f}
+  this region is in front of an operator because it met neither cut
 
 Production context:
   lot {state['board_context'].get('lot_id')} on line {state['board_context'].get('line_id')}, machine {state['board_context'].get('machine_id')}, shift {state['board_context'].get('shift')}

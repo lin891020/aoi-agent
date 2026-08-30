@@ -87,3 +87,19 @@ def test_the_queue_says_which_language_the_rationale_is_written_in_and_what_it_c
     monkeypatch.setenv(LINE_LANGUAGE_ENV, "en")
     page = queue.get("/").text
     assert "以英文撰寫" in page
+
+
+def test_a_markdown_rationale_reaches_the_queue_as_elements_not_asterisks(queue, monkeypatch):
+    """The re-run of 2026-08-30 wrote outlines; the row printed the asterisks."""
+    from aoi_agent.store import escalations
+    monkeypatch.setattr(escalations, "pending", lambda limit=200: [{
+        "reference": "20085299#2", "board_stem": "20085299", "index": 2,
+        "thread_id": "20085299#2", "status": "pending", "raised_at": "2026-08-30T04:38:00",
+        "reason": "以下為說明：\n\n1. **視覺模型輸出**\n   - 置信度 0.858。\n2. **生產背景**\n   - 該板屬於 LOT-1。\n   - 這批平均 5 個缺陷。\n3. **結論**\n   - 分類為 *false_call*。",
+        "agent_verdict": "false_call", "explanation_status": "ok", "rationale_flags": [],
+        "model_class": "false_call", "model_confidence": 0.858, "false_call_probability": 0.858,
+        "lot_id": "LOT-1", "line_id": "L1", "machine_id": "M11", "shift": "C",
+    }])
+    page = queue.get("/").text
+    assert "**" not in page and "*false_call*" not in page
+    assert "<strong>視覺模型輸出</strong>" in page and "<em>false_call</em>" in page

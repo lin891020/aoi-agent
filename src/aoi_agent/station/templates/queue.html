@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_prose.html" import render as prose with context %}
 {% block title %}{{ t('nav.queue') }} &middot; {{ waiting }} {{ t('queue.waiting') }}{% endblock %}
 {% block content %}
 <section class="panel">
@@ -72,9 +73,12 @@
              them made this the one column an operator could not scan. Nothing
              is cut -- `lead + rest` is the text -- and the region page still
              shows it whole. #}
-          {% set lead, rest = lead_and_rest(row.reason or '') %}
+          {# The lead is read off the flattened text, so a rationale the model
+             wrote as a Markdown outline still opens with a sentence; the
+             disclosure holds the whole rationale rendered as elements. #}
+          {% set lead, rest = lead_and_rest(plain_text(row.reason or '')) %}
           {{ lead }}
-          {% if rest %}<details class="more"><summary>{{ t('queue.more') }}</summary>{{ rest }}</details>{% endif %}
+          {% if rest %}<details class="more"><summary>{{ t('queue.more') }}</summary><div class="prose">{{ prose(prose_blocks(row.reason)) }}</div></details>{% endif %}
           {% if row.explanation_status and row.explanation_status != 'ok' %}
             <span class="chip warn">{{ t('queue.no_explanation') }}</span>
           {% endif %}

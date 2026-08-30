@@ -5,6 +5,7 @@
 {% macro spans(items) -%}
 {%- for span in items -%}
 {%- if span.kind == 'strong' %}<strong>{{ span.text }}</strong>
+{%- elif span.kind == 'em' %}<em>{{ span.text }}</em>
 {%- elif span.kind == 'code' %}<code>{{ span.text }}</code>
 {%- else %}{{ span.text }}{% endif -%}
 {%- endfor -%}

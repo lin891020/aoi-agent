@@ -92,7 +92,7 @@ def test_html_in_an_answer_stays_the_characters_it_was_typed_as(hostile):
     assert len(produced) == 1
     assert hostile in texts(produced[0])
     for span in produced[0]["spans"]:
-        assert span["kind"] in {"text", "strong", "code"}
+        assert span["kind"] in {"text", "strong", "em", "code"}
 
 
 def test_no_block_or_span_can_carry_markup():
@@ -117,7 +117,7 @@ def test_no_block_or_span_can_carry_markup():
         if isinstance(node, dict):
             if set(node) == {"kind", "text"}:
                 assert isinstance(node["text"], str)
-                assert node["kind"] in {"text", "strong", "code"}
+                assert node["kind"] in {"text", "strong", "em", "code"}
                 return
             for value in node.values():
                 walk(value)
@@ -203,3 +203,18 @@ def test_a_blank_line_still_ends_a_list():
     from aoi_agent.station.prose import blocks
     out = blocks("- one\n\nA paragraph.")
     assert [b["kind"] for b in out] == ["list", "paragraph"]
+
+
+def test_plain_text_flattens_a_markdown_outline_into_sentences():
+    from aoi_agent.station.prose import plain_text
+    text = "以下為說明：\n\n1. **視覺模型輸出**\n   - 模型將此區域分類為 *false_call*，置信度 0.858。\n2. **生產背景**\n   - 該板屬於 LOT-2608018。"
+    flat = plain_text(text)
+    assert "*" not in flat and "\n" not in flat
+    assert "視覺模型輸出" in flat and "置信度 0.858。" in flat
+
+
+def test_single_asterisks_are_emphasis_and_a_lone_asterisk_is_text():
+    from aoi_agent.station.prose import _spans
+    kinds = [(s["kind"], s["text"]) for s in _spans("分類為 *false_call*，2 * 3")]
+    assert ("em", "false_call") in kinds
+    assert any(k == "text" and "2 * 3" in t for k, t in kinds)

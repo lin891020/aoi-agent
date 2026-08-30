@@ -23,7 +23,7 @@
   {% if escalation %}
   <div class="handover">
     <span class="label">{{ t('region.handed_over_because') }}</span>
-    <p>{{ escalation.reason }}</p>
+    <div class="prose">{{ prose(prose_blocks(escalation.reason)) }}</div>
     {% if escalation.agent_verdict %}
       <span class="label">{{ t('region.leaned_towards', verdict=escalation.agent_verdict) }}</span>
     {% endif %}

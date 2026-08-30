@@ -33,7 +33,7 @@ import re
 #: ``**bold**`` and `` `code` ``. Ordered: the code pattern wins inside a run of
 #: backticks so `**` inside code stays literal, which is what a reader typing an
 #: expression expects.
-_INLINE = re.compile(r"`([^`]+)`|\*\*(.+?)\*\*")
+_INLINE = re.compile(r"`([^`]+)`|\*\*(.+?)\*\*|\*([^*\s](?:[^*]*?[^*\s])?)\*")
 
 _HEADING = re.compile(r"^(#{1,6})\s+(.*)$")
 _BULLET = re.compile(r"^[-*]\s+(.*)$")
@@ -45,17 +45,24 @@ _RULE = re.compile(r"^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$")
 
 
 def _spans(text: str) -> list[dict]:
-    """One line of text, split into plain, strong and code runs."""
+    """One line of text, split into plain, strong, emphasis and code runs.
+
+    Single-asterisk emphasis joined 2026-08-30: the Chinese rationales write
+    `*false_call*` for a class name, and a queue row that prints the asterisks
+    reads as a typo beside the bold it did render.
+    """
     spans: list[dict] = []
     at = 0
     for match in _INLINE.finditer(text):
         if match.start() > at:
             spans.append({"kind": "text", "text": text[at:match.start()]})
-        code, strong = match.group(1), match.group(2)
-        spans.append(
-            {"kind": "code", "text": code} if code is not None
-            else {"kind": "strong", "text": strong}
-        )
+        code, strong, em = match.group(1), match.group(2), match.group(3)
+        if code is not None:
+            spans.append({"kind": "code", "text": code})
+        elif strong is not None:
+            spans.append({"kind": "strong", "text": strong})
+        else:
+            spans.append({"kind": "em", "text": em})
         at = match.end()
     if at < len(text):
         spans.append({"kind": "text", "text": text[at:]})
@@ -205,6 +212,26 @@ def blocks(answer: str) -> list[dict]:
 #: ASCII one only when followed by a space or the end of the text, because
 #: ``0.61`` is not two sentences. ``！？`` and ``!?`` are read the same way.
 _SENTENCE_END = re.compile(r"[。！？]|[.!?](?=\s|$)")
+
+
+def plain_text(text: str) -> str:
+    """The same text with Markdown structure flattened to sentences.
+
+    For the queue's two-sentence lead, which is read as a scan of prose and
+    must not open with "以下為對此區域的評估與說明： 1. **視覺模型輸出**".
+    Headings become sentences, list items become sentences, emphasis marks
+    are dropped; the characters of the words are unchanged.
+    """
+    pieces: list[str] = []
+    for block in blocks(text):
+        if block["kind"] == "table":
+            continue
+        runs = [block["spans"]] if block["kind"] in ("heading", "paragraph") else block["items"]
+        for spans in runs:
+            piece = "".join(span["text"] for span in spans).strip()
+            if piece:
+                pieces.append(piece)
+    return " ".join(pieces)
 
 
 def assumption_items(items: object) -> list[str]:

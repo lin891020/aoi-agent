@@ -82,7 +82,7 @@ from aoi_agent.i18n import (
     normalise,
     translate,
 )
-from aoi_agent.station.prose import assumption_items, blocks as prose_blocks, lead_and_rest
+from aoi_agent.station.prose import assumption_items, blocks as prose_blocks, lead_and_rest, plain_text
 from aoi_agent.station import timing_view
 from aoi_agent.station.result_view import clip, error_text, readable_rows, shown_count, sql_table
 from aoi_agent.store import analysis as analysis_store
@@ -176,6 +176,7 @@ templates.env.globals["strings_for"] = _strings_for
 templates.env.globals["lead_and_rest"] = lead_and_rest
 templates.env.globals["prose_blocks"] = prose_blocks
 templates.env.globals["assumption_items"] = assumption_items
+templates.env.globals["plain_text"] = plain_text
 #: What the switch offers. Each language names itself in itself -- somebody
 #: looking for English does not read 英文, and somebody looking for Chinese does
 #: not read "Chinese".
