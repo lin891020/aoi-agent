@@ -62,6 +62,7 @@ class Slide:
     table: list[list[str]] | None = None   # first row is the header
     wide: bool = False              # image slides: picture across the full width, bullets under it
     hero: bool = False              # image slides: the picture is the slide; bullets go to the notes
+    stats: list[tuple[str, str]] = field(default_factory=list)   # the two or three numbers to remember, drawn large
 
 
 SLIDES: list[Slide] = [
@@ -183,7 +184,7 @@ SLIDES: list[Slide] = [
     ),
     # ------------------------------------------------------- 第一層 相減前端
     Slide(
-        key="differencing", kind="five", layer=LAYERS[1],
+        key="differencing", kind="five", stats=[('7,322', '個候選，相減生出來的'), ('41.2%', '是真缺陷，其餘是誤報'), ('S0', '先過這關，再訓模型')], layer=LAYERS[1],
         title="用「樣板相減」當 AOI，先過第一關再談模型",
         plain="誤報不能用捏造的，要用真的 AOI 邏輯生出來；所以先證明「相減」找得到瑕疵，再談後面的模型。",
         five={
@@ -204,7 +205,7 @@ SLIDES: list[Slide] = [
         ],
     ),
     Slide(
-        key="escape-recount", kind="five", layer=LAYERS[1], core=5,
+        key="escape-recount", kind="five", stats=[('5.4% → 0.61%', '整線漏網率，我算錯了九倍'), ('150 / 157', '「沒抓到」的框其實有候選壓著'), ('0.22% + 0.38%', '牆 + 旋鈕，永遠分開報')], layer=LAYERS[1], core=5,
         title="錯 #1：整線漏網率 5.4% → 0.61%，我算錯了，而且錯在對我有利的方向",
         plain="我把「框畫得不夠緊」當成「沒抓到」，把整線漏網率高估了九倍——修正後反而更好看，所以更要講。",
         five={
@@ -225,7 +226,7 @@ SLIDES: list[Slide] = [
         ],
     ),
     Slide(
-        key="registration", kind="five", layer=LAYERS[1],
+        key="registration", kind="five", stats=[('4.6 點', '位移 4 px 掉的 recall'), ('58.1 → 20.7', '每片候選數，對位之後'), ('17 / 60', '次像素修正反而修壞的')], layer=LAYERS[1],
         title="對位：只修平移、不修旋轉，而且要能拒絕",
         plain="樣板和待測板差幾個像素，相減就滿版都是假警報；對位把它修回來，但只修它真的會修的那種。",
         five={
@@ -247,7 +248,7 @@ SLIDES: list[Slide] = [
     ),
     # ------------------------------------------------------- 第二層 複判模型
     Slide(
-        key="reverifier-design", kind="five", layer=LAYERS[2],
+        key="reverifier-design", kind="five", stats=[('3 × 64 px', '樣板 / 待測 / 差異'), ('2.5 ms', '一個候選，CPU'), ('2.8%', '拿掉樣板通道只剩這樣')], layer=LAYERS[2],
         title="複判模型：三通道 ResNet-18，每個設計選項都有一個理由",
         plain="模型看的是三張小圖疊在一起：樣板、待測、差異；它學的是「這個紅框是假的嗎、如果是真的是哪一類」。",
         five={
@@ -293,7 +294,7 @@ SLIDES: list[Slide] = [
         ],
     ),
     Slide(
-        key="int8", kind="five", layer=LAYERS[2],
+        key="int8", kind="five", stats=[('389 → 81 MB', '量化買到的是記憶體'), ('−1.3 → −0.3', '換權重結論就翻（點）'), ('41 ms', '一片板的推論，週期 10 s')], layer=LAYERS[2],
         title="錯 #2：INT8 的結論，換一組權重就翻過來",
         plain="量化不是為了快，是為了記憶體；而且一個量化的結論只對一組權重成立，換了權重要重量。",
         five={
@@ -314,7 +315,7 @@ SLIDES: list[Slide] = [
         ],
     ),
     Slide(
-        key="detector", kind="five", layer=LAYERS[2],
+        key="detector", kind="five", stats=[('91.6%', '瑕疵被框住'), ('1.2%', 'confidence 排掉的人工'), ('52.8%', '主線同一把尺')], layer=LAYERS[2],
         title="偵測器前端：找得到，排不掉",
         plain="真的 SMT 產線沒有樣板可以相減，所以試偵測器；它找得到瑕疵，但它的信心分不出真假。",
         five={
@@ -336,7 +337,7 @@ SLIDES: list[Slide] = [
     ),
     # ------------------------------------------------------- 第三層 門檻與預算
     Slide(
-        key="thresholds", kind="five", layer=LAYERS[3],
+        key="thresholds", kind="five", stats=[('0.875 ≠ 0.90', '掃了才知道的差'), ('0.0029', '距離最近一個漏網的餘裕'), ('0.5005%', '四捨五入取最近的代價')], layer=LAYERS[3],
         title="錯 #3：兩個門檻引用了不存在的來源",
         plain="程式裡的兩個關鍵數字，一個引一份沒有數字的文件、一個引一個沒跑過的掃描——看起來都有出處，其實都沒有。",
         five={
@@ -357,7 +358,7 @@ SLIDES: list[Slide] = [
         ],
     ),
     Slide(
-        key="confident-inversion", kind="five", layer=LAYERS[3],
+        key="confident-inversion", kind="five", stats=[('13', '個測試變紅——被看到的一半'), ('6,736', '個處置沒有說明——沒被看到的'), ('+0.035', '改成關係式的寬度')], layer=LAYERS[3],
         title="錯 #4：重訓後一個常數倒掛，被看到的那一半不是危險的那一半",
         plain="重訓之後門檻往上跑，另一個常數沒跟著動，兩個數字上下顛倒；測試變紅的是小事，沒變紅的那件事才可怕。",
         five={
@@ -378,7 +379,7 @@ SLIDES: list[Slide] = [
         ],
     ),
     Slide(
-        key="hripcb", kind="five", layer=LAYERS[3], core=8,
+        key="hripcb", kind="five", stats=[('16.9%', '門檻 60 只框到的瑕疵'), ('860', '擾動後每張圖的誤報'), ('46.97%', '模型層的漏網率，預算 0.5%')], layer=LAYERS[3], core=8,
         title="錯 #5：換一個資料集，第一關就壞——比我問的問題早一層",
         plain="拿真的照片跑同一套流程，我以為會壞在模型，結果壞在相減那一關：照片上每條線的邊緣都跟瑕疵長得一樣。",
         five={
@@ -401,7 +402,7 @@ SLIDES: list[Slide] = [
     ),
     # ------------------------------------------------------- 第四層 agent 與站台
     Slide(
-        key="llm-decides", kind="five", layer=LAYERS[4], core=6,
+        key="llm-decides", kind="five", stats=[('71.7% vs 85.0%', 'LLM 對分類器，同 60 筆'), ('12 改 1 對', '它改分類器的答案'), ('73.3% → 90.0%', '拿掉它之後')], layer=LAYERS[4], core=6,
         title="錯 #6：LLM 在決策路上，而且比它要覆蓋的分類器差",
         plain="我原本讓語言模型看完證據做最後判定；量了才發現它改分類器的答案 12 次只對 1 次。",
         five={
@@ -423,7 +424,7 @@ SLIDES: list[Slide] = [
         ],
     ),
     Slide(
-        key="retrieval-scope", kind="five", layer=LAYERS[4], core=7,
+        key="retrieval-scope", kind="five", stats=[('27.8%', '段落來自別類的文件'), ('5 / 5', '佇列上全帶錯規則'), ('0.0%', '加 class scope 之後')], layer=LAYERS[4], core=7,
         title="錯 #7：檢索抓到別的類別的文件，而且送到了做決定的人手上",
         plain="問 open 的驗收標準，第一名回來的是針孔的規則；五筆等人判的區域全帶著一條不存在的規則。",
         five={
@@ -444,7 +445,7 @@ SLIDES: list[Slide] = [
         ],
     ),
     Slide(
-        key="budget-deadline", kind="five", layer=LAYERS[4],
+        key="budget-deadline", kind="five", stats=[('20 / 24', '說明被 10 秒 timeout 砍掉'), ('31.9 → 16.7 s', '中文說明，給了門檻之後'), ('1.4x', '中文對英文，本來以為 3.7x')], layer=LAYERS[4],
         title="預算和逾時是兩個數字，之前是一個",
         plain="一個常數同時當「承諾多久給判定」和「等模型多久」，結果模型寫說明常常寫到一半被砍。",
         five={
@@ -465,7 +466,38 @@ SLIDES: list[Slide] = [
         ],
     ),
     Slide(
-        key="station", kind="five", layer=LAYERS[4],
+        key="shot-queue", kind="image", layer=LAYERS[4], hero=True,
+        title="站台長這樣：待複判清單",
+        plain="每一列一個看不準的區域：模型判定、信心、誤判機率、產線機台，右邊是 agent 寫的說明——等最久的在最上面。",
+        image="shot_queue.png",
+        caption="http://aoi.test — 2026-08-30 的站台，說明以產線語言（中文）寫，數字不在證據裡的會標出來",
+        bullets=["34 件待處理的徽章、右上角的語言切換、每列的「展開全文」",
+                 "「為什麼交給人」用一段話，不是條列；來源是 LLM，判定不是"],
+        notes=["這是作業員每天看的第一頁。",
+               "一列一個區域：模型認為是什麼、多有把握、有多像誤報，右邊是 agent 的說明。",
+               "等最久的在最上面，這是唯一的排序。",
+               "說明用產線的語言寫；裡面的數字若不在證據裡，旁邊會有黃色標記。"],
+        questions=[("作業員一天看幾個？", "這個資料集一片板約 20 個候選，82.2% 不經人；示範的 50 片板留下 34 個待複判。"),
+                   ("為什麼說明是中文？", "AOI_LINE_LANGUAGE 預設 zh-TW，作業員讀什麼語言就寫什麼；切換介面語言不會改寫紀錄。")],
+    ),
+    Slide(
+        key="shot-region", kind="image", layer=LAYERS[4], hero=True,
+        title="站台長這樣：一個區域怎麼判",
+        plain="上面是 agent 的理由，中間三張圖（樣板、待測、差異），下面三欄證據，再下面是七個判定鍵和「我不確定」。",
+        image="shot_region.png",
+        caption="/c/20085299/2 — 沒有 ground truth；作業員的答案是下一輪的訓練標籤",
+        bullets=["三張圖：黃金樣板、待測 PCB、差異圖，紅框是 AOI 標的位置",
+                 "三欄：模型讀到什麼（含它實際看的 64 px 小圖）、產線脈絡、檢索到的驗收標準（依類別限定）",
+                 "鍵盤 1–7 判定、0 退回；答完自動跳下一個"],
+        notes=["這是作業員判一個區域的頁面，示範時給它 40 秒。",
+               "由上往下：agent 的理由、三張圖、三欄證據、判定鍵。",
+               "頁面上永遠沒有 ground truth——作業員的答案就是下一輪的標籤，給了答案就是收回音。",
+               "看不出來按 0，它不會記成判定，區域會退給資深。"],
+        questions=[("為什麼不顯示 ground truth？", "作業員的答案是下一輪訓練的標籤；先給答案收到的是回音不是判斷。這條在 dict 邊界擋，不是模板裡藏。"),
+                   ("驗收標準從哪來？", "search_standards 帶 defect_class 查這一類的文件；未限定時 27.8% 的段落來自別類，08-23 修在檢索邊界。")],
+    ),
+    Slide(
+        key="station", kind="five", stats=[('5 筆 / 4 錯', '亂點的標籤，手動刪'), ('250 → 200', '佇列數用了頁面長度'), ('0', '「不確定」本來沒有按鈕')], layer=LAYERS[4],
         title="站台：真的人用了才發現的四件事",
         plain="系統跑得起來和有人用得下去是兩回事；每一個真人用了才冒出來的問題，都變成一條規則。",
         five={
@@ -507,7 +539,22 @@ SLIDES: list[Slide] = [
     ),
     # ------------------------------------------------------- 第五層 /ask
     Slide(
-        key="ask-design", kind="five", layer=LAYERS[6],
+        key="shot-ask", kind="image", layer=LAYERS[6], hero=True,
+        title="站台長這樣：主管問一句話",
+        plain="問「M32 參數變更前後 open 的比例有沒有變」，回來的是它怎麼理解、假設了什麼、查了什麼、一張有區間的圖、一段每個數字都查得到的話、和花了多久。",
+        image="shot_ask.png",
+        caption="/ask/36 — 圖從結果的形狀推；兩根柱的 95% 區間畫成鬚線，重疊就是「未證明有差」",
+        bullets=["六個區塊照讀的順序編號；「回傳的資料」可以展開看原始值",
+                 "圖上有數值、刻度、區間；答案上方若有「數字核對」警告，先看原始資料"],
+        notes=["這是 /ask 的答案頁。",
+               "六個區塊：它怎麼理解、假設了什麼、查了什麼、圖、答案、花了多久。",
+               "圖是從結果的形狀推的，兩根柱的區間畫成鬚線；重疊就代表沒證明有差。",
+               "答案裡每個數字都會對回結果，對不上的會在上面警告。"],
+        questions=[("圖是誰決定畫什麼的？", "程式，從結果的形狀：機台比較是柱狀、事件前後是一對柱加區間。模型不能指定圓餅圖，prompt 有一條規則說明這件事。"),
+                   ("那段答案可信嗎？", "它是從查回來的數字寫的，每個數字有頁面級核對；那次出現過一個編的 58.1%，現在會標出來。")],
+    ),
+    Slide(
+        key="ask-design", kind="five", stats=[('70 題', '三個沒看過 prompt 的人出'), ('28 / 28', '該拒的全拒'), ('27 / 42', '該答的——膽小不是魯莽')], layer=LAYERS[6],
         title="/ask：一次規劃、驗證值域、平行查、圖從結果推",
         plain="主管打一句話，模型只做兩件事——決定查什麼、把結果寫成話；中間查什麼、驗證什麼、畫什麼圖都是程式決定。",
         five={
@@ -529,7 +576,7 @@ SLIDES: list[Slide] = [
         ],
     ),
     Slide(
-        key="text-to-sql", kind="five", layer=LAYERS[6],
+        key="text-to-sql", kind="five", stats=[('24 → 28 / 42', '多答對四題'), ('14 句 SQL', '逐句人工裁定'), ('2 句', '合法、唯讀、錯')], layer=LAYERS[6],
         title="錯 #8：文字轉 SQL 做成實驗——兩句合法、唯讀、有上限但錯的 SQL",
         plain="讓模型自己寫 SQL 能多答幾題，代價是它會寫出「看起來對、其實錯」的查詢；所以做成有對照組的實驗，門擋在它和資料庫之間。",
         five={
@@ -551,7 +598,7 @@ SLIDES: list[Slide] = [
         ],
     ),
     Slide(
-        key="listed-set", kind="five", layer=LAYERS[6],
+        key="listed-set", kind="five", stats=[('15 → 17 / 28', '該拒的變好'), ('58 → 64 / 70', '三遍一致'), ('1 題', '怎麼教都規劃不出來')], layer=LAYERS[6],
         title="一個工具讓規劃器到處變膽；最後一題規劃不出來，命名了下一個機制",
         plain="每加一個工具，規劃器就在跟那個工具無關的題目上變得更敢答；而有一種題它永遠規劃不出來——那是下一個該做的東西，而且不是迴圈。",
         five={
@@ -573,7 +620,7 @@ SLIDES: list[Slide] = [
     ),
     # ------------------------------------------------------- 收尾
     Slide(
-        key="docs-tested", kind="five", layer=LAYERS[7], core=9,
+        key="docs-tested", kind="five", stats=[('56.2% vs 52.8%', 'README 第一行 vs 實際'), ('commit uncommitted', '那張表的來源'), ('19', '第 19 條 invariant')], layer=LAYERS[7], core=9,
         title="文件也要測：README 開頭那個數字，是一份「commit uncommitted」的表",
         plain="程式一直是對的，只有寫在最顯眼地方的那個數字是舊的——所以文件也要有測試。",
         five={

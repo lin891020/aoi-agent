@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -371,6 +372,25 @@ def build_pptx(target: Path, images: dict[str, Path], embed_video: bool) -> Path
                 r.font.color.rgb = rgb(style.get("color", color))
         return box
 
+    FIGURE = re.compile(r"\*\*(.+?)\*\*|(\d[\d,./%×x−\-–→ ]*\d%?|\d%?)")
+
+    def runs(body: str, size: float, colour: str = INK):
+        """Paragraph runs for one cell: `**...**` and every figure in bold accent.
+
+        A wall of 14pt prose has no landmarks; the numbers are what the
+        reader must take away, so they are the landmarks.
+        """
+        out, at = [], 0
+        for m in FIGURE.finditer(body):
+            if m.start() > at:
+                out.append((body[at:m.start()], {"size": size, "color": colour}))
+            text_of = m.group(1) or m.group(2)
+            out.append((text_of, {"size": size, "color": ACCENT, "bold": True}))
+            at = m.end()
+        if at < len(body):
+            out.append((body[at:], {"size": size, "color": colour}))
+        return out or [(body, {"size": size, "color": colour})]
+
     def ground(slide):
         fill = slide.background.fill
         fill.solid()
@@ -387,34 +407,70 @@ def build_pptx(target: Path, images: dict[str, Path], embed_video: bool) -> Path
              align=PP_ALIGN.RIGHT)
 
     def title_line(slide, s: Slide, size=28):
-        text(slide, Inches(0.5), Inches(0.35), Inches(12.3), Inches(1.0),
-             [[(s.title, {"bold": True, "size": size})]])
+        """The title, and its clause after the first comma as a dim subtitle.
+
+        「錯 #1：整線漏網率 5.4% → 0.61%，我算錯了，而且錯在對我有利的方向」is
+        a sentence, not a title; the hook keeps its place, one size down.
+        Returns the y where the body may start.
+        """
+        head, tail = s.title, ""
+        if len(s.title) > 22 and "，" in s.title:
+            head, tail = s.title.split("，", 1)
+        text(slide, Inches(0.5), Inches(0.3), Inches(12.3), Inches(0.8),
+             [[(head, {"bold": True, "size": size})]])
+        if tail:
+            text(slide, Inches(0.5), Inches(0.95), Inches(12.3), Inches(0.45),
+                 [[(tail, {"size": 15, "color": DIM})]])
+            return Inches(1.45)
+        return Inches(1.25)
 
     def bullets(slide, items, left, top, width, height, size=15):
         text(slide, left, top, width, height,
-             [[("• ", {"color": ACCENT, "size": size}), (b, {"size": size})] for b in items],
+             [[("• ", {"color": ACCENT, "size": size})] + runs(b, size) for b in items],
              spacing=1.25)
 
+    def stat_strip(slide, stats, top):
+        """Two or three numbers to remember, each in its own tile, one row."""
+        n = len(stats)
+        tile_w = (W - Inches(1.0) - Inches(0.25) * (n - 1)) / n
+        tile_h = Inches(0.95)
+        for i, (head, label) in enumerate(stats):
+            x = Inches(0.5) + i * (tile_w + Inches(0.25))
+            box = slide.shapes.add_shape(1, x, top, tile_w, tile_h)
+            box.fill.solid(); box.fill.fore_color.rgb = rgb(PANEL)
+            box.line.color.rgb = rgb("33383D")
+            box.shadow.inherit = False
+            size = 22 if len(head) <= 9 else (18 if len(head) <= 14 else 15)
+            text(slide, x + Inches(0.2), top + Inches(0.08), tile_w - Inches(0.4), Inches(0.5),
+                 [[(head, {"bold": True, "size": size, "color": ACCENT, "font": MONO})]])
+            text(slide, x + Inches(0.2), top + Inches(0.55), tile_w - Inches(0.4), Inches(0.35),
+                 [[(label, {"size": 10.5, "color": DIM})]])
+        return top + tile_h + Inches(0.18)
+
     def five_box(slide, s: Slide, left, top, width, height):
-        # Rows take the height their text needs, so a two-line rule does not
-        # sit in a five-line box with a gap under it; the type is 14pt, or
-        # 13pt when the five cells together would not otherwise fit.
+        # Rows take the height their text needs; the type is the largest of
+        # 15/14/13/12pt at which the five cells fit the height left under the
+        # title and the stat strip.
         rows = list(FIVE_LABELS.items())
-        chars_per_line = 50          # CJK at 15pt across ~10.7in, mixed with ASCII
-        total_lines = sum(max(1, -(-len(s.five[k]) // chars_per_line)) for k, _ in rows)
-        size = 15 if total_lines <= 14 else 14
-        line_h = Inches(0.31 if size == 15 else 0.29)
-        gap = Inches(0.16)
+        gap = Inches(0.14)
+
+        def layout(size):
+            cpl = {15: 50, 14: 54, 13: 58, 12: 63}[size]
+            line_h = {15: 0.31, 14: 0.29, 13: 0.27, 12: 0.25}[size]
+            heights = [Inches(line_h * max(1, -(-len(s.five[k]) // cpl)) + 0.08) for k, _ in rows]
+            return heights, sum(heights) + gap * (len(rows) - 1)
+
+        for size in (15, 14, 13, 12):
+            heights, total = layout(size)
+            if total <= height:
+                break
         y = top
-        for key, label in rows:
-            body = s.five[key]
-            lines = max(1, -(-len(body) // (chars_per_line if size == 15 else 54)))
-            row_h = line_h * lines + Inches(0.1)
+        for (key, label), row_h in zip(rows, heights):
             colour = WARN if key == "mistake" else ACCENT
             text(slide, left, y, Inches(1.45), row_h,
                  [[(label, {"bold": True, "color": colour, "size": 13})]])
             text(slide, left + Inches(1.5), y, width - Inches(1.5), row_h,
-                 [[(body, {"size": size})]], spacing=1.12)
+                 [runs(s.five[key], size)], spacing=1.12)
             y += row_h + gap
 
     for number, s in enumerate(SLIDES, 1):
@@ -451,8 +507,7 @@ def build_pptx(target: Path, images: dict[str, Path], embed_video: bool) -> Path
                 text(slide, x + Inches(0.25), y + Inches(1.15), tile_w - Inches(0.5), tile_h - Inches(1.25),
                      [[(rest, {"size": 13, "color": INK})]], spacing=1.2)
         elif s.kind in ("text", "closing"):
-            title_line(slide, s)
-            top = Inches(1.5)
+            top = title_line(slide, s) + Inches(0.15)
             if s.table:
                 rows, cols = len(s.table), len(s.table[0])
                 row_h = Inches(0.5)
@@ -521,8 +576,10 @@ def build_pptx(target: Path, images: dict[str, Path], embed_video: bool) -> Path
             text(slide, Inches(0.6), Inches(6.45), Inches(12.2), Inches(0.4),
                  [[(s.caption, {"color": DIM, "size": 9.5, "font": MONO})]])
         elif s.kind == "five":
-            title_line(slide, s, size=24)
-            five_box(slide, s, Inches(0.5), Inches(1.3), Inches(12.3), Inches(5.6))
+            y = title_line(slide, s, size=24)
+            if s.stats:
+                y = stat_strip(slide, s.stats, y)
+            five_box(slide, s, Inches(0.5), y, Inches(12.3), Inches(6.85) - y)
         chrome(slide, s, number)
         slide.notes_slide.notes_text_frame.text = _notes_text(s)
 
@@ -541,8 +598,11 @@ def build_html(target: Path, images: dict[str, Path]) -> Path:
     for number, s in enumerate(SLIDES, 1):
         core = (f'<span class="core">★ 主線 {s.core}/{CORE_TOTAL}</span>' if s.core else "")
         body = ""
+        if s.stats:
+            body += '<div class="stats">' + "".join(
+                f'<div class="stat"><b>{esc(h)}</b><span>{esc(l)}</span></div>' for h, l in s.stats) + "</div>"
         if s.kind == "five":
-            body = '<dl class="five">' + "".join(
+            body += '<dl class="five">' + "".join(
                 f'<dt class="{k}">{esc(v)}</dt><dd>{esc(s.five[k])}</dd>'
                 for k, v in FIVE_LABELS.items()) + "</dl>"
         if s.table:
@@ -600,6 +660,10 @@ td {{ padding:.45rem .6rem; border-bottom:1px solid var(--rule); vertical-align:
 figure {{ margin:0 0 1rem; background:var(--panel); border:1px solid var(--rule); border-radius:6px; padding:.6rem; }}
 figure img {{ max-width:100%; height:auto; display:block; }}
 figcaption {{ font-family:"IBM Plex Mono",monospace; font-size:.72rem; color:var(--dim); margin-top:.4rem; }}
+.stats {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:.6rem; margin:0 0 1rem; }}
+.stat {{ background:var(--panel); border:1px solid var(--rule); border-radius:6px; padding:.6rem .8rem; }}
+.stat b {{ display:block; font-family:"IBM Plex Mono",monospace; color:var(--accent); font-size:1.3rem; }}
+.stat span {{ font-size:.8rem; color:var(--dim); }}
 .qa {{ background:var(--panel); border:1px solid var(--rule); border-radius:6px; padding:.2rem 1rem .8rem; margin-top:1.2rem; }}
 .q {{ margin:.7rem 0; }} .question {{ margin:0; font-weight:500; }} .answer {{ margin:.2rem 0 0; color:var(--ink); border-left:3px solid var(--accent); padding-left:.7rem; max-width:80ch; }}
 details.notes {{ margin-top:1rem; color:var(--dim); font-size:.92rem; }} details.notes summary {{ cursor:pointer; }}
