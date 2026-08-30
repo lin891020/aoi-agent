@@ -116,3 +116,65 @@ def test_a_chart_stored_before_the_keys_existed_is_drawn_as_it_was_stored():
         svg = render_svg(legacy, locale=locale)
         assert "defects by class" in svg
         assert "各類缺陷數量" not in svg
+
+
+# ---- the ruler, the number, the interval ------------------------------------
+#
+# Mike's reading of the event-window chart on 2026-08-30: two blue blocks, no
+# numbers, no axis -- and a qualifier under the title about overlapping
+# intervals that the picture did not draw. Three things a bar chart owes the
+# reader, each held here.
+
+
+def event_window(side: str, value: float, low: float, high: float) -> dict:
+    return {
+        "tool": "query_defect_history", "args": {}, "ok": True, "elapsed_ms": 1.0,
+        "error": None,
+        "data": {
+            "filters": {"machine_id": "M32", "relative_to": "parameter_change",
+                        "side": side},
+            "open_share": {"value": value, "interval_95": [low, high]},
+            "by_class": {"open": 3},
+        },
+    }
+
+
+def test_every_bar_carries_its_value_as_a_label():
+    svg = render_svg(chart_spec_for([history("L1")]), locale="en")
+    values = re.findall(r'class="value"[^>]*>([^<]+)</text>', svg)
+    assert values == ["175", "151"]
+
+
+def test_the_y_axis_is_a_ruler_with_round_ticks():
+    svg = render_svg(chart_spec_for([history("L2")]), locale="en")
+    ticks = re.findall(r'class="tick"[^>]*>([^<]+)</text>', svg)
+    assert ticks == ["0", "100", "200", "300", "400"], ticks
+    assert svg.count('class="grid"') == len(ticks)
+
+
+def test_an_interval_is_drawn_as_a_whisker_and_the_ruler_reaches_it():
+    spec = chart_spec_for([
+        event_window("before", 0.2509, 0.21, 0.30),
+        event_window("after", 0.1701, 0.13, 0.22),
+    ])
+    svg = render_svg(spec, locale="en")
+    assert svg.count('class="whisker"') == 2
+    # The value is on the bar in the form it was stored, not rounded away.
+    assert re.findall(r'class="value"[^>]*>([^<]+)</text>', svg) == ["0.2509", "0.1701"]
+    # The ruler tops out above the highest interval, not the highest bar.
+    ticks = [float(t) for t in re.findall(r'class="tick"[^>]*>([^<]+)</text>', svg)]
+    assert ticks[-1] >= 0.30
+
+
+def test_a_point_without_an_interval_draws_no_whisker():
+    svg = render_svg(chart_spec_for([history("L1")]), locale="en")
+    assert "whisker" not in svg
+
+
+def test_a_bar_is_a_mark_not_a_panel():
+    """Two bars on a 720 px chart must not be 216 px wide each."""
+    spec = chart_spec_for([
+        event_window("before", 0.25, 0.2, 0.3), event_window("after", 0.17, 0.1, 0.2),
+    ])
+    widths = [float(w) for w in re.findall(r'<rect x="[0-9.]+" y="[0-9.]+" width="([0-9.]+)"[^>]*><title>', render_svg(spec))]
+    assert widths and max(widths) <= 72

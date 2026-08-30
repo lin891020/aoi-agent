@@ -50,6 +50,13 @@ def _plottable(series: object) -> list[dict]:
             # silently dropped `name_key` and `name_args`, so every series in a
             # translated chart came back blank -- a legend of empty swatches
             # beside bars that were all correct.
+            for point in points:
+                # The interval travels with the point when the tool gave one;
+                # anything else on the point is dropped here, not drawn.
+                for side in ("y_low", "y_high"):
+                    value = point.get(side)
+                    if not isinstance(value, (int, float)) or isinstance(value, bool):
+                        point[side] = None
             keep.append(
                 {
                     "name": one.get("name", ""),
@@ -82,6 +89,34 @@ def _slots(series: list[dict]) -> list:
             if point["x"] not in slots:
                 slots.append(point["x"])
     return slots
+
+
+def _fmt(value: float) -> str:
+    """A tick or bar label: an integer as an integer, a fraction with what it needs."""
+    if float(value).is_integer():
+        return str(int(value))
+    text = f"{value:.4f}".rstrip("0").rstrip(".")
+    return text if text else "0"
+
+
+def _ticks(peak: float, count: int = 4) -> list[float]:
+    """Round tick values from 0 to at least ``peak``, ``count`` steps apart.
+
+    Chosen from 1-2-5 multiples of a power of ten, so `0.2509` gets 0.1 steps
+    and `302` gets 100 steps -- the ruler a reader would draw by hand.
+    """
+    if peak <= 0:
+        return [0.0]
+    import math
+    rough = peak / count
+    magnitude = 10 ** math.floor(math.log10(rough))
+    step = next(m * magnitude for m in (1, 2, 5, 10) if m * magnitude >= rough)
+    ticks = []
+    value = 0.0
+    while value < peak - 1e-12:
+        value = round(value + step, 10)
+        ticks.append(value)
+    return [0.0] + ticks
 
 
 def _split_title(title: str) -> tuple[str, str]:
@@ -118,11 +153,22 @@ def render_svg(
 
     slots = _slots(series)
     title = label_from(spec, "title", locale)
-    peak = max((p["y"] for s in series for p in s["points"]), default=0.0)
-    scale = plot_h / peak if peak > 0 else 0.0  # a flat series must not divide by zero
+    # The ruler has to reach the top of the tallest interval, not just the
+    # tallest bar: a whisker drawn off the top of the plot is a whisker the
+    # reader cannot compare with the next one.
+    peak = max(
+        (max(p["y"], p.get("y_high") or p["y"]) for s in series for p in s["points"]),
+        default=0.0,
+    )
+    ticks = _ticks(peak)
+    top = ticks[-1] if ticks[-1] > 0 else 1.0
+    scale = plot_h / top
 
     group_w = plot_w / max(1, len(slots))
-    bar_w = group_w / (len(series) + 1)
+    # Two bars on a 720 px chart were 216 px wide each and read as blocks of
+    # colour rather than as heights; a bar is a mark, not a panel.
+    bar_w = min(group_w / (len(series) + 1), 72.0)
+    cluster_w = bar_w * len(series)
 
     headline, qualifier = _split_title(title)
     parts = [
@@ -134,9 +180,18 @@ def render_svg(
         f'{_text(qualifier)}</text>',
         f'<text x="{pad_left}" y="48" fill="#8b8b96" font-size="10">'
         f'{_text(label_from(spec, "y_label", locale))}</text>',
-        f'<line x1="{pad_left}" y1="{pad_top + plot_h}" x2="{width - pad_right}" '
-        f'y2="{pad_top + plot_h}" stroke="#2e2e35"/>',
     ]
+
+    # The ruler: a gridline and a tick label per step, drawn before the bars
+    # so the bars sit on top of it.
+    for tick in ticks:
+        y = pad_top + plot_h - tick * scale
+        parts.append(
+            f'<line class="grid" x1="{pad_left}" y1="{y:.1f}" x2="{width - pad_right}" '
+            f'y2="{y:.1f}" stroke="#2e2e35" stroke-dasharray="{"" if tick == 0 else "2,3"}"/>'
+            f'<text class="tick" x="{pad_left - 6}" y="{y + 3.5:.1f}" fill="#8b8b96" '
+            f'font-size="9" text-anchor="end">{_text(_fmt(tick))}</text>'
+        )
 
     for index, one in enumerate(series):
         colour = PALETTE[index % len(PALETTE)]
@@ -145,12 +200,39 @@ def render_svg(
             # By slot, not by enumerate: a series missing a class must leave a
             # gap under that class, not close it up.
             bar_h = point["y"] * scale
-            x = pad_left + slots.index(point["x"]) * group_w + index * bar_w + bar_w / 2
+            slot_x = pad_left + slots.index(point["x"]) * group_w + group_w / 2
+            x = slot_x - cluster_w / 2 + index * bar_w
             y = pad_top + plot_h - bar_h
             parts.append(
                 f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_w:.1f}" '
                 f'height="{bar_h:.1f}" fill="{colour}" rx="2"><title>'
                 f'{_text(name)} {_text(point["x"])}: {_text(point["y"])}</title></rect>'
+            )
+            # The number itself, on the bar. A chart without it sends the
+            # reader back to the table for the one figure the chart is about.
+            label_y = y - 4
+            low, high = point.get("y_low"), point.get("y_high")
+            if low is not None and high is not None:
+                # The interval as a whisker. Two overlapping whiskers are the
+                # finding on the event-window chart; without them the chart
+                # showed two heights and the qualifier under the title claimed
+                # something the picture did not show.
+                cx = x + bar_w / 2
+                y_low = pad_top + plot_h - low * scale
+                y_high = pad_top + plot_h - high * scale
+                parts.append(
+                    f'<line class="whisker" x1="{cx:.1f}" y1="{y_low:.1f}" '
+                    f'x2="{cx:.1f}" y2="{y_high:.1f}" stroke="#e7e7ea" stroke-width="1.5"/>'
+                    f'<line class="whisker-cap" x1="{cx - 5:.1f}" y1="{y_high:.1f}" '
+                    f'x2="{cx + 5:.1f}" y2="{y_high:.1f}" stroke="#e7e7ea" stroke-width="1.5"/>'
+                    f'<line class="whisker-cap" x1="{cx - 5:.1f}" y1="{y_low:.1f}" '
+                    f'x2="{cx + 5:.1f}" y2="{y_low:.1f}" stroke="#e7e7ea" stroke-width="1.5"/>'
+                )
+                label_y = min(label_y, y_high - 4)
+            parts.append(
+                f'<text class="value" text-anchor="middle" x="{x + bar_w / 2:.1f}" '
+                f'y="{max(label_y, pad_top - 2):.1f}" fill="#e7e7ea" font-size="10">'
+                f'{_text(_fmt(point["y"]))}</text>'
             )
         parts.append(
             f'<rect x="{pad_left + index * 92}" y="{height - 14}" width="9" '
