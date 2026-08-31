@@ -36,7 +36,20 @@ from aoi_agent.data import pcbaoi  # noqa: E402
 from aoi_agent.vision.detector import DEFAULT_CHECKPOINT  # noqa: E402
 
 BASE_WEIGHTS = Path("models/yolo26n.pt")
-HISTORY = Path("models/detector_history.json")
+DEFAULT_HISTORY = Path("models/detector_history.json")
+
+
+def history_path(out: Path) -> Path:
+    """Where this run's record goes.
+
+    A second run at another input size is a second model, and writing both
+    records to one path leaves the surviving checkpoint described by whichever
+    run finished last. The default checkpoint keeps the original filename so
+    nothing that reads it has to change; anything else carries its own.
+    """
+    if out == DEFAULT_CHECKPOINT:
+        return DEFAULT_HISTORY
+    return out.with_name(out.stem + "_history.json")
 
 
 def machine_is_quiet() -> list[str]:
@@ -57,6 +70,9 @@ def main() -> int:
     parser.add_argument("--device", default="mps")
     parser.add_argument("--seed", type=int, default=20260826)
     parser.add_argument("--out", type=Path, default=DEFAULT_CHECKPOINT)
+    parser.add_argument("--name", default=None,
+                        help="ultralytics run directory; defaults to the checkpoint's stem, "
+                             "so a second run does not overwrite the first's curves")
     parser.add_argument("--dry-run", action="store_true", help="export the split and stop")
     parser.add_argument("--ignore-contention", action="store_true")
     args = parser.parse_args()
@@ -87,7 +103,9 @@ def main() -> int:
     results = model.train(
         data=str(yaml), epochs=args.epochs, imgsz=args.imgsz, batch=args.batch,
         device=args.device, seed=args.seed, deterministic=True,
-        project="models/detector_runs", name="pcbaoi", exist_ok=True,
+        project="models/detector_runs",
+        name=args.name or ("pcbaoi" if args.out == DEFAULT_CHECKPOINT else args.out.stem),
+        exist_ok=True,
         verbose=False, plots=False,
     )
     wall = time.time() - started
@@ -107,8 +125,9 @@ def main() -> int:
         "contended": contended,
         "checkpoint": str(args.out),
     }
-    HISTORY.write_text(json.dumps(history, indent=2))
-    print(f"\nwrote {args.out} after {wall / 60:.1f} min; history -> {HISTORY}")
+    record = history_path(args.out)
+    record.write_text(json.dumps(history, indent=2))
+    print(f"\nwrote {args.out} after {wall / 60:.1f} min; history -> {record}")
     return 0
 
 

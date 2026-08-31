@@ -71,7 +71,8 @@ class ScoredCandidate:
 class Detector:
     """Loads a trained YOLO checkpoint once and detects on numpy images."""
 
-    def __init__(self, checkpoint: Path | str = DEFAULT_CHECKPOINT, device: str | None = None):
+    def __init__(self, checkpoint: Path | str = DEFAULT_CHECKPOINT, device: str | None = None,
+                 imgsz: int | None = None):
         from ultralytics import YOLO
 
         checkpoint = Path(checkpoint)
@@ -83,7 +84,28 @@ class Detector:
         self.checkpoint = checkpoint
         self.model = YOLO(str(checkpoint))
         self.device = device
+        self.imgsz = imgsz or self._trained_imgsz()
         self.class_names: dict[int, str] = dict(self.model.names)
+
+    def _trained_imgsz(self) -> int:
+        """The input size this checkpoint was trained at, read off the checkpoint.
+
+        ultralytics infers at its own default when `predict` is not told a
+        size, and that default is 640 -- the size the first detector was
+        trained at, so on that checkpoint an inherited value and a library
+        default are the same number and nothing distinguishes them. A model
+        trained at 1280 and inferred at 640 answers a different question than
+        the one being asked, without erroring, so the size is read here and
+        passed explicitly.
+        """
+        inner = getattr(self.model, "model", None)
+        for source in (getattr(inner, "args", None), getattr(self.model, "overrides", None)):
+            if source is None:
+                continue
+            size = source.get("imgsz") if hasattr(source, "get") else getattr(source, "imgsz", None)
+            if size:
+                return int(size)
+        return 640
 
     def detect(self, image: np.ndarray, floor: float = CONF_FLOOR) -> list[ScoredCandidate]:
         """Every box at or above the floor, highest confidence first.
@@ -97,7 +119,7 @@ class Detector:
             image = np.repeat(image[:, :, None], 3, axis=2)
         results = self.model.predict(
             image[:, :, ::-1],  # ultralytics reads BGR from arrays, as cv2 does
-            conf=floor, verbose=False, device=self.device,
+            conf=floor, imgsz=self.imgsz, verbose=False, device=self.device,
         )
         out: list[ScoredCandidate] = []
         for result in results:

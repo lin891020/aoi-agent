@@ -8,6 +8,8 @@ are pinned here on a fake model rather than on weights nobody has in CI.
 
 from __future__ import annotations
 
+import types
+
 import numpy as np
 import pytest
 
@@ -72,11 +74,16 @@ class _FakeResult:
 class _FakeYOLO:
     names = {0: "Bad_podu", 1: "Bad_qiaojiao"}
 
-    def __init__(self):
+    def __init__(self, trained_imgsz=1280):
         self.seen = None
+        self.seen_imgsz = None
+        # what a trained checkpoint carries, and where Detector must read it
+        self.model = types.SimpleNamespace(args={"imgsz": trained_imgsz})
+        self.overrides = {"imgsz": trained_imgsz}
 
-    def predict(self, image, conf, verbose, device):
+    def predict(self, image, conf, verbose, device, imgsz=None):
         self.seen = (image.shape, conf)
+        self.seen_imgsz = imgsz
         return [_FakeResult([
             [10.2, 10.6, 30.4, 30.1, 0.30, 0],
             [40.0, 40.0, 50.0, 55.0, 0.90, 1],
@@ -114,3 +121,18 @@ def test_a_grey_frame_is_expanded_not_refused(fake_detector):
 def test_a_missing_checkpoint_says_how_to_make_one(tmp_path):
     with pytest.raises(FileNotFoundError, match="train_detector"):
         Detector(tmp_path / "nope.pt")
+
+
+def test_the_checkpoints_own_input_size_is_what_it_infers_at(fake_detector):
+    """A model trained at 1280 and inferred at 640 answers a different question.
+
+    ultralytics infers at its own default when `predict` is not told a size,
+    and that default is 640 -- which is also the size the first detector was
+    trained at, so on that checkpoint the inherited value and the library
+    default are the same number and neither a test nor a reader can tell them
+    apart. The size is read off the checkpoint and passed explicitly.
+    """
+    d, fake = fake_detector
+    assert d.imgsz == 1280
+    d.detect(np.zeros((600, 600, 3), dtype=np.uint8))
+    assert fake.seen_imgsz == 1280

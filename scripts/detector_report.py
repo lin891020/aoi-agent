@@ -41,7 +41,20 @@ from aoi_agent.vision.operating_point import best_at_escape_budget, sweep  # noq
 
 BUDGETS = (0.001, 0.0025, 0.005, 0.01, 0.02, 0.05)
 FALSE_CALL = "false_call"
-HISTORY = Path("models/detector_history.json")
+DEFAULT_HISTORY = Path("models/detector_history.json")
+
+
+def history_path(checkpoint: Path) -> Path:
+    """This checkpoint's own training record.
+
+    A second checkpoint at another input size has its own run; reading one
+    fixed path would describe it with the other run's epochs, batch and wall
+    time, and the entry would be wrong in the only place that says what
+    produced the number.
+    """
+    if checkpoint == DEFAULT_CHECKPOINT:
+        return DEFAULT_HISTORY
+    return checkpoint.with_name(checkpoint.stem + "_history.json")
 
 
 def commit() -> str:
@@ -92,7 +105,8 @@ def render(scored: dict, detector: Detector, images: int, mean_ap: float | None)
     n_unflagged = sum(scored["unflagged"].values())
     flagged_defects = int((labels != fc).sum())
     false_calls = int((labels == fc).sum())
-    history = json.loads(HISTORY.read_text()) if HISTORY.exists() else {}
+    record = history_path(detector.checkpoint)
+    history = json.loads(record.read_text()) if record.exists() else {}
 
     emit("### Detector front end — YOLO26n on PCB-AoI, read at the escape budget")
     emit()
@@ -104,11 +118,13 @@ def render(scored: dict, detector: Detector, images: int, mean_ap: float | None)
         f"({np.mean(scored['candidates_per_image']):.1f} an image): {flagged_defects} covering a "
         f"defect and {false_calls} false calls, a prevalence of "
         f"{flagged_defects / len(labels) if len(labels) else 0:.1%}. "
-        f"Trained {history.get('epochs', '?')} epochs on {history.get('train_images', '?')} images "
+        f"Trained {history.get('epochs', '?')} epochs at imgsz "
+        f"{history.get('imgsz', '?')} on {history.get('train_images', '?')} images "
         f"with {history.get('val_boards', '?')} boards held out, {history.get('wall_seconds', 0) / 60:.0f} min on "
         f"{history.get('device', '?')}"
         + (" -- **beside a busy GPU**" if history.get("contended") else "")
-        + f". `scripts/detector_report.py`, checkpoint `{detector.checkpoint.name}`, commit `{commit()}`."
+        + f". Inferred at imgsz {detector.imgsz}. "
+        + f"`scripts/detector_report.py`, checkpoint `{detector.checkpoint.name}`, commit `{commit()}`."
     )
     emit()
     emit("**S0 first.** " + (
