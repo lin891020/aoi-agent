@@ -8166,3 +8166,90 @@ Within that constraint the choice buys an operator a written rationale on the re
 | `ESCALATE_BELOW` | 0.912 | 325 (4.4%) | 920 | 0 |
 | `CONFIDENT` | 0.9470000000000001 | — | — | — |
 
+
+## 2026-08-31 · commit b74def1 — the model-free floor
+
+**Basis: the official DeepPCB test split, 7,322 candidates from 500 boards
+(3,018 real defects, 4,304 false calls) — the same array the re-verifier is
+scored on.** No weights, no training, no calibration set. Each candidate's
+channel 2 (`|test - template|`, built in `vision/patches.build_patch`) is
+reduced to one scalar, mapped monotonically so a *small* difference reads as a
+high `P(false_call)`, and handed to the same `operating_point.sweep` the model
+goes through. `scripts/model_free_baseline.py`.
+
+The script existed from 2026-08-26 and its result had never been written down,
+which is the reason for this entry: the first question an interviewer asks a
+deep-learning claim is what the same job costs without the network, and until
+today this project could not answer it.
+
+| statistic of the difference patch | ≤0.25% | ≤0.50% | ≤1.00% |
+|---|---|---|---|
+| mean `\|test-template\|` | 0.8% (0.23%) | 1.0% (0.50%) | 1.5% (0.99%) |
+| max `\|test-template\|` | 0.1% (0.00%) | 0.1% (0.00%) | 0.1% (0.00%) |
+| sum of top 32 pixels | **1.0%** (0.23%) | **1.3%** (0.50%) | **1.8%** (0.99%) |
+| sum of top 64 pixels | 0.9% (0.23%) | 1.2% (0.50%) | 1.7% (0.99%) |
+| sum of top 128 pixels | 0.9% (0.23%) | 1.2% (0.50%) | 1.6% (0.99%) |
+| count of pixels > 32 | 0.9% (0.23%) | 1.2% (0.46%) | 1.6% (0.96%) |
+| count of pixels > 64 | 0.9% (0.23%) | 1.2% (0.50%) | 1.7% (0.99%) |
+| count of pixels > 96 | 0.9% (0.23%) | 1.2% (0.50%) | 1.7% (0.99%) |
+| count of pixels > 128 | 0.9% (0.23%) | 1.2% (0.50%) | 1.7% (0.99%) |
+| constant score (no signal) | 0.0% (0.00%) | 0.0% (0.00%) | 0.0% (0.00%) |
+| **ResNet-18 re-verifier** | **40.2%** (0.23%) | **52.8%** (0.50%) | **58.3%** (0.99%) |
+
+Review removed, with the achieved escape rate in brackets. **At the ≤0.50%
+budget the best plain reduction of the difference image removes 1.3% of the
+queue and the network removes 52.8% — about 40x.** The `constant score` row is
+the control: a sweep over a signal-free score removes nothing, so the reduction
+the other rows show is signal and not an artefact of how the sweep picks a
+threshold.
+
+`max |test-template|` is the row worth reading twice. It removes essentially
+nothing at any budget, because DeepPCB is binarised: almost every candidate
+patch contains at least one 255-level pixel, defect or not, so the statistic is
+saturated and carries no ordering. That is the differencing stage's own
+limitation stated in one number — and it is the same physical fact that made
+the HRIPCB transfer fail from the other direction, where the defect is a
+36-level difference instead.
+
+**Both sides of this table are read at their best threshold on this split**,
+which is the selection-on-the-reporting-split defect the 2026-08-31 threshold
+work exists to avoid. It is left in deliberately: the comparison is fair
+because the baseline inherits exactly the same optimism, and correcting only
+the model's side would flatter the baseline. The model row here is therefore
+**not** the shipped figure — the shipped threshold is 0.912, chosen
+out-of-fold, and reads 55.6% at 0.66% on this split. Do not quote 52.8% as a
+current headline; it is this table's own oracle reading.
+
+**What this does not establish.** It is a floor for *plain reductions of the
+difference patch*, not for model-free methods in general. Nothing here tries
+connected-component geometry (area, aspect, solidity, distance to the nearest
+trace), morphology, or a gradient-boosted tree over a handful of such features
+— which is the baseline a reviewer would actually reach for, and it is not
+built. What the table does support is narrower and still worth having: the
+signal the network uses is not recoverable by thresholding the difference image
+the AOI stage has already computed, so the re-verifier is doing work rather
+than re-expressing its input.
+
+## 2026-08-31 · commit b74def1
+
+### Seed variance — what a re-run of the whole pipeline lands on
+
+Every figure elsewhere in this file is one seed. The seed moves the by-image split, the initialisation, the shuffling and the threshold the cross-validated selection returns, so it is a source of uncertainty the escape rate's Wilson interval says nothing about. 5 seeds, each running the whole procedure -- 5-fold selection, then a final model on that seed's own split, then the test split read once at that seed's threshold. 48 min. `scripts/seed_variance.py`.
+
+| seed | threshold | out-of-fold escape | test escape | 95% interval | test review removed | oracle on this split |
+|---|---|---|---|---|---|---|
+| 0 | 0.9120 | 0.320% | 0.663% (20/3018) | 0.43%–1.02% | 55.59% | 52.79% @ 0.9609 |
+| 1 | 0.9599 | 0.320% | 0.364% (11/3018) | 0.20%–0.65% | 50.90% | 52.36% @ 0.9418 |
+| 2 | 0.9487 | 0.320% | 0.497% (15/3018) | 0.30%–0.82% | 49.44% | 49.73% @ 0.9457 |
+| 3 | 0.9778 | 0.320% | 0.331% (10/3018) | 0.18%–0.61% | 49.00% | 51.37% @ 0.9638 |
+| 4 | 0.9349 | 0.320% | 0.630% (19/3018) | 0.40%–0.98% | 54.36% | 51.24% @ 0.9738 |
+| **median** | **0.9487** | 0.320% | **0.497%** | — | **50.90%** | 51.37% |
+| range | 0.9120–0.9778 | 0.320%–0.320% | 0.331%–0.663% | — | 49.00%–55.59% | 49.73%–52.79% |
+
+**How much of the spread is the model, and how much is where the threshold landed?** The last column is each seed read at its own oracle on this split -- not deployable, since it is chosen here, but it holds the operating point fixed at the budget and so varies only with the model. Its range is 49.73%–52.79% against 49.00%–55.59% for the deployed column: what that comparison separates is a model that got better or worse from a selection rule that landed further along the same curve.
+
+**The out-of-fold column is identical five times, and that is the rule rather than a bug.** The selection takes the highest threshold whose Wilson *upper bound* at the budget stays inside it, over a pooled out-of-fold set of 6,569 defects. At that denominator 21 escapes give an upper bound of 0.488% and 22 give 0.507%, so the rule can only ever return the threshold that produces exactly 21 -- a fixed escape *count*, not a fixed rate. What the seed moves is which threshold produces it: 0.912 to 0.978 across these five, and that spread is what the deployed column inherits.
+
+**Two intervals, and they are not the same interval.** Within one seed the escape rate carries a Wilson interval, which is sampling error on a fixed model. Across seeds the whole procedure moves, and the spread above is what a re-run lands on. Quoting only the first reads as though re-running would return the same number.
+
+**What this does not cover.** One dataset, one architecture, one recipe, and one test split -- every seed is read on the same 3,018 defect-labelled candidates, so the spread says nothing about a different set of boards. The shipped checkpoint remains seed 0; this is the variance of the procedure, not an error bar on the model that is deployed.
