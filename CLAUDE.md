@@ -103,6 +103,9 @@ uv run python scripts/threshold_sweep.py         # what each graph threshold cos
 uv run python scripts/latency_report.py          # does the reason node fit the response budget?
 uv run python scripts/reverifier_latency.py      # what one candidate costs: MPS vs CPU, cold vs warm (~7 min)
 uv run python scripts/quantisation_report.py     # what INT8 costs at the escape budget (~20 min)
+uv run python scripts/pretrained_ablation.py     # is the ImageNet init worth anything on binarised scans? (~12 min)
+uv run python scripts/seed_variance.py           # what a re-run of the whole procedure lands on (~48 min)
+uv run python scripts/model_free_baseline.py     # the floor: the same job with no network at all
 uv run python scripts/agent_eval.py              # does the agent layer beat the classifier? (~9 min)
 uv run python scripts/analysis_eval.py           # does the planner plan the right lookups, and refuse the rest?
 uv run python scripts/analysis_eval.py --plan-only  # the same score, without the tools and the prose nobody scores

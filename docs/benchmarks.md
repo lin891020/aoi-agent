@@ -8253,3 +8253,61 @@ Every figure elsewhere in this file is one seed. The seed moves the by-image spl
 **Two intervals, and they are not the same interval.** Within one seed the escape rate carries a Wilson interval, which is sampling error on a fixed model. Across seeds the whole procedure moves, and the spread above is what a re-run lands on. Quoting only the first reads as though re-running would return the same number.
 
 **What this does not cover.** One dataset, one architecture, one recipe, and one test split -- every seed is read on the same 3,018 defect-labelled candidates, so the spread says nothing about a different set of boards. The shipped checkpoint remains seed 0; this is the variance of the procedure, not an error bar on the model that is deployed.
+
+## 2026-09-01 · commit 4e26afa
+
+### Does the ImageNet initialisation buy anything here?
+
+`--no-pretrained` has been a switch in `train.py` since the first training run and had never been pulled, so the choice of ImageNet weights was documented as deliberate and never as measured. Both arms over 3 seeds, the same by-image split within each seed, everything else held; each arm read at its own best threshold on the test split, so both inherit the same optimism and neither figure is a deployment number. 12 min. `scripts/pretrained_ablation.py`.
+
+| seed | init | review removed @ budget | achieved escape | test accuracy | epoch 1 val review | best epoch |
+|---|---|---|---|---|---|---|
+| 0 | ImageNet | **52.79%** | 0.497% | 98.6% | 39.8% | 9 |
+| 0 | random | **42.32%** | 0.497% | 96.6% | 30.3% | 9 |
+| 1 | ImageNet | **52.36%** | 0.497% | 97.8% | 38.8% | 7 |
+| 1 | random | **34.29%** | 0.497% | 96.4% | 21.6% | 7 |
+| 2 | ImageNet | **49.73%** | 0.497% | 97.2% | 41.3% | 5 |
+| 2 | random | **43.02%** | 0.497% | 96.4% | 32.7% | 10 |
+| **median** | **ImageNet** | **52.36%** | — | 97.8% | 39.8% | — |
+| **median** | **random** | **42.32%** | — | 96.4% | 30.3% | — |
+
+Paired by seed, ImageNet minus random: +10.46%, +18.07%, +6.71% (median +10.46%).
+
+**The yardstick is the seed spread, not zero.** The 2026-08-31 seed entry measured this same recipe at 49.73%-52.79% review removed across five seeds at their own oracles -- 3.1 points wide with nothing changed at all. A paired difference smaller than that is not a result about the initialisation, and the pairing above is what makes the comparison readable at all: within a seed both arms see the same split.
+
+**The gap is 10 points and the seed spread is 3, so this is a result.** Paired
+within each seed the ImageNet arm wins by 6.71 to 18.07 points, every pair the
+same direction, against a 3.1-point spread for doing nothing. On binarised
+differences of board scans -- which look nothing like ImageNet's photographs --
+the initialisation is worth about a fifth of the review the model removes.
+
+**It also buys stability, which is the half a level-only reading misses.** The
+ImageNet arm spans 49.73%-52.79% across these seeds, 3.1 points, the same width
+the seed entry measured. The random arm spans 34.29%-43.02%, **8.7 points** --
+nearly three times as wide. A random initialisation is not simply a worse
+starting point here; it is a starting point whose outcome depends much more on
+which seed you got, which is the property that makes a single run of it
+unreportable.
+
+**Accuracy would have hidden all of it.** The two arms differ by 1.5 points of
+test accuracy -- 96.4%-96.6% against 97.2%-98.6% -- and by 10 points of review
+removed at the budget. A reader comparing accuracy would have concluded the
+initialisation barely matters. That is the first invariant arriving as evidence
+for the second time, and in the opposite direction to `imgsz=1280`: there a
+validation metric rose while the operating point halved, here an accuracy gap of
+almost nothing sits on top of a decision-relevant one.
+
+**The ImageNet arm reproduces the seed entry exactly**, 52.79% / 52.36% /
+49.73% against the same three seeds' oracle column of 2026-08-31, run from a
+different script on a different day. That is not a finding, it is the check that
+makes the comparison above worth reading: the recipe is deterministic per seed,
+so the only thing that moved between the arms is the one thing that was changed.
+
+**The epoch-1 column says this is not just convergence speed.** ImageNet starts
+9 to 17 points ahead at epoch 1 and is still ahead at epoch 10, and the random
+arm's best epoch is no later (9, 7, 10 against 9, 7, 5). More epochs is
+therefore not the obvious rescue -- though nothing here ran the random arm long
+enough to say it never catches up, and a fixed 10 epochs is the honest limit on
+that claim.
+
+**What this does not establish.** One dataset, one architecture, one recipe, one test split, and a fixed 10 epochs -- an initialisation that only costs convergence time would show up in the epoch-1 column and be gone by epoch 10, which is why that column is here rather than a headline. Nothing about a colour or photographic front end, where the ImageNet features have something to be about.
