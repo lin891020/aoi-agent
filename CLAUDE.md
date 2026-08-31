@@ -551,9 +551,14 @@ but the shape is the finding: a detector's confidence is a localisation score
 with a class head attached, not a calibrated P(false_call), and this front
 end therefore has **no re-verification stage**. The two front ends are not
 interchangeable: one produces candidates for a re-verifier, the other
-produces candidates and an uncalibrated score. Next is a re-verifier over
-detector crops -- the architecture already here, minus the template channel
--- and `imgsz=1280`, which nothing has tried. `scripts/train_detector.py`
+produces candidates and an uncalibrated score. `imgsz=1280` was the one
+untried axis and it was tried on 2026-08-31: **validation mAP50 rose 0.658 ->
+0.712 and review removed at the budget halved, 1.2% -> 0.6%**, because the
+higher-resolution model is more precise (0.765) and less sensitive (0.595)
+and S0 is where sensitivity is the whole job -- 36 defects covered by no box
+against 28. That is the first invariant arriving as evidence: a reader with
+only the validation figure would have shipped it. Nothing ships; the 640
+checkpoint stays the default. `scripts/train_detector.py`
 refuses to run beside a busy GPU; `scripts/detector_report.py` prints the
 sixty-image basis in its first line. Held by `tests/test_detector.py` and
 `tests/test_pcbaoi.py`.

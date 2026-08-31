@@ -52,7 +52,9 @@ def history_path(checkpoint: Path) -> Path:
     time, and the entry would be wrong in the only place that says what
     produced the number.
     """
-    if checkpoint == DEFAULT_CHECKPOINT:
+    # resolved, or a relative path off the command line never equals the
+    # absolute default and the record silently becomes a row of question marks
+    if checkpoint.resolve() == DEFAULT_CHECKPOINT.resolve():
         return DEFAULT_HISTORY
     return checkpoint.with_name(checkpoint.stem + "_history.json")
 

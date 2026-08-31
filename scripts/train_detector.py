@@ -47,7 +47,9 @@ def history_path(out: Path) -> Path:
     run finished last. The default checkpoint keeps the original filename so
     nothing that reads it has to change; anything else carries its own.
     """
-    if out == DEFAULT_CHECKPOINT:
+    # resolved, or a relative path off the command line never equals the
+    # absolute default and the record silently becomes a row of question marks
+    if out.resolve() == DEFAULT_CHECKPOINT.resolve():
         return DEFAULT_HISTORY
     return out.with_name(out.stem + "_history.json")
 

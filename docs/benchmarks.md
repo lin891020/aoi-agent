@@ -7820,3 +7820,95 @@ other value -- and this question stays in the fixture as its standing
 target; it is not built, and the loop it would be mistaken for is not
 either. The other in-house miss ("為什麼 M22 最近怪怪的？") is the cause
 disclaimer, which this model writes on most runs and not on this one.
+
+## 2026-08-31 · commit 7182472
+
+### Detector front end — YOLO26n on PCB-AoI, read at the escape budget
+
+**Basis: 60 test images, 332 annotated defects (Bad_podu 295, Bad_qiaojiao 37).** Sixty images is a small test set and every interval below says so. The detector emitted 716 candidates at a confidence floor of 0.01 (11.9 an image): 473 covering a defect and 243 false calls, a prevalence of 66.1%. Trained 60 epochs at imgsz 1280 on 966 images with 35 boards held out, 210 min on mps. Inferred at imgsz 1280. `scripts/detector_report.py`, checkpoint `detector_pcbaoi_1280.pt`, commit `7182472`.
+
+**S0 first.** 36 of 332 defects (10.8%) were covered by no box at the floor -- Bad_podu 31/295, Bad_qiaojiao 5/37. Those are escapes no threshold below can recover, and the table below is conditional on the rest.
+
+| escape budget | achieved | manual review removed | escapes | 95% interval on the escape rate | false calls dismissed |
+|---|---|---|---|---|---|
+| ≤0.10% | 0.00% | **0.0%** | 0/473 | 0.00%–0.81% | 0/243 |
+| ≤0.25% | 0.21% | **0.3%** | 1/473 | 0.04%–1.19% | 1/243 |
+| ≤0.50% | 0.42% | **0.6%** | 2/473 | 0.12%–1.53% | 2/243 |
+| ≤1.00% | 0.85% | **1.7%** | 4/473 | 0.33%–2.15% | 8/243 |
+| ≤2.00% | 1.90% | **3.5%** | 9/473 | 1.00%–3.58% | 16/243 |
+| ≤5.00% | 4.86% | **9.6%** | 23/473 | 3.26%–7.19% | 46/243 |
+
+The escape rate in this table divides by the defects the detector *flagged*, the way the re-verifier's table divides by the candidates it was handed. Add the unflagged row above to read it as a line rate.
+
+mAP50-95 on the same images: 0.262 (reported for reference only — it weighs every box the same and answers no question about a budget).
+
+**What this does not establish.** One run, one seed, sixty images; no CPU timing (nothing about inference speed is claimed until it is measured the way the re-verifier's was); and the two classes are the dataset's, with no work instruction behind either. The comparison with DeepPCB is a comparison of *readings*, not of numbers: the populations differ and so does the prevalence, which is why both are printed in the first line.
+
+### Adjudication — imgsz 1280: the standard metric improved and the operating point got worse
+
+Written 2026-08-31 against the two entries above, both the same script over
+the same sixty test images.
+
+This was the one thing the detector section named as untried. Same seed, same
+966/245/60 split, the same 35 held-out boards, the same 60 epochs and batch
+16; only `imgsz` moved, 640 -> 1280. The hypothesis was the target size --
+a median 17 px defect on a 600 px frame is small, and four times the pixels
+should find more of them. The failure condition named before the run was that
+coverage and mAP would rise while the review removed at the ≤0.5% budget
+stayed flat.
+
+| | 640 | 1280 |
+|---|---|---|
+| validation mAP50 (245 held-out-board images) | 0.658 | **0.712** |
+| test mAP50 (the 60 test images) | **0.668** | 0.642 |
+| test precision / recall | 0.696 / 0.636 | 0.765 / 0.595 |
+| defects covered by no box at the floor (S0) | **28/332 = 8.4%** | 36/332 = 10.8% |
+| candidates an image | 11.1 | 11.9 |
+| review removed at ≤0.50% escape | **1.2%** | 0.6% |
+| review removed at ≤5% escape | 6.8% | **9.6%** |
+| inference, per test image, MPS, batch 1 | **108 ms** | 394 ms |
+| training wall | **56 min** | 210 min |
+
+**Validation mAP50 rose 5.4 points and the number this project reads halved.**
+That is the first invariant -- report an operating-point curve, never a bare
+metric -- arriving as evidence rather than as a rule. A reader with only the
+validation figure would have shipped this checkpoint.
+
+The mechanism is in precision and recall. At 1280 the detector is more
+precise (0.765 from 0.696) and less sensitive (0.595 from 0.636), which is a
+good trade almost everywhere and the wrong one here: S0 is the stage where
+sensitivity is the entire job. Eight more defects are covered by no box at
+all -- 36 against 28 -- and those are escapes no threshold downstream can
+reach, because the pixels never become a candidate. The extra precision buys
+nothing at the budget: at ≤0.50% two escapes now buy two dismissals where
+they used to buy six.
+
+The ordering did move, and only where nobody is standing. At ≤5% the 1280
+checkpoint removes 9.6% against 6.8%; at ≤0.50% it removes 0.6% against 1.2%.
+A curve that is better in the loose regime and worse in the tight one is a
+detector whose confidence separates the easy cases slightly better and the
+hard ones no better at all.
+
+So this is the **third independent reading of one finding**: a detector's
+confidence is a localisation score with a class head attached, not a
+calibrated P(false call). The first was the sweep on the 640 checkpoint
+(1.2% at the budget against differencing-plus-re-verifier's 52.8% on
+DeepPCB, two lines and two prevalences, so a shape and not a ranking). The
+second was the crop re-verifier, which read 2.8% against the detector's 0.3%
+over the identical 578 candidates. This is the third, and it comes from the
+one axis that had not been tried.
+
+**What this does not establish.** One seed, one run, sixty test images. And
+60 epochs at 1280 may be short of convergence: the schedule was held equal
+on purpose, which means the higher-resolution model got the same number of
+passes over four times as many pixels, and its validation curve was still
+the better of the two. A longer schedule at 1280 is a different experiment
+and is not this one's conclusion. The latency figures are a by-product, MPS
+at batch 1, with no CPU number and no claim attached.
+
+**What changes.** Nothing ships. `models/detector_pcbaoi.pt` stays the 640
+checkpoint and `scripts/detector_report.py` still defaults to it;
+`models/detector_pcbaoi_1280.pt` is kept beside it with its own history file,
+which is what the run-scoped record and the explicit inference size were
+added for. Rebuild either with
+`uv run python scripts/detector_report.py --checkpoint <path>`.
