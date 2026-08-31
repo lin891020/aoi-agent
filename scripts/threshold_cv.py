@@ -81,6 +81,50 @@ def choose(points: list[OperatingPoint], budget: float) -> tuple[OperatingPoint 
     return optimistic, conservative
 
 
+def select_threshold(trainval: PatchSet, *, folds: int, budget: float, epochs: int,
+                     seed: int, device, log=print):
+    """Run the folds and return (out-of-fold probabilities, point choice, guarded choice).
+
+    Lifted out of `main` so `scripts/seed_variance.py` re-runs the *procedure*
+    per seed rather than a paraphrase of it: what an interval over seeds is
+    about is the whole selection, not just the training that precedes it.
+    """
+    label_names = trainval.label_names
+    false_call_index = label_names.index("false_call")
+    parts = folds_by_image(trainval, folds, seed)
+    oof = np.zeros((len(trainval.labels), len(label_names)), dtype=np.float32)
+    covered = np.zeros(len(trainval.labels), dtype=bool)
+
+    for k, held_out in enumerate(parts, 1):
+        rest = np.array([i for i in np.unique(trainval.image_index) if i not in set(held_out)])
+        inner_train, inner_val = inner_split(rest, DEFAULTS["val_fraction"], seed)
+        train_idx = indices_for(trainval, inner_train)
+        val_idx = indices_for(trainval, inner_val)
+        out_idx = indices_for(trainval, set(held_out))
+        log(f"\nfold {k}/{folds}: train {len(train_idx)} / inner val {len(val_idx)} "
+            f"/ held out {len(out_idx)} patches")
+
+        model, _history, _best = fit(
+            Subset(CandidateDataset(trainval, augment=True), train_idx),
+            Subset(CandidateDataset(trainval, augment=False), val_idx),
+            trainval, label_names,
+            epochs=epochs, batch_size=DEFAULTS["batch_size"], lr=DEFAULTS["lr"],
+            seed=seed, device=device, escape_budget=budget,
+            log=lambda line: log("  " + line),
+        )
+        loader = DataLoader(Subset(CandidateDataset(trainval, augment=False), out_idx),
+                            batch_size=256)
+        probabilities, _labels = predict(model, loader, device)
+        oof[out_idx] = probabilities
+        covered[out_idx] = True
+        del model
+
+    assert covered.all(), "every candidate must be predicted by a model that did not train on it"
+    points = sweep(oof[:, false_call_index], trainval.labels, false_call_index)
+    optimistic, conservative = choose(points, budget)
+    return oof, optimistic, conservative
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--patches", type=Path, default=ROOT / "data" / "patches")
@@ -92,6 +136,17 @@ def main() -> int:
     parser.add_argument("--device", default=None)
     args = parser.parse_args()
 
+    # A shortened run writing to models/ is how the shipped threshold's own
+    # provenance file gets replaced by a smoke test -- which happened once, and
+    # was caught only by test_the_shipped_threshold_is_the_one_the_selection_
+    # procedure_chose. Anything but the real settings has to name its own --out.
+    shortened = (args.folds, args.epochs) != (5, DEFAULTS["epochs"])
+    if shortened and args.out == ROOT / "models":
+        print(f"--folds {args.folds} --epochs {args.epochs} is not the selection this "
+              f"project ships; pass --out somewhere else so models/cv_threshold.json "
+              f"keeps naming the run the threshold came from", file=sys.stderr)
+        return 2
+
     trainval = PatchSet.load(args.patches / "trainval.npz")
     label_names = trainval.label_names
     false_call_index = label_names.index("false_call")
@@ -99,39 +154,11 @@ def main() -> int:
     parts = folds_by_image(trainval, args.folds, args.seed)
     print(f"device {device}; {len(np.unique(trainval.image_index))} images "
           f"in {args.folds} folds of {[len(p) for p in parts]}")
-
-    oof_probabilities = np.zeros((len(trainval.labels), len(label_names)), dtype=np.float32)
-    covered = np.zeros(len(trainval.labels), dtype=bool)
     started = time.perf_counter()
-
-    for k, held_out in enumerate(parts, 1):
-        rest = np.array([i for i in np.unique(trainval.image_index) if i not in set(held_out)])
-        inner_train, inner_val = inner_split(rest, DEFAULTS["val_fraction"], args.seed)
-        train_idx = indices_for(trainval, inner_train)
-        val_idx = indices_for(trainval, inner_val)
-        out_idx = indices_for(trainval, set(held_out))
-        print(f"\nfold {k}/{args.folds}: train {len(train_idx)} / inner val {len(val_idx)} "
-              f"/ held out {len(out_idx)} patches")
-
-        model, _history, _best = fit(
-            Subset(CandidateDataset(trainval, augment=True), train_idx),
-            Subset(CandidateDataset(trainval, augment=False), val_idx),
-            trainval, label_names,
-            epochs=args.epochs, batch_size=DEFAULTS["batch_size"], lr=DEFAULTS["lr"],
-            seed=args.seed, device=device, escape_budget=args.budget,
-            log=lambda line: print("  " + line),
-        )
-        loader = DataLoader(Subset(CandidateDataset(trainval, augment=False), out_idx),
-                            batch_size=256)
-        probabilities, _labels = predict(model, loader, device)
-        oof_probabilities[out_idx] = probabilities
-        covered[out_idx] = True
-        del model
-
-    assert covered.all(), "every candidate must be predicted by a model that did not train on it"
+    oof_probabilities, optimistic, conservative = select_threshold(
+        trainval, folds=args.folds, budget=args.budget, epochs=args.epochs,
+        seed=args.seed, device=device)
     labels = trainval.labels
-    points = sweep(oof_probabilities[:, false_call_index], labels, false_call_index)
-    optimistic, conservative = choose(points, args.budget)
     wall = time.perf_counter() - started
 
     print(f"\nout-of-fold: {len(labels)} candidates, "
