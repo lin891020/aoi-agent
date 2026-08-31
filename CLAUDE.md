@@ -164,9 +164,8 @@ board is back under the unscoped reading.
   0.5%**. Counting defects rather than candidates, the reading QP-110 is
   written in, the re-verifier escapes 0.35% and the whole line 0.51%. It read
   **52.8% at 0.50%** until that date, and the interval already said the budget
-  was not established; what the interval could not say is that the threshold
-  had been swept on the same split, so the compliance was bought with the
-  answers. `scripts/prevalence_report.py`.
+  was not established; what the interval could not say is that one split was
+  doing two jobs -- choosing the operating point and reporting it. `scripts/prevalence_report.py`.
 - **The dismissal threshold is never chosen on the split it is reported
   against.** It is chosen out-of-fold over trainval -- `scripts/threshold_cv.py`,
   five folds by image, 6,569 defects behind the choice -- and by the *upper

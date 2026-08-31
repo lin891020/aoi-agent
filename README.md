@@ -76,11 +76,11 @@ budget rather than its point estimate (`scripts/threshold_cv.py`).
 | **deployed** — chosen out-of-fold | 0.912 | 0.66% | 0.43%–1.02% | **55.6%** |
 | oracle on this split — not deployable | 0.961 | 0.50% | 0.30%–0.82% | 52.8% |
 
-The second row is what this README led with until 2026-08-31, and it is the
-defect: that threshold was swept on the same split the figure is read from, so
-its ≤0.5% compliance was bought with the answers. The sweep table below is
-still printed, because as a comparison *between engines* an oracle each is
-fair — it is only a deployment number that it cannot be.
+The second row is what this README led with until 2026-08-31. One split was
+doing two jobs: choosing the operating point and reporting it. As a comparison
+*between engines* that is fair — each gets its own oracle — and the sweep table
+below is still printed for exactly that. What it cannot also be is a deployment
+number, because the point was chosen looking at the split it is quoted on.
 
 | escape budget | best this split reaches | manual review removed |
 |---|---|---|
@@ -102,8 +102,8 @@ fair — it is only a deployment number that it cannot be.
   about twice, and the same factor holds at every threshold tried. The class
   mix of the two populations is the same and the excess sits in `open` and
   `short`. So the budget is not missed by a tuning error — it is missed
-  because trainval boards are easier than the official test boards, and no
-  threshold on this model closes that.
+  because trainval boards are easier than the official test boards. That is a
+  generalisation gap, measured, and no threshold on this model closes it.
 - **Per class.** At the shipped threshold `short` escapes at 1.77%, 2.7× the
   aggregate, in a class no work instruction accepts. The escaped opens have
   `P(open)` < 0.009 — confident errors — so no cut on the model's own output
