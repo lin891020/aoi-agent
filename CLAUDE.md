@@ -165,7 +165,17 @@ board is back under the unscoped reading.
   written in, the re-verifier escapes 0.35% and the whole line 0.51%. It read
   **52.8% at 0.50%** until that date, and the interval already said the budget
   was not established; what the interval could not say is that one split was
-  doing two jobs -- choosing the operating point and reporting it. `scripts/prevalence_report.py`.
+  doing two jobs -- choosing the operating point and reporting it. And since
+  2026-08-31 the headline also names the seed, because every figure in this
+  file is one: over five re-runs of the whole procedure the median is **50.9%
+  at 0.50%**, the range 49.0%-55.6%, and the shipped checkpoint is the best of
+  the five on both axes. Half that spread is the model and half is where the
+  selection rule landed on the same curve -- each seed read at its own oracle
+  spans 3.1 points against the deployed column's 6.6. Two intervals, and they
+  are not the same interval: Wilson is sampling error on a fixed model, the
+  seed spread is what a re-run lands on, and quoting only the first reads as
+  though re-running would return the same number.
+  `scripts/prevalence_report.py`, `scripts/seed_variance.py`.
 - **The dismissal threshold is never chosen on the split it is reported
   against.** It is chosen out-of-fold over trainval -- `scripts/threshold_cv.py`,
   five folds by image, 6,569 defects behind the choice -- and by the *upper
