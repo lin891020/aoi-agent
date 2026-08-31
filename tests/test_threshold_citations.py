@@ -273,19 +273,45 @@ def test_the_sweep_still_agrees_with_the_shipped_values():
     )
 
 
-def test_the_shipped_threshold_meets_the_budget_it_cites():
-    """The constant's own docstring is a claim, and nothing checked it.
+def test_the_shipped_threshold_is_the_one_the_selection_procedure_chose():
+    """Where the number comes from, checked against the file that produced it.
 
-    `DEFAULT_DISMISS_THRESHOLD` is cited to "keeping the re-verification escape
-    rate under 0.5%". The sweep's answer is 0.9154344201087952 and the shipped
-    value was 0.915 -- the nearest round number, which is one *below* it, and at
-    which the split escapes 15 defects rather than 14. 15/2997 is 0.5005%. The
-    citation had been false since the constant was written, by one defect and by
-    five ten-thousandths of a percent.
+    Until 2026-08-31 this test asserted that the shipped threshold escapes ≤0.5%
+    on `test_predictions.npz`. That assertion passed for a reason that made it
+    worthless: the threshold had been *swept* on that same file, so the test was
+    checking the sweep against itself. The threshold is now chosen out-of-fold
+    -- `scripts/threshold_cv.py` -- and what this holds is that the constant is
+    that choice and not a hand-set number near it.
+    """
+    import json
 
-    The other sweep test here re-derives the *graph* constants. This one
-    re-derives the dismissal threshold itself, which is the only one that spends
-    the escape budget.
+    record = Path(__file__).resolve().parents[1] / "models/cv_threshold.json"
+    if not record.exists():
+        pytest.skip("no selection record; run scripts/threshold_cv.py")
+
+    chosen = json.loads(record.read_text())["upper_bound"]["threshold"]
+    assert DEFAULT_DISMISS_THRESHOLD == pytest.approx(chosen, abs=5e-4), (
+        f"DEFAULT_DISMISS_THRESHOLD={DEFAULT_DISMISS_THRESHOLD} is not the "
+        f"out-of-fold choice ({chosen}). Re-run scripts/threshold_cv.py and "
+        f"carry its answer across, or say in docs/architecture.md what chose "
+        f"this instead -- but do not sweep the test split for it."
+    )
+
+
+def test_the_shipped_threshold_misses_the_budget_on_the_held_out_split():
+    """The finding, pinned so it cannot be tuned away.
+
+    An honestly chosen threshold escapes 0.66% here against QP-110's 0.5%, and
+    the procedure that chose it predicted 0.32% out-of-fold. The escape rate on
+    unseen boards is about twice the selection estimate at every threshold
+    measured, with the same class mix on both sides and the excess sitting in
+    `open` and `short`.
+
+    Asserted in this direction on purpose. The tempting repair is to move the
+    threshold until this split complies, which is the exact practice 2026-08-31
+    removed; if a retrain genuinely brings it inside, that is a new measurement
+    and it has to come here and rewrite this test, its docstring, and the
+    paragraph in CLAUDE.md the two of them hold.
     """
     import numpy as np
 
@@ -298,22 +324,27 @@ def test_the_shipped_threshold_meets_the_budget_it_cites():
     false_call = names.index("false_call")
     p_false_call = data["probabilities"][:, false_call]
     is_defect = data["labels"] != false_call
+    escape_rate = float(((p_false_call >= DEFAULT_DISMISS_THRESHOLD) & is_defect).sum()) / int(
+        is_defect.sum()
+    )
 
-    dismissed = p_false_call >= DEFAULT_DISMISS_THRESHOLD
-    escape_rate = float((dismissed & is_defect).sum()) / int(is_defect.sum())
-
-    assert escape_rate <= 0.005, (
-        f"DEFAULT_DISMISS_THRESHOLD={DEFAULT_DISMISS_THRESHOLD} escapes "
-        f"{escape_rate:.4%} of defects, over the 0.5% its docstring cites. "
-        f"Round it up, not to the nearest: higher dismisses less."
+    assert escape_rate > 0.005, (
+        f"the shipped threshold now escapes {escape_rate:.4%}, inside the "
+        f"budget. If a retrain did that, rewrite this test and say so. If the "
+        f"threshold was moved until this split complied, that is choosing on "
+        f"the reporting split again."
     )
 
 
 def test_rounding_the_threshold_down_would_break_the_budget():
-    """The mutation, kept as a test: the value this replaced.
+    """The mutation, kept as a test: a value this one replaced.
 
     Without it somebody tidies 0.916 to 0.915 and the suite stays green while
     the constant stops meeting its citation -- which is exactly what happened.
+    The citation it protects is gone since 2026-08-31 (the shipped threshold no
+    longer meets the budget on this split at all), but the property it checks is
+    not: 0.915 is still on the wrong side, so a hand-tidied constant still shows
+    up here rather than nowhere.
     """
     import numpy as np
 

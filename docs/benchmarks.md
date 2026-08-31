@@ -7912,3 +7912,257 @@ checkpoint and `scripts/detector_report.py` still defaults to it;
 which is what the run-scoped record and the explicit inference size were
 added for. Rebuild either with
 `uv run python scripts/detector_report.py --checkpoint <path>`.
+
+## 2026-08-31 · commit ea7407e
+
+Model: ResNet-18, 3x64x64 (template / test / difference), 10 epochs
+Hardware: MacBook Air M5, 32GB, MPS
+Test split: 7322 AOI candidates from 499 unseen boards (3018 real defects, 4304 false calls)
+
+### Operating points
+
+Every candidate goes to a human today. The model dismisses the ones it is
+confident are false calls; the rest still go to a human.
+
+| escape budget | achieved escape rate | manual review removed | escapes | false calls dismissed |
+|---|---|---|---|---|
+| ≤0.10% | 0.10% | **24.5%** | 3/3018 | 1794/4304 (41.7%) |
+| ≤0.25% | 0.23% | **40.2%** | 7/3018 | 2940/4304 (68.3%) |
+| ≤0.50% | 0.50% | **52.8%** | 15/3018 | 3850/4304 (89.5%) |
+| ≤1.00% | 0.99% | **58.3%** | 30/3018 | 4236/4304 (98.4%) |
+| ≤2.00% | 1.99% | **59.5%** | 60/3018 | 4294/4304 (99.8%) |
+| ≤5.00% | 4.97% | **60.8%** | 150/3018 | 4302/4304 (100.0%) |
+
+### The deployed threshold, read on this split
+
+This is the row the README quotes. The threshold was chosen without
+seeing these labels; the table above gives each budget the best
+threshold *this* split can reach, which is an oracle and is not
+deployable. Both are printed because the gap between them is the
+price of choosing honestly.
+
+| | threshold | escape rate | 95% interval | escapes | manual review removed |
+|---|---|---|---|---|---|
+| **deployed** (out-of-fold over trainval, 5 folds, chosen on the 95% interval's upper bound at ≤0.50% (21/6569 out-of-fold escapes)) | 0.9120 | 0.663% | 0.43%–1.02% | 20/3018 | **55.59%** |
+| oracle on this split (not deployable) | 0.9609 | 0.497% | 0.30%–0.82% | 15/3018 | 52.79% |
+
+
+Overall classification accuracy: 98.6% (reported for reference only — it weighs an escape the same as a false call)
+
+### Whole-line escape rate
+
+Not computed here. This script reads `test_predictions.npz`, which
+holds one row per *candidate* and excludes every candidate labelled
+`fragment` -- so it cannot see whether anything was flagged on a
+given defect, which is exactly the question a line escape rate asks.
+Composing one from an AOI miss rate handed in on the command line is
+what produced the 5.4% this project published until 2026-08-23, and
+that number was wrong by an order of magnitude.
+
+Run `scripts/escape_accounting.py`. It accounts per defect rather
+than per box, with the model in the loop, and reports the two figures
+separately: what the dismissal threshold governs, and what nothing
+recovers.
+
+### Where the escapes are
+
+At the ≤0.5% budget (threshold 0.961):
+
+| defect class | in test set | escaped | escape rate |
+|---|---|---|---|
+| open | 602 | 5 | 0.83% |
+| short | 452 | 7 | 1.55% |
+| mousebite | 558 | 0 | 0.00% |
+| spur | 476 | 1 | 0.21% |
+| copper | 466 | 2 | 0.43% |
+| pin-hole | 464 | 0 | 0.00% |
+
+
+### Per-class escape — one budget over six classes that are not alike
+
+QP-110 is a single number: ≤0.5% of defects may escape. The work instructions are not written that way. WI-201 and WI-202 say **any** confirmed open or short is critical with no acceptable size; the other four are conditional on a measurement. Averaging those together lets the classes nobody may ship subsidise the ones that can be dispositioned. At the shipped threshold `0.912` it does. `scripts/class_escape_report.py`, commit `ea7407e`.
+
+| class | governed by | defects | escaped | escape rate | the document says |
+|---|---|---|---|---|---|
+| **open** | WI-201 | 602 | 7 | **1.16%** | critical — any confirmed instance |
+| **short** | WI-202 | 452 | 8 | **1.77%** | critical — any confirmed instance |
+| mousebite | WI-203 | 558 | 2 | 0.36% | conditional — ≥80% remaining width |
+| spur | WI-204 | 476 | 1 | 0.21% | conditional — ≥50% remaining clearance |
+| copper | WI-205 | 466 | 2 | 0.43% | conditional — full clearance, off footprints |
+| pin-hole | WI-206 | 464 | 0 | 0.00% | conditional — <25% of conductor width |
+| *aggregate* | QP-110 | 3018 | 20 | *0.66%* | ≤0.5% |
+
+**`short` escapes at 1.77%, 2.7× the aggregate**, and it is one of the two classes whose work instruction admits no acceptable instance. Since 2026-08-31 the aggregate (0.66%) does not meet QP-110 either -- the threshold that reported compliance had been swept on this split. What the class split says is unchanged in shape: the classes nobody may ship are the ones subsidised by the four that can be dispositioned.
+
+#### A class-aware rule would be the obvious fix, and it does not close the gap
+
+The classifier emits a full distribution, so a candidate about to be dismissed still carries a `P(short)`. Refusing to dismiss when that is high trades review reduction for escapes recovered — which is what a per-class budget would be built on. The table is `short`, the worst critical class on this checkpoint.
+
+| veto when P(short) > | escapes | shorts escaped | short rate | review removed | cost |
+|---|---|---|---|---|---|
+| *(none)* | 20 | 8 | 1.77% | 55.59% | — |
+| 0.30 | 20 | 8 | 1.77% | 55.59% | 0.00% |
+| 0.10 | 20 | 8 | 1.77% | 55.59% | 0.00% |
+| 0.05 | 19 | 7 | 1.55% | 55.37% | 0.22% |
+| 0.02 | 18 | 7 | 1.55% | 54.48% | 1.11% |
+| 0.01 | 17 | 7 | 1.55% | 53.28% | 2.31% |
+
+**The most a veto buys is 1 of 8, and it does not reach the budget.** At P(short) > 0.05 the class goes to 1.55% for 0.22% of review — still above QP-110's 0.5%. The reason is in the distribution rather than in the threshold: 1 of the 8 escaped shorts carry `P(short)` above 0.05 at all, the rest run from 0.00021 to 0.00528, and on the 444 kept the median is 1.000.
+
+**There is almost no middle ground to threshold.** These are not candidates the model was unsure about — every one of them has `false_call` as its argmax with a probability above 0.91. They are cases it was confidently wrong about, and a veto on its own output reaches at most one of them, because its own output does not know.
+
+**Which moves the question off the operating point.** A per-class budget cannot be met by re-tuning this curve; the information a class-aware rule would need is absent from the only signal available to it. What helps when a model is confidently wrong is not a better threshold on that model — it is a second measurement that does not share its failure. WI-201 already names one, in a clause written for a different situation: *"Suspected open that measures continuous on electrical test."* An open is precisely the class a downstream ICT or flying-probe stage catches independently. **On a line that has one, these 7 are already covered, and the arithmetic that follows is the strongest thing in this report: the remaining 13 escapes over 3018 defects is 0.43%, back inside QP-110. A second measurement is what brings this system into its budget; no threshold on this model does. On a line without one, no threshold in this project closes them.** Which line it is, is a question about the customer's process and not about this model.
+
+**What this does not establish.** Six classes on one split, and the per-class counts are small enough that the intervals in the prevalence section apply here with more force, not less — 7 escapes in 602 opens has a 95% interval of 0.56% to 2.38%. The negative result about the veto is about *this* checkpoint: a model trained with a loss that penalised confident errors on critical classes might well carry the signal this one does not, and nothing here tries that.
+
+### Routing — how much of the queue reaches the LLM
+
+Measured over 8031 stored candidates from 500 boards.
+
+| path | candidates | share | LLM involved |
+|---|---|---|---|
+| dismissed by the vision model | 4468 | 55.6% | no |
+| confirmed by the vision model | 2428 | 30.2% | no |
+| investigated | 1135 | 14.1% | yes |
+
+**85.9% of candidates never reach a language model.** They are dispositioned by the vision model in 2.5ms each on CPU. The LLM is spent only on the fraction that is genuinely ambiguous, which is what makes a 20B model affordable at line rate.
+
+Escapes on the dismissal path: 20 (0.45% of dismissals).
+
+`open` is routed to investigation regardless of confidence, so it never
+appears on the confirm path -- WI-201 calls it the class hardest to separate
+from a registration artefact.
+
+## 2026-08-31 · commit ea7407e
+
+### Whole-line escape rate, recounted on defects instead of boxes
+
+Was **5.4%**. Is **0.51%**. The old figure added an AOI-stage miss rate of 5.0% to the re-verifier's 0.47%, under the sentence "Defects the AOI never caught are already gone and no threshold recovers them". That sentence was true of 5 defects on this split and was being applied to 138.
+
+The 5.0% was never a count of defects the detector failed to find. It counted defects whose best candidate did not clear DeepPCB's IoU 0.33 cut, and 133 of those 138 have a candidate sitting on them -- 96.4%. A matched candidate is on median 0.52x the area of the hand-drawn box it matches, so the whole distribution of best-IoUs piles up just under the cut: median 0.29 against a cut of 0.33. That is a statistic about how tightly this detector draws a box. It was published as a detection failure.
+
+Measured on the test split: 500 boards, 3140 ground-truth defects, the shipped checkpoint, dismissal threshold 0.912.
+
+#### What happens to every defect on the split
+
+| outcome | defects | share | recoverable by a threshold? |
+|---|---|---|---|
+| reaches a person, via a candidate that also clears the IoU cut | 2991 | 95.25% | n/a -- reviewed |
+| reaches a person, but only via a candidate the IoU rule calls a miss | 133 | 4.24% | n/a -- reviewed |
+| flagged, and the re-verifier dismissed every candidate on it | 11 | 0.35% | yes -- this is the dismissal threshold |
+| **never flagged: not one candidate overlaps it** | 5 | 0.16% | **no** |
+
+The third and fourth rows are the escapes: **16 defects, 0.51%**. The second row -- 133 defects -- is what the old number was charging to the line. Every one of them is on an operator's screen.
+
+#### The miss rate is mostly the cut
+
+| detection rule | defects counted missed | share of defects |
+|---|---|---|
+| IoU ≥ 0.50 | 1436 | 45.73% |
+| IoU ≥ 0.40 | 467 | 14.87% |
+| IoU ≥ 0.33 | 138 | 4.39%  ← published as the AOI escape rate |
+| IoU ≥ 0.30 | 83 | 2.64% |
+| IoU ≥ 0.25 | 48 | 1.53% |
+| IoU ≥ 0.20 | 31 | 0.99% |
+| IoU ≥ 0.10 | 13 | 0.41% |
+| any overlap at all | 5 | **0.16%** |
+
+Nothing about the detector changes down that column. Only the cut does. The bottom row is the only one that describes a defect this line cannot see, and it is the one that belongs in an escape rate.
+
+#### The composition
+
+- **never flagged: 0.16%** of defects (5/3140) -- unrecoverable. No threshold, no model and no retrain reaches these; the pixels never reach the classifier.
+- **dismissed by the re-verifier: 0.35%** of the 3135 defects that did reach it (11) -- this is the number the dismissal threshold governs, and the one QP-110's 0.5% budget is written about.
+- **whole line: 0.51%** (0.16% + 0.998 × 0.35%), against 16/3140 = 0.51% counted directly.
+
+Two numbers, not one. They are not interchangeable and adding them into a single headline is what produced the 5.4%: one of them is a knob and the other is a wall. Reporting only the sum tells a reader to go tune the thing that cannot move.
+
+The re-verifier's own escape rate is quoted as 0.35% here and 0.66% in the operating-point table above. Both are right and they count different things: the table counts *candidates* carrying a defect label that were dismissed, this counts *defects* every covering candidate was dismissed on. A defect flagged by three candidates escapes only if all three go, and a defect whose only candidate is a held-out fragment is in this count and not in that one.
+
+#### Where the escapes are
+
+| defect class | on the split | never flagged | dismissed | escape rate |
+|---|---|---|---|---|
+| open | 659 | 2 | 1 | 0.46% |
+| mousebite | 586 | 0 | 1 | 0.17% |
+| spur | 483 | 1 | 1 | 0.41% |
+| short | 478 | 1 | 7 | 1.67% |
+| pin-hole | 470 | 1 | 0 | 0.21% |
+| copper | 464 | 0 | 1 | 0.22% |
+
+The never-flagged 5 are spread over 5 boards, no board contributing more than one, so this is not one bad scan. What they have in common is a cause, and it is in the detector rather than in the data -- see the opening-kernel sweep.
+
+#### What changed in the code
+
+`scripts/report.py` no longer computes a whole-line figure. It had a `--aoi-escape-rate` argument defaulting to 0.050, a number carried over by hand from `build_patches.py`'s miss print, and it had no access to the two things the composition needs: whether anything was flagged on a defect, and what the model did with it. This script owns that section now. `system_escape_rate` is unchanged and still correct -- it was being fed the wrong stage rate, not computing the wrong thing.
+
+### Threshold sweep — `ESCALATE_BELOW` and `CONFIDENT` (2026-08-31 · commit ea7407e)
+
+7322 stored candidates from the official DeepPCB test split (3018 real defects), `fragment` held out. No GPU: the sweep reads the predictions already in the store, the same source `routing_report.py` uses.
+
+Held fixed: `DEFAULT_DISMISS_THRESHOLD` = 0.912, which by itself dismisses 20 real defects — the whole of QP-110's ≤0.5% escape budget. There is no room left in the budget for a second dismissing branch, so the criterion for `ESCALATE_BELOW` is zero *added* escapes, not a share of one.
+
+#### `ESCALATE_BELOW` — the confidence at which a region goes to a person
+
+The only way this branch can add an escape is `decide_node` dismissing: the classifier's class is `false_call`, so `confidence` *is* `P(false call)`, and the region sits in the band [`ESCALATE_BELOW`, `DEFAULT_DISMISS_THRESHOLD`). Everything else the branch does is confirm a defect or hand it over, and neither ships a board.
+
+| `ESCALATE_BELOW` | escalated | decided | of those, dismissed | escapes added | line escape rate | decided class right |
+|---|---|---|---|---|---|---|
+| 0.600 | 60 (0.8%) | 860 | 191 | **8** | 0.928% | 94.3% |
+| 0.650 | 80 (1.1%) | 840 | 177 | **8** | 0.928% | 94.4% |
+| 0.700 | 106 (1.4%) | 814 | 166 | **6** | 0.861% | 95.5% |
+| 0.750 | 133 (1.8%) | 787 | 146 | **5** | 0.828% | 95.9% |
+| 0.800 | 175 (2.4%) | 745 | 117 | **3** | 0.762% | 96.9% |
+| 0.850 | 221 (3.0%) | 699 | 82 | **3** | 0.762% | 97.4% |
+| 0.860 | 230 (3.1%) | 690 | 74 | **3** | 0.762% | 97.4% |
+| 0.870 | 242 (3.3%) | 678 | 66 | **3** | 0.762% | 97.8% |
+| 0.875 | 248 (3.4%) | 672 | 62 | **3** | 0.762% | 97.8% |
+| 0.880 | 257 (3.5%) | 663 | 54 | **3** | 0.762% | 97.7% |
+| 0.890 | 272 (3.7%) | 648 | 42 | **1** | 0.696% | 98.0% |
+| 0.900 | 297 (4.1%) | 623 | 23 | **1** | 0.696% | 98.1% |
+| 0.910 | 317 (4.3%) | 603 | 5 | **0** | 0.663% | 98.2% |
+| 0.912 | 325 (4.4%) | 595 | 0 | **0** | 0.663% | 98.3% |
+| 0.915 | 325 (4.4%) | 595 | 0 | **0** | 0.663% | 98.3% |
+| 0.920 | 331 (4.5%) | 589 | 0 | **0** | 0.663% | 98.5% |
+| 0.950 | 365 (5.0%) | 555 | 0 | **0** | 0.663% | 98.9% |
+| 0.960 | 368 (5.0%) | 552 | 0 | **0** | 0.663% | 99.1% |
+| 0.970 | 372 (5.1%) | 548 | 0 | **0** | 0.663% | 99.1% |
+| 0.980 | 383 (5.2%) | 537 | 0 | **0** | 0.663% | 99.3% |
+| 0.990 | 405 (5.5%) | 515 | 0 | **0** | 0.663% | 99.6% |
+
+The highest-confidence real defect this branch would dismiss carries **0.9060**. So on this grid the lowest threshold adding no escape is **0.910** — not 0.90, which the citation in `docs/architecture.md` claimed until 2026-08-23 and which clears the same bar with -0.006 to spare.
+
+Neither is the value to ship. 0.910 sits 0.0040 above the worst miss on this split: that is a threshold read off the test set at three decimal places, and the next lot's tail lands on top of it. And 0.90 is a round number that happened to be conservative — it was never derived from anything, which is the finding, not the fix.
+
+The value that needs no split at all is `DEFAULT_DISMISS_THRESHOLD` (0.912). At or above it the band is empty by construction: a region the classifier calls `false_call` above that confidence was already dismissed upstream, so it never reaches `decide_node`. The agent branch may confirm a defect; it cannot dismiss one. That holds for any model and survives a retrain, where a swept number would have to be swept again and silently would not be.
+
+#### `CONFIDENT` — the confidence at which the classifier's class skips the LLM
+
+`confirm_node` and `decide_node` write the same verdict: `model_class`. So above `ESCALATE_BELOW` this threshold moves candidates between two paths that disposition them identically. It is a cost gate, not a decision gate — the sweep below is of LLM calls, and the "dispositions changed" column is what makes that claim checkable.
+
+| `CONFIDENT` | confirmed without the LLM | that class right | reaching the LLM | escalated | escapes added | dispositions changed vs 0.9470000000000001 |
+|---|---|---|---|---|---|---|
+| 0.700 | 2396 | 98.7% | 856 | 282 | 0 | **43** |
+| 0.800 | 2381 | 99.1% | 871 | 297 | 0 | **28** |
+| 0.850 | 2370 | 99.3% | 882 | 308 | 0 | **17** |
+| 0.900 | 2357 | 99.4% | 895 | 321 | 0 | **4** |
+| 0.915 | 2353 | 99.4% | 899 | 325 | 0 | **0** |
+| 0.920 | 2349 | 99.4% | 903 | 325 | 0 | **0** |
+| 0.947 | 2332 | 99.5% | 920 | 325 | 0 | **0** |
+| 0.950 | 2330 | 99.5% | 922 | 325 | 0 | **0** |
+| 0.970 | 2310 | 99.7% | 942 | 325 | 0 | **0** |
+| 0.990 | 2254 | 99.8% | 998 | 325 | 0 | **0** |
+| 0.995 | 2221 | 99.9% | 1031 | 325 | 0 | **0** |
+| 0.999 | 1983 | 99.9% | 1269 | 325 | 0 | **0** |
+
+Zero dispositions change anywhere at or above `ESCALATE_BELOW`, and the escape column never moves. Below it the threshold stops being free: it starts confirming, unreviewed, regions the flow would have handed to a person. That is the one thing `CONFIDENT` must not do, and it is a constraint the code can hold rather than a number a sweep can pick — `CONFIDENT` must be at least `ESCALATE_BELOW`.
+
+Within that constraint the choice buys an operator a written rationale on the record, at one 20B-model call each. It is a cost dial and the citation should say so; it is not a decision authority and WI-300 never gave it one.
+
+#### What the constants are set to now
+
+| constant | value | escalated | reaching the LLM | escapes added |
+|---|---|---|---|---|
+| `ESCALATE_BELOW` | 0.912 | 325 (4.4%) | 920 | 0 |
+| `CONFIDENT` | 0.9470000000000001 | — | — | — |
+

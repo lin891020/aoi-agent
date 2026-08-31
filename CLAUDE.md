@@ -136,8 +136,8 @@ docker run --rm -p 8110:8110 \
 
 ## Invariants — do not quietly change these
 
-Nineteen of them, and `scripts/invariant_audit.py` says which ones would
-actually fail a test if broken: **16 enforced, 2 partly enforced, 1
+Twenty of them, and `scripts/invariant_audit.py` says which ones would
+actually fail a test if broken: **17 enforced, 2 partly enforced, 1
 unenforceable**. Each
 entry there names the tests that hold it and states what those tests do not
 cover; adding an invariant here without an entry fails
@@ -158,18 +158,41 @@ board is back under the unscoped reading.
 - **Report an operating-point curve, never bare accuracy.** An escape ships a
   bad board; a false call costs seconds. Headline is "review removed at an
   escape budget" -- and since 2026-08-24 that headline carries an interval.
-  15 escapes in 3,018 defects is 0.50% on this split exactly; read as the rate
-  on unseen defects, which is the only reading that justifies deploying a
-  threshold, the 95% interval runs to 0.82% and **does not exclude exceeding
-  QP-110's budget**. Every escape figure published before that date was a point
-  estimate with nothing beside it. `scripts/prevalence_report.py`.
+  Since 2026-08-31 it also carries a threshold that was not chosen on the split
+  it is read from: **55.6% review removed at 0.66% escape** (20 of 3,018
+  defect-labelled candidates, 95% interval to 1.02%), which **exceeds QP-110's
+  0.5%**. Counting defects rather than candidates, the reading QP-110 is
+  written in, the re-verifier escapes 0.35% and the whole line 0.51%. It read
+  **52.8% at 0.50%** until that date, and the interval already said the budget
+  was not established; what the interval could not say is that the threshold
+  had been swept on the same split, so the compliance was bought with the
+  answers. `scripts/prevalence_report.py`.
+- **The dismissal threshold is never chosen on the split it is reported
+  against.** It is chosen out-of-fold over trainval -- `scripts/threshold_cv.py`,
+  five folds by image, 6,569 defects behind the choice -- and by the *upper
+  bound* of the interval rather than the point estimate, because a budget is a
+  promise about defects nobody has seen. Both halves were measured before they
+  were adopted: on the single validation split one defect is 0.10%, and the
+  point-estimate rule there picks 0.610, which escapes 0.93% on test. What the
+  honest choice costs is stated rather than hidden, and what it exposed is
+  larger than the threshold: **the selection set does not predict the
+  deployment set.** The procedure estimated 0.32% out-of-fold and this split
+  measures 0.66%, about twice, at every threshold tried, with the same class
+  mix on both sides and the excess in `open` and `short`. So no threshold on
+  this model meets the budget honestly, and the thing that does is the same
+  thing the class-escape section already names -- a second measurement, and
+  the arithmetic is in the escape-accounting entry: with electrical test
+  covering the 7 escaped opens the remaining 13 of 3,018 is 0.43%, inside
+  QP-110. Held by `tests/test_threshold_selection.py` and
+  `tests/test_threshold_citations.py`.
 - **A published figure names the run it came from.** `docs/benchmarks.md` is
   append-only and newest-last, so the file already says which measurement is
   current; what nothing checked until 2026-08-26 was whether the documents
   quoting it had kept up. They had not. `README.md` opened with **56.2% review
   removed over 8,143 candidates** -- a table produced on 2026-08-22 by a tree
   whose own benchmarks header reads `commit uncommitted`, so unreproducible even
-  in principle -- while the shipped checkpoint measures **52.8% over 7,322**.
+  in principle -- while the shipped checkpoint measured **52.8% over 7,322** at
+  the threshold of that day, and **55.6% at 0.912** since 2026-08-31.
   The code was right the whole time: registration was turned on, the population
   fell, the model was retrained and the threshold re-swept from 0.915 to 0.961,
   exactly as `retraining-the-reverifier` requires. Only the prose was left

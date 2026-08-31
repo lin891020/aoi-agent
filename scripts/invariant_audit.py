@@ -126,6 +126,39 @@ REGISTRY: tuple[Entry, ...] = (
         ),
     ),
     Entry(
+        match="The dismissal threshold is never chosen on the split it is reported",
+        status=ENFORCED,
+        tests=(
+            "tests/test_threshold_selection.py::test_the_upper_bound_rule_refuses_a_point_estimate_that_only_just_fits",
+            "tests/test_threshold_selection.py::test_a_larger_selection_set_buys_back_review_at_the_same_budget",
+            "tests/test_threshold_selection.py::test_no_threshold_clears_the_budget_is_a_refusal_not_a_fallback",
+            "tests/test_threshold_selection.py::test_the_folds_train_with_the_shipped_recipe_not_a_copy_of_it",
+            "tests/test_threshold_selection.py::test_the_folds_cover_every_candidate_exactly_once",
+            "tests/test_threshold_citations.py::test_the_shipped_threshold_is_the_one_the_selection_procedure_chose",
+            "tests/test_threshold_citations.py::test_the_shipped_threshold_misses_the_budget_on_the_held_out_split",
+            "tests/test_report_curve.py::test_the_deployed_threshold_is_published_beside_the_oracle_it_replaced",
+        ),
+        note=(
+            "Both halves. The selection rule is held as a pure function -- the "
+            "upper bound refuses a point estimate that only just fits, a larger "
+            "selection set buys review back at the same budget, and no "
+            "threshold clearing it is a refusal rather than a fallback -- and "
+            "the shipped constant is compared against `models/cv_threshold.json` "
+            "rather than trusted. The finding it exposed is pinned in the "
+            "opposite direction: the shipped threshold *misses* the budget on "
+            "the held-out split, so the tempting repair, moving it until that "
+            "split complies, fails the suite instead of passing quietly."
+        ),
+        proved_by=(
+            "DEFAULT_DISMISS_THRESHOLD set back to 0.961: "
+            "test_the_shipped_threshold_is_the_one_the_selection_procedure_chose "
+            "and test_the_shipped_threshold_misses_the_budget_on_the_held_out_split "
+            "both fail. `choose` returning the point estimate for both slots: "
+            "2 failed. The deployed section removed from scripts/report.py: "
+            "1 failed."
+        ),
+    ),
+    Entry(
         match="A published figure names the run it came from",
         status=ENFORCED,
         tests=(

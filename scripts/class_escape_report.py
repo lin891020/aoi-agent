@@ -141,62 +141,86 @@ def render(probabilities, labels, names: list[str]) -> str:
     emit(
         f"**`{worst[0]}` escapes at {worst[1]:.2%}, {worst[1] / aggregate:.1f}× the "
         f"aggregate**, and it is one of the two classes whose work instruction "
-        f"admits no acceptable instance. The single budget is met and the class "
-        f"that matters most is the one exceeding it."
+        f"admits no acceptable instance. Since 2026-08-31 the aggregate "
+        f"({aggregate:.2%}) does not meet QP-110 either -- the threshold that "
+        f"reported compliance had been swept on this split. What the class "
+        f"split says is unchanged in shape: the classes nobody may ship are "
+        f"the ones subsidised by the four that can be dispositioned."
     )
 
     # ---- could a class-aware veto fix it? --------------------------------
+    # Tabulated for the *worst* critical class, not for `open`. Fixing it on
+    # `open` is the same defect the aggregate has, one level down: at 0.912 the
+    # only critical escape any veto recovers is a `short`, and a table about
+    # `open` shows a flat column and reads as though the question were closed.
+    veto_name, _veto_rate = worst
+    veto_index = names.index(veto_name)
+    is_veto_class = labels == veto_index
+    baseline_review = float(dismissed.mean())
+    escaped_p = probabilities[dismissed & is_veto_class][:, veto_index]
+    kept_p = probabilities[~dismissed & is_veto_class][:, veto_index]
+    total_veto_class = int(is_veto_class.sum())
+    baseline_escapes = int((dismissed & is_veto_class).sum())
+
     emit()
-    emit("#### A class-aware rule would be the obvious fix, and it does not work")
+    emit("#### A class-aware rule would be the obvious fix, and it does not close the gap")
     emit()
     emit(
-        "The classifier emits a full distribution, so a candidate about to be "
-        "dismissed still carries a `P(open)`. Refusing to dismiss when that is "
-        "high trades review reduction for escapes recovered — which is what a "
-        "per-class budget would be built on."
+        f"The classifier emits a full distribution, so a candidate about to be "
+        f"dismissed still carries a `P({veto_name})`. Refusing to dismiss when "
+        f"that is high trades review reduction for escapes recovered — which is "
+        f"what a per-class budget would be built on. The table is `{veto_name}`, "
+        f"the worst critical class on this checkpoint."
     )
     emit()
-    emit("| veto when P(open) > | escapes | opens escaped | open rate | "
-         "review removed | cost |")
+    emit(f"| veto when P({veto_name}) > | escapes | {veto_name}s escaped | "
+         f"{veto_name} rate | review removed | cost |")
     emit("|---|---|---|---|---|---|")
-    is_open = labels == open_index
-    baseline_review = float(dismissed.mean())
     emit(
-        f"| *(none)* | {int((dismissed & is_defect).sum())} | "
-        f"{int((dismissed & is_open).sum())} | "
-        f"{float((dismissed & is_open).sum()) / int(is_open.sum()):.2%} | "
-        f"{baseline_review:.2%} | — |"
+        f"| *(none)* | {int((dismissed & is_defect).sum())} | {baseline_escapes} | "
+        f"{baseline_escapes / total_veto_class:.2%} | {baseline_review:.2%} | — |"
     )
     for veto in VETOES:
-        kept = dismissed & ~(probabilities[:, open_index] > veto)
-        opens = int((kept & is_open).sum())
+        kept = dismissed & ~(probabilities[:, veto_index] > veto)
+        recovered = int((kept & is_veto_class).sum())
         emit(
-            f"| {veto:.2f} | {int((kept & is_defect).sum())} | {opens} | "
-            f"{opens / int(is_open.sum()):.2%} | {float(kept.mean()):.2%} | "
+            f"| {veto:.2f} | {int((kept & is_defect).sum())} | {recovered} | "
+            f"{recovered / total_veto_class:.2%} | {float(kept.mean()):.2%} | "
             f"{baseline_review - float(kept.mean()):.2%} |"
         )
 
-    # ---- why not -----------------------------------------------------------
-    escaped_opens = probabilities[dismissed & is_open]
-    kept_opens = probabilities[~dismissed & is_open]
-    emit()
-    emit(
-        f"**Nothing moves until the veto is absurd, and then it costs more than "
-        f"it buys.** The reason is in the distribution, not in the threshold: on "
-        f"the {len(escaped_opens)} opens this model dismisses, `P(open)` runs "
-        f"from {escaped_opens[:, open_index].min():.5f} to "
-        f"{escaped_opens[:, open_index].max():.5f}. On the "
-        f"{len(kept_opens)} it keeps, the median is "
-        f"{float(np.median(kept_opens[:, open_index])):.3f}."
+    reachable = int((escaped_p >= 0.05).sum())
+    best = min(
+        (
+            (
+                int((dismissed & ~(probabilities[:, veto_index] > v) & is_veto_class).sum()),
+                v,
+                baseline_review - float((dismissed & ~(probabilities[:, veto_index] > v)).mean()),
+            )
+            for v in VETOES
+        ),
+        key=lambda row: (row[0], row[2]),
     )
     emit()
     emit(
-        "**There is no middle ground to threshold.** These are not candidates "
-        "the model was unsure about — every one of them has `false_call` as its "
-        "argmax with a probability above 0.94, and two of them put `P(open)` "
-        "below 0.0001. They are cases it was confidently wrong about, and no "
-        "veto on its own output can separate them, because its own output does "
-        "not know."
+        f"**The most a veto buys is {baseline_escapes - best[0]} of "
+        f"{baseline_escapes}, and it does not reach the budget.** At "
+        f"P({veto_name}) > {best[1]:.2f} the class goes to "
+        f"{best[0] / total_veto_class:.2%} for {best[2]:.2%} of review — still "
+        f"above QP-110's 0.5%. The reason is in the distribution rather than in "
+        f"the threshold: {reachable} of the {baseline_escapes} escaped "
+        f"{veto_name}s carry `P({veto_name})` above 0.05 at all, the rest run "
+        f"from {escaped_p.min():.5f} to {np.sort(escaped_p)[::-1][1:].max():.5f}, "
+        f"and on the {len(kept_p)} kept the median is "
+        f"{float(np.median(kept_p)):.3f}."
+    )
+    emit()
+    emit(
+        "**There is almost no middle ground to threshold.** These are not "
+        "candidates the model was unsure about — every one of them has "
+        "`false_call` as its argmax with a probability above 0.91. They are "
+        "cases it was confidently wrong about, and a veto on its own output "
+        "reaches at most one of them, because its own output does not know."
     )
     # The two paragraphs below are about `open` specifically -- it is the class
     # WI-201 sends to electrical test -- so their counts come from the table
@@ -217,8 +241,14 @@ def render(probabilities, labels, names: list[str]) -> str:
         "different situation: *\"Suspected open that measures continuous on "
         "electrical test.\"* An open is precisely the class a downstream ICT or "
         "flying-probe stage catches independently. **On a line that has one, "
-        f"these {open_escaped} are already covered and the aggregate budget is "
-        "the right shape after all. On a line that does not, no threshold in "
+        f"these {open_escaped} are already covered, and the arithmetic that "
+        f"follows is the strongest thing in this report: the remaining "
+        f"{int((dismissed & is_defect).sum()) - open_escaped} escapes over "
+        f"{int(is_defect.sum())} defects is "
+        f"{(int((dismissed & is_defect).sum()) - open_escaped) / int(is_defect.sum()):.2%}, "
+        f"back inside QP-110. A second measurement is what brings this system "
+        f"into its budget; no threshold on this model does. On a line without "
+        "one, no threshold in "
         "this project closes them.** Which line it is, is a question about the "
         "customer's process and not about this model."
     )

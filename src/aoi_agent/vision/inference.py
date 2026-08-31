@@ -16,26 +16,31 @@ from aoi_agent.vision.patches import PATCH_SIZE, build_patch
 
 DEFAULT_CHECKPOINT = Path("models/reverifier.pt")
 
-#: Dismissal threshold from the operating-point sweep on the held-out test
-#: split: the highest review reduction available while keeping the
-#: re-verification escape rate under 0.5%. See docs/benchmarks.md.
+#: Dismissal threshold, chosen **out-of-fold on trainval and never on the split
+#: it is reported against** -- `scripts/threshold_cv.py`, five folds by image,
+#: 6,569 defects behind the choice, taking the lowest threshold whose 95%
+#: interval upper bound clears the 0.5% budget rather than its point estimate.
+#: A budget is a promise about defects nobody has seen, so it has to be cleared
+#: with the interval; on the single validation split one defect is 0.10% and the
+#: point-estimate rule picked 0.610, which escapes 0.93% on test.
 #:
-#: The sweep's own answer is 0.9609377384185791, rounded **up**. That direction
-#: is the whole of the note: higher dismisses less, so up is the safe side and
-#: rounding to the nearest is a coin. It was 0.915 until 2026-08-24 -- the
-#: previous model's value rounded to the *nearest*, one notch below its sweep,
-#: at which the split escaped 15 defects rather than 14: 0.5005%, over the
-#: budget this line is cited to satisfy. The citation had been false since it
-#: was written.
+#: **It was 0.961 until 2026-08-31, swept on `test_predictions.npz` -- the same
+#: split every published figure is read from.** As a comparison between engines
+#: that is fair, each getting its own oracle; as a deployment number it had seen
+#: the answers, and the ≤0.5% compliance the README led with was bought with
+#: them. Before that it was 0.915, the previous model's sweep rounded to the
+#: nearest rather than up, which escaped 0.5005% against the same budget.
 #:
-#: Moved to 0.961 the same day, when registration was turned on in the
-#: detector. That changed the candidate population -- 11.5% fewer, the easy
-#: false calls residual misalignment was producing -- so the model was retrained
-#: and the threshold re-swept, which is the chain
-#: `.claude/skills/retraining-the-reverifier` exists to make unskippable.
-#: `test_the_shipped_threshold_meets_the_budget_it_cites` re-derives this from
-#: the stored predictions rather than trusting either number.
-DEFAULT_DISMISS_THRESHOLD = 0.961
+#: What the honest choice costs is stated rather than hidden: at 0.912 the
+#: held-out split escapes **0.663%, over QP-110's 0.5%**, while the procedure
+#: that chose it predicted 0.320% out-of-fold. The escape rate on unseen boards
+#: is about twice the selection estimate at every threshold measured, the class
+#: mix of the two populations is the same, and the excess sits in `open` and
+#: `short` -- the two classes the work instructions admit no acceptable size
+#: for. So this checkpoint, honestly configured, does not meet the budget, and
+#: no threshold on this model does without a selection set that predicts unseen
+#: boards better than trainval does. See docs/benchmarks.md, 2026-08-31.
+DEFAULT_DISMISS_THRESHOLD = 0.912
 
 #: Below this the model is not confident enough about *any* class for the
 #: verdict to stand on its own, and the case is worth escalating.

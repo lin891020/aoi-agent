@@ -2,6 +2,17 @@
 
 Produces the numbers that go in the README: how much of the manual review
 queue the model removes at each escape budget the line might accept.
+
+Two readings, and they are not interchangeable:
+
+* the **sweep table** gives each budget the best threshold this split can
+  reach. That is a fair comparison between engines -- every engine gets its
+  own oracle -- and it is what this file has always printed.
+* the **deployment row** reports what one already-chosen threshold does here.
+  Pass `--threshold`, or let it read `models/cv_threshold.json`, which
+  `scripts/threshold_cv.py` writes from out-of-fold predictions that never
+  touched this split. A threshold swept on the test predictions has seen the
+  answers, and until 2026-08-31 that was the number this project shipped.
 """
 
 from __future__ import annotations
@@ -16,6 +27,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from aoi_agent.stats import wilson  # noqa: E402
 from aoi_agent.vision.operating_point import (  # noqa: E402
     best_at_escape_budget,
     sweep,
@@ -39,6 +51,9 @@ def main() -> int:
         "--predictions", type=Path, default=Path("models/test_predictions.npz")
     )
     parser.add_argument("--out", type=Path, default=Path("docs/benchmarks.md"))
+    parser.add_argument("--threshold", type=float, default=None,
+                        help="the deployed threshold; default reads models/cv_threshold.json")
+    parser.add_argument("--cv", type=Path, default=Path("models/cv_threshold.json"))
     args = parser.parse_args()
 
     data = np.load(args.predictions, allow_pickle=False)
@@ -88,6 +103,45 @@ def main() -> int:
         )
 
     headline = best_at_escape_budget(points, 0.005)
+
+    deployed, source = args.threshold, "given on the command line"
+    if deployed is None and args.cv.exists():
+        import json
+
+        record = json.loads(args.cv.read_text())
+        chosen = record.get("upper_bound") or record.get("point_estimate")
+        if chosen:
+            deployed = chosen["threshold"]
+            source = (f"out-of-fold over trainval, {record['folds']} folds, chosen on the "
+                      f"95% interval's upper bound at ≤{record['budget']:.2%} "
+                      f"({chosen['escapes']}/{chosen['defects_total']} out-of-fold escapes)")
+
+    if deployed is not None:
+        point = sweep(p_false_call, labels, false_call_index,
+                      thresholds=np.array([deployed]))[0]
+        low, high = wilson(point.escapes, point.defects_total)
+        emit()
+        emit("### The deployed threshold, read on this split")
+        emit()
+        emit("This is the row the README quotes. The threshold was chosen without")
+        emit("seeing these labels; the table above gives each budget the best")
+        emit("threshold *this* split can reach, which is an oracle and is not")
+        emit("deployable. Both are printed because the gap between them is the")
+        emit("price of choosing honestly.")
+        emit()
+        emit("| | threshold | escape rate | 95% interval | escapes | manual review removed |")
+        emit("|---|---|---|---|---|---|")
+        emit(f"| **deployed** ({source}) | {deployed:.4f} | {point.escape_rate:.3%} | "
+             f"{low:.2%}–{high:.2%} | {point.escapes}/{point.defects_total} | "
+             f"**{point.review_reduction:.2%}** |")
+        if headline:
+            oracle_low, oracle_high = wilson(headline.escapes, headline.defects_total)
+            emit(f"| oracle on this split (not deployable) | {headline.threshold:.4f} | "
+                 f"{headline.escape_rate:.3%} | {oracle_low:.2%}–{oracle_high:.2%} | "
+                 f"{headline.escapes}/{headline.defects_total} | "
+                 f"{headline.review_reduction:.2%} |")
+        emit()
+
     emit()
     emit(f"Overall classification accuracy: {accuracy:.1%} "
          f"(reported for reference only — it weighs an escape the same as a false call)")

@@ -379,7 +379,8 @@ def render(accounting: Accounting, split: str, threshold: float, boards: int) ->
          "the thing that cannot move.")
     emit()
     emit(f"The re-verifier's own escape rate is quoted as {a.reverifier_rate:.2%} "
-         f"here and 0.47% in the operating-point table above. Both are right and "
+         f"here and {per_candidate_rate():.2%} in the operating-point table above. "
+         f"Both are right and "
          f"they count different things: the table counts *candidates* carrying a "
          f"defect label that were dismissed, this counts *defects* every covering "
          f"candidate was dismissed on. A defect flagged by three candidates "
@@ -413,6 +414,30 @@ def render(accounting: Accounting, split: str, threshold: float, boards: int) ->
          "now. `system_escape_rate` is unchanged and still correct -- it was "
          "being fed the wrong stage rate, not computing the wrong thing.")
     return out
+
+
+
+def per_candidate_rate() -> float:
+    """The other reading of the same threshold, computed rather than quoted.
+
+    This sentence carried a literal 0.47% -- true of the threshold shipped on
+    2026-08-24 and reprinted on every run after it, which is the defect
+    `tests/test_published_figures.py` exists for, one file over. The two rates
+    answer different questions and both belong here; neither may be a constant.
+    """
+    import numpy as np
+
+    from aoi_agent.vision.inference import DEFAULT_DISMISS_THRESHOLD
+
+    predictions = Path(__file__).resolve().parents[1] / "models" / "test_predictions.npz"
+    if not predictions.exists():
+        return float("nan")
+    data = np.load(predictions, allow_pickle=False)
+    names = [str(n) for n in data["label_names"]]
+    false_call = names.index("false_call")
+    is_defect = data["labels"] != false_call
+    dismissed = data["probabilities"][:, false_call] >= DEFAULT_DISMISS_THRESHOLD
+    return float((dismissed & is_defect).sum()) / int(is_defect.sum())
 
 
 def main() -> int:

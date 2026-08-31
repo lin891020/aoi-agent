@@ -79,7 +79,12 @@ def run_report(tmp_path, monkeypatch) -> str:
     monkeypatch.setattr(
         sys,
         "argv",
-        ["report.py", "--predictions", str(predictions), "--out", str(out)],
+        # `--cv` at a path that does not exist: these tests are about the curve,
+        # and letting the script find the real selection record would put the
+        # deployed threshold of the day into a fixture built from synthetic
+        # scores.
+        ["report.py", "--predictions", str(predictions), "--out", str(out),
+         "--cv", str(tmp_path / "no-such-selection.json")],
     )
     assert report.main() == 0
     return out.read_text()
@@ -231,3 +236,47 @@ def test_accuracy_is_not_the_headline(published):
             f"{value:.1%} is emphasised in the report but is not one of the "
             "operating-point figures"
         )
+
+
+def test_the_deployed_threshold_is_published_beside_the_oracle_it_replaced(
+    tmp_path, monkeypatch
+):
+    """The section added on 2026-08-31, and the reason it exists.
+
+    The sweep table gives every budget the best threshold *this* split reaches,
+    which is an oracle: fair between engines, and not deployable. A threshold
+    chosen elsewhere has to be reported here as what it does on this split, and
+    the two have to appear together -- printing only the oracle is how a figure
+    that had seen the answers was published as a deployment number for nine
+    days.
+    """
+    import json
+
+    predictions = tmp_path / "test_predictions.npz"
+    out = tmp_path / "benchmarks.md"
+    synthetic_predictions(predictions)
+    record = tmp_path / "cv.json"
+    record.write_text(json.dumps({
+        "folds": 5, "budget": 0.005,
+        "upper_bound": {"threshold": 0.8, "escapes": 3, "defects_total": 900,
+                        "escape_rate": 0.0033, "review_reduction": 0.4},
+    }))
+    monkeypatch.setattr(
+        sys, "argv",
+        ["report.py", "--predictions", str(predictions), "--out", str(out),
+         "--cv", str(record)],
+    )
+    assert report.main() == 0
+    text = out.read_text()
+
+    assert "0.8000" in text, "the deployed threshold itself is not printed"
+    assert "out-of-fold" in text, "the deployed row does not say what chose it"
+    assert "not deployable" in text, (
+        "the oracle row is printed without saying it is one, which is the "
+        "confusion this section exists to end"
+    )
+    deployed = text.index("deployed")
+    assert text.index("oracle on this split", deployed) > deployed, (
+        "the oracle is printed above the deployed row; the deployed row is the "
+        "one a reader should take away"
+    )
