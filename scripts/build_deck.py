@@ -45,7 +45,11 @@ IMG = OUT / "img"
 SCREENSHOTS = ROOT / "docs" / "screenshots"
 DIAGRAMS = ROOT / "docs" / "diagrams"
 ARCH_PAGE = ROOT / "docs" / "architecture-diagram.html"
-REACH_PAGE = OUT / "planner-reach.zh-TW.html"
+# Hand-authored diagram pages, dark so a slide takes the screenshot unaltered.
+AUTHORED = {
+    "planner_reach.png": OUT / "planner-reach.zh-TW.html",
+    "model_blind_spot.png": OUT / "model-blind-spot.zh-TW.html",
+}
 PREDICTIONS = ROOT / "models" / "test_predictions.npz"
 VIDEO = ROOT / "docs" / "demo" / "aoi-agent-demo-zh.mp4"
 VIDEO_LINK = "https://github.com/lin891020/aoi-agent/releases/tag/demo-2026-08-28"
@@ -123,20 +127,21 @@ def _render_pages() -> dict[str, Path]:
             page.locator("svg").first.screenshot(path=str(target))
             made[name] = target
             html_path.unlink(missing_ok=True)
-        # The planner-reach diagram is a page of its own, authored dark so it sits
-        # on a slide unaltered. A short viewport lets full_page cut it at its content.
-        if REACH_PAGE.exists():
+        # A short viewport lets full_page cut each authored page at its content.
+        for name, source in AUTHORED.items():
+            if not source.exists():
+                continue
             page = browser.new_page(viewport={"width": 1900, "height": 400},
                                     device_scale_factor=2)
-            page.goto(REACH_PAGE.as_uri())
+            page.goto(source.as_uri())
             page.wait_for_load_state("networkidle")
             # The page's own headline is for the standalone read; on a slide the
             # slide already has a title and two headlines is one too many.
             page.add_style_tag(content="header{display:none}.wrap{padding-top:26px}")
             page.wait_for_timeout(700)
-            target = IMG / "planner_reach.png"
+            target = IMG / name
             page.screenshot(path=str(target), full_page=True)
-            made["planner_reach.png"] = target
+            made[name] = target
         browser.close()
     for name in ("architecture.png", "flow_disposition.png", "flow_analysis.png"):
         if name in made:

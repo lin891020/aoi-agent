@@ -1,0 +1,135 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>模型的盲點</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root{
+    --ground:#15171A; --panel:#1E2125; --panel-2:#23272C;
+    --ink:#E8E6E1; --dim:#9AA0A6; --rule:#2E333A;
+    --accent:#6FC7CF; --accent-dim:#3C6A70; --warn:#E2B45F; --warn-dim:#6B5628;
+    --sans:"Noto Sans TC",-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);
+       -webkit-font-smoothing:antialiased;line-height:1.6}
+  .wrap{max-width:1820px;margin:0 auto;padding:40px 36px 34px}
+
+  header{margin-bottom:24px}
+  h1{margin:0 0 6px;font-size:31px;font-weight:700;letter-spacing:.01em;text-wrap:balance}
+  .sub{margin:0;color:var(--dim);font-size:16px}
+
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:stretch}
+  .col{background:var(--panel);border:1px solid var(--rule);border-radius:8px;
+       padding:20px 20px 18px;display:flex;flex-direction:column;gap:13px}
+  .col.a{border-color:var(--accent-dim)}
+  .col.b{border-color:var(--warn-dim)}
+
+  .eyebrow{display:flex;align-items:baseline;gap:10px;font-family:var(--mono);
+           font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .eyebrow b{font-family:var(--sans);font-size:19px;font-weight:700;letter-spacing:.02em}
+  .col.a .eyebrow b{color:var(--accent)}
+  .col.b .eyebrow b{color:var(--warn)}
+
+  .asks{background:var(--panel-2);border-left:3px solid var(--rule);border-radius:0 6px 6px 0;
+        padding:10px 14px}
+  .col.a .asks{border-left-color:var(--accent)}
+  .col.b .asks{border-left-color:var(--warn)}
+  .asks .k{font-family:var(--mono);font-size:11px;letter-spacing:.12em;color:var(--dim);
+           text-transform:uppercase;display:block;margin-bottom:2px}
+  .asks .v{font-size:17px;font-weight:500}
+
+  .label{font-family:var(--mono);font-size:11px;letter-spacing:.13em;color:var(--dim);
+         text-transform:uppercase;margin-bottom:-7px}
+
+  .rows{display:flex;flex-direction:column;gap:6px}
+  .row{display:flex;gap:12px;align-items:baseline;background:var(--panel-2);
+       border:1px solid var(--rule);border-radius:6px;padding:8px 12px;font-size:14.5px}
+  .row .n{font-family:var(--mono);font-size:16px;font-weight:500;min-width:74px;text-align:right}
+  .col.a .row .n{color:var(--accent)}
+  .col.b .row .n{color:var(--warn)}
+  .row.good{border-color:var(--accent-dim)}
+  .row .t{color:var(--ink)}
+  .row .t em{font-style:normal;color:var(--dim)}
+
+  .verdict{border-top:1px dashed var(--rule);padding-top:11px;margin-top:2px}
+  .verdict p{margin:0;font-size:15px}
+  .verdict b{font-weight:500}
+  .col.a .verdict b{color:var(--accent)}
+  .col.b .verdict b{color:var(--warn)}
+
+  .foot{margin-top:20px;background:var(--panel);border:1px solid var(--rule);
+        border-radius:8px;padding:18px 22px;display:grid;
+        grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:14px 26px;align-items:start}
+  .foot .key{font-family:var(--mono);font-size:11px;letter-spacing:.14em;color:var(--dim);
+             text-transform:uppercase;display:block;margin-bottom:6px}
+  .foot p{margin:0;font-size:16.5px}
+  .foot b{color:var(--accent);font-weight:500}
+  .fix{display:flex;flex-direction:column;gap:7px}
+  .fix div{font-size:14.5px;background:var(--panel-2);border:1px solid var(--rule);
+           border-radius:6px;padding:8px 12px}
+  .fix span{color:var(--dim);font-family:var(--mono);font-size:11.5px;
+            letter-spacing:.1em;text-transform:uppercase;margin-right:8px}
+
+  @media (max-width:900px){
+    .wrap{padding:26px 18px}
+    h1{font-size:24px}
+    .cols,.foot{grid-template-columns:1fr;gap:14px}
+  }
+</style>
+<div class="wrap">
+  <header>
+    <h1>一個模型的分數，只能回答它被訓練去回答的那個問題</h1>
+    <p class="sub">兩條線、兩個模型，同一個結論：盲點不是靠調門檻關掉的。</p>
+  </header>
+
+  <div class="cols">
+
+    <section class="col a">
+      <div class="eyebrow"><b>有樣板的線</b><span>DeepPCB · 複判器</span></div>
+      <div class="asks"><span class="k">它的分數在回答</span>
+        <span class="v">這個框是不是誤報？</span></div>
+      <div class="label">拿它來排序</div>
+      <div class="rows">
+        <div class="row good"><span class="n">52.8%</span><span class="t">的人工不用看——<em>這把尺量的就是那個問題</em></span></div>
+      </div>
+      <div class="label">它的盲點</div>
+      <div class="rows">
+        <div class="row"><span class="n">1.55%</span><span class="t"><code>short</code> 的漏檢率，預算的 <b>3.1</b> 倍<em>——而規範對 short 零容忍</em></span></div>
+        <div class="row"><span class="n">0.00007</span><span class="t">它放掉的那些瑕疵，模型給的分數<em>（到 0.00589）</em></span></div>
+        <div class="row"><span class="n">1.000</span><span class="t">它留下來的那些，中位數<em>——兩堆完全不重疊</em></span></div>
+      </div>
+      <div class="verdict"><p>所以它是<b>有信心地錯</b>，不是猶豫地錯。<b>在它自己的輸出上找不到任何一個切點</b>能把那些漏檢挑出來。</p></div>
+    </section>
+
+    <section class="col b">
+      <div class="eyebrow"><b>沒有樣板的線</b><span>PCB-AoI · 偵測器</span></div>
+      <div class="asks"><span class="k">它的分數在回答</span>
+        <span class="v">這裡有沒有東西？<em style="font-style:normal;color:var(--dim);font-size:14px"> ← 不是「是不是誤報」</em></span></div>
+      <div class="label">拿它來排序（同一個預算 ≤0.5%）</div>
+      <div class="rows">
+        <div class="row"><span class="n">1.2%</span><span class="t">直接用它的 confidence 排</span></div>
+        <div class="row"><span class="n">2.8%</span><span class="t">改用專門判誤報的模型<em>——同架構，只少了樣板通道</em></span></div>
+        <div class="row"><span class="n">0.6%</span><span class="t">把照片放大四倍<em>（imgsz 1280）——更差</em></span></div>
+      </div>
+      <div class="verdict"><p>三個角度都試過了。所以問題<b>不是模型不夠好，是資訊不夠</b>：光看那一小塊的外觀，分不出誤報和真瑕疵。<b>樣板通道不是方便，是必要</b>。</p></div>
+    </section>
+
+  </div>
+
+  <div class="foot">
+    <div>
+      <span class="key">同一個結論</span>
+      <p>模型錯的時候是<b>有信心地錯</b>，所以在它自己的輸出上永遠找不到切點。要關掉盲點，只能加<b>一個不共用同一種失敗的量測</b>——而不是換更大的模型、調更嚴的門檻。</p>
+    </div>
+    <div>
+      <span class="key">那就補什麼</span>
+      <div class="fix">
+        <div><span>有樣板</span>電測（ICT）—— WI-201 本來就寫了</div>
+        <div><span>沒樣板</span>給它參考：CAD / Gerber，或一片黃金板</div>
+        <div><span>沒樣板</span>給它第二種物理量：3D SPI 的錫膏高度</div>
+      </div>
+    </div>
+  </div>
+</div>
