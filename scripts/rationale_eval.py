@@ -144,6 +144,35 @@ def commit() -> str:
         return "unknown"
 
 
+#: The model writes `pin\u2011hole` with a non-breaking hyphen often enough that
+#: matching the class name on the ASCII spelling alone reported a class as
+#: unnamed when it was named and typeset. Every dash-like codepoint folds to
+#: `-` before the class names are looked for.
+DASHES = str.maketrans({c: "-" for c in "\u2010\u2011\u2012\u2013\u2014\u2015\u2212\uff0d"})
+
+
+def normalise_dashes(text: str) -> str:
+    return text.translate(DASHES)
+
+
+def sourced_documents(state: dict) -> set[str]:
+    """The document numbers the retrieved passages actually put in front of the
+    model -- read out of the passage text, because that is what the model was
+    shown. A document's slug (`reverification-procedure`) and the number its
+    body cites (`WI-201`) are two different names and the store carries only
+    the first."""
+    text = " ".join(p.get("text", "") for p in (state.get("standards") or []))
+    return set(DOCUMENT.findall(text))
+
+
+def sentences(text: str) -> list[str]:
+    """Split on sentence ends, and not inside a number. `21.1%` is one figure;
+    splitting it produced the fragment `1%\uff0c\u4f46\u4ecd\u5c6c\u65bc\u53ef\u63a5\u53d7\u7bc4\u570d` and with it ten
+    `limit_for_a_zero_tolerance_class` flags that were all a machine's defect
+    *rate* being described as normal."""
+    return re.split(r"(?<!\d)\.(?!\d)|[\u3002\uff0e\n]", text)
+
+
 def findings(state: dict, model_class: str) -> dict[str, list[str]]:
     """Every kind this run raises, with what raised it."""
     rationale = (state.get("agent_rationale") or "").strip()
@@ -157,13 +186,19 @@ def findings(state: dict, model_class: str) -> dict[str, list[str]]:
     if unsourced:
         found["unsourced_figure"] = unsourced
 
-    retrieved = {p["document"] for p in (state.get("standards") or [])}
+    # Against the numbers the retrieved *text* names, not the slugs the store
+    # files it under. The first draft compared `WI-\d{3}` citations against
+    # {"open-circuit", "reverification-procedure"} -- two vocabularies that
+    # never intersect -- so every citation was foreign by construction and the
+    # 2026-09-01 run's six were all legitimate. A check that cannot return zero
+    # is not a check.
+    sourced = sourced_documents(state)
     cited = set(DOCUMENT.findall(rationale))
-    foreign = sorted(cited - retrieved)
+    foreign = sorted(cited - sourced)
     if foreign:
         found["foreign_document"] = foreign
 
-    lowered = rationale.lower()
+    lowered = normalise_dashes(rationale).lower()
     if model_class in DEFECT_CLASSES and model_class not in lowered:
         found["class_not_named"] = [model_class]
     others = [c for c in DEFECT_CLASSES if c != model_class and c in lowered]
@@ -171,7 +206,7 @@ def findings(state: dict, model_class: str) -> dict[str, list[str]]:
         found["other_class_named"] = others
 
     if model_class in ZERO_TOLERANCE:
-        for sentence in re.split(r"[。．.\n]", rationale):
+        for sentence in sentences(rationale):
             if LIMIT_PHRASE.search(sentence) and FIGURE.search(sentence):
                 found.setdefault("limit_for_a_zero_tolerance_class", []).append(sentence.strip())
     return found
@@ -198,6 +233,10 @@ def run_language(sample: list[dict], language: str, args, log) -> list[dict]:
                 "explanation_status": state.get("explanation_status", "unknown"),
                 "rationale": (state.get("agent_rationale") or "").strip(),
                 "retrieved_documents": sorted({p["document"] for p in (state.get("standards") or [])}),
+                # The slug is what the store files a document under; the number
+                # is what the model may cite. Both are stored so that a reading
+                # taken later can re-derive `foreign_document` without the run.
+                "sourced_documents": sorted(sourced_documents(state)),
                 "findings": found,
             })
             marks = ",".join(sorted(found)) or "clean"

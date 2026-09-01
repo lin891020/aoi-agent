@@ -8490,3 +8490,117 @@ does not share the failure, which is what the class-escape entry already says
 about electrical test.
 
 **What this does not establish.** One checkpoint, one seed, one threshold, and an out-of-fold side whose predictions come from fold models rather than the shipped one -- that pairing is the procedure's own, but it means the two sides differ by more than the boards. Standardisation over (class x size) can only rule those two out; a difference in what a defect of a given class and size *looks like* on the test boards would pass through it untouched.
+
+## 2026-09-01 · commit ff6e9fd
+
+### Is the operator's rationale true of what the model was shown?
+
+The verdict came off the LLM on 2026-08-23 and what it still writes -- the one sentence on a queue row an operator reads -- had never been scored. Two answers in this project's own question bank said so. 60 candidates the router sends to investigation, run in zh-TW and en, 32 min on `gpt-oss:20b`. Ground truth is not read: this scores the prose against the prompt, not against the board. `scripts/rationale_eval.py`.
+
+**No model judges another model.** Three kinds are checked exactly from what the run stored; three are pattern matches published with the sentence attached, for a person to resolve.
+
+| kind | zh-TW | en | both |
+|---|---|---|---|
+| `unsourced_figure` | 0 | 0 | 0 |
+| `foreign_document` | 6 | 0 | 6 |
+| `no_explanation` | 0 | 0 | 0 |
+| | | | |
+| `class_not_named` | 27 | 1 | 28 |
+| `other_class_named` | 2 | 7 | 9 |
+| `limit_for_a_zero_tolerance_class` | 10 | 3 | 13 |
+
+Clean by language: zh-TW 20/60, en 50/60.
+
+*Read the adjudication below before quoting this table: three of the six rows do not survive it, and two of the three failures are in the check rather than the model.*
+
+The machine was checked for other work before and after the run -- `ollama ps` and the process table, because the first alone comes back clean while a torch job saturates the same silicon -- and was quiet both times.
+
+
+**The two languages are not the same record.** Clean 20/60 in Chinese against
+50/60 in English, over the identical 60 candidates, the identical classifier
+readings and the identical retrieved criteria -- the only difference is the one
+sentence of `i18n.LANGUAGE_NOTE` appended to the system prompt. That is the
+cross-check `synthesis_eval.py`'s two-language rule was adopted for, arriving
+on the disposition path: a single-language reading of this would have been
+50/60 and would have said the rationale is fine.
+
+**`class_not_named` is the finding, and it is class-specific.** 27 of 60 in
+Chinese, 0 in English, and the 27 are `open` (24 of 41) and `short` (3 of 3)
+and nothing else -- `mousebite` 0 of 3, `spur` 0 of 3, `pin-hole` 0 of 1,
+`false_call` 0 of 9. The mechanism is legible from that split: the model
+translates a defect class exactly when Chinese has an idiomatic word for it
+(`open` -> 開路, `short` -> 短路) and leaves the others verbatim because it has
+none. `LANGUAGE_NOTE` says *leave identifiers -- defect classes, line, machine
+and lot ids, document numbers, tool names -- exactly as they appear in the
+data*, and that instruction is not disobeyed uniformly. It is disobeyed where
+obeying it would read oddly.
+
+**And it is a coin, not a rule, which is the worse of the two.** 24 of 41
+opens, not 41 of 41: the same prompt, the same class, the same language, both
+spellings inside one population. A queue row whose `defect_class` column reads
+`open` sits beside a sentence that says 開路 or `open` depending on nothing an
+operator can see, so the record and the prose name the same class in two
+vocabularies and neither is stable. The station's own escalation search and
+every later read of these rows is by the stored identifier; the sentence is
+what a person reads. **The fix is in the prompt, not in the note** -- the note
+is prose asking for a behaviour, and the six class names are a closed set that
+can be listed. Not made tonight, and not measured.
+
+**Three of the six rows did not survive adjudication, and two of the three
+failures are in the check.**
+
+- **`foreign_document` 6 -> nothing established.** The check compared the
+  `WI-\d{3}` numbers a rationale cites against `{p["document"]}` -- the slugs
+  the store files documents under, `open-circuit`, `reverification-procedure`.
+  Two vocabularies that never intersect, so **every citation was foreign by
+  construction** and the count is "did the rationale cite a document number at
+  all". The arithmetic confirms it: 6 rationales cited anything, all 6 were
+  flagged, and the only citations in 120 rationales are WI-201 and WI-206 --
+  the two numbers `reverification-procedure.md` names in its body, and it was
+  retrieved on all six. A check that cannot return zero is not a check. Fixed
+  to read the numbers out of the retrieved passages' *text*, which is what the
+  model was actually shown, and each row now stores that set so a later reading
+  can re-derive this without re-running the model. Tonight's six cannot be
+  re-derived: the text was not stored. What is left of the row is one mild
+  overreach the corrected check would still miss -- the Chinese rationales
+  write 「依照 WI-201 至 WI-206 進行處理」, a *range*, sweeping in WI-202 through
+  WI-205, which nothing retrieved.
+- **`class_not_named` in English 1 -> 0.** The one row was `pin‑hole` written
+  with U+2011, a non-breaking hyphen; the class was named and typeset. Dash-like
+  codepoints now fold before the class names are looked for.
+- **`limit_for_a_zero_tolerance_class` 13 -> 0 real.** Every one of the
+  thirteen is the *machine's* open or short rate being described as ordinary --
+  「機台 L3-M31 的開路比例為 18.1%，低於整體 21.1%，但仍屬於可接受範圍」 -- not
+  an acceptance limit on the defect. The sentence splitter was also cutting
+  `21.1%` in half, because it split on `.`, and the published fragments start
+  mid-number; that is fixed and it changes no count, because the false positive
+  is semantic rather than a splitting artefact. The flag stays as it is: 13
+  candidates a person resolved in two minutes is what a flag is for. Narrowing
+  it to require the class name near the phrase is named here rather than made.
+
+**What is left is one defect and one judgement.** The defect is
+`class_not_named`. The judgement is the sentence the third flag kept raising:
+on `open` and `short`, whose work instructions admit nothing, the model
+repeatedly puts 「仍屬於可接受範圍」 next to criteria stating that any confirmed
+one is critical. Nothing in it is false -- it is about the machine's rate --
+and an operator skimming one paragraph can read permission out of it. That is a
+question for whoever owns the wording, not a count.
+
+**The two zeroes are the load-bearing result.** `unsourced_figure` is 0 of 120
+and `no_explanation` is 0 of 120. The first is the 2026-08-30 rationale check
+read over a population for the first time -- it fires per run and shows on the
+queue row, and until tonight nothing had ever aggregated it, so "it finds
+things" and "it finds nothing" were indistinguishable. It finds nothing here,
+in both languages, which is the reading that makes the 08-30 Chinese incident
+(a cited 0.85 threshold that no document contains) a fixed defect rather than a
+standing one. The second is `EXPLANATION_DEADLINE_S` holding: 120 calls at the
+60 s deadline on a machine checked quiet before and after, and every one
+produced a rationale.
+
+**The sample is open-heavy and that is not incidental.** 41 of 60 candidates
+are `open`, because `open` is the class the router sends to investigation --
+`decide_node` never confirms one without review. So the Chinese count rides on
+one class, and the same measurement on a line whose queue is mostly `spur`
+would read far lower without anything having improved.
+
+**What this does not establish.** It asks whether the prose is true of the prompt, never whether the prompt was the right thing to show or whether the verdict beneath it was right -- `agent_eval.py` is the second and nothing is the first. A grounded figure used in a wrong comparison passes, which is `rationale_check.py`'s stated boundary and is inherited here. And the flags are patterns: their counts are a floor on what a pattern can raise, not a rate.

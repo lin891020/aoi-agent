@@ -48,7 +48,10 @@ def _state(rationale, documents=("WI-201",), flags=(), status="explained"):
     return {
         "agent_rationale": rationale,
         "rationale_flags": list(flags),
-        "standards": [{"document": d, "heading": "h", "text": "t"} for d in documents],
+        # A passage carries the slug it is filed under *and* the text the model
+        # was shown; the document number lives in the second. Keeping the
+        # fixture faithful to that is the whole point of the 2026-09-01 fix.
+        "standards": [{"document": d, "heading": "h", "text": f"{d} body"} for d in documents],
         "explanation_status": status,
     }
 
@@ -107,3 +110,32 @@ def test_the_contention_check_does_not_report_the_measurement_itself(scorer):
 
     seen = scorer.contention()["busy_processes"]
     assert not any(str(os.getpid()) == line.split()[0] for line in seen)
+
+
+def test_a_number_the_retrieved_text_names_is_not_foreign_even_under_another_slug(scorer):
+    # The 2026-09-01 defect. The store files this document as
+    # `reverification-procedure`; its body cites WI-201 and WI-206. Comparing
+    # citations against the slug set made every citation foreign by
+    # construction, so the check could not return zero and its six findings
+    # that night were all legitimate.
+    state = _state("依照 WI-201 與 WI-206 進行處理。", documents=())
+    state["standards"] = [{
+        "document": "reverification-procedure", "heading": "h",
+        "text": "Re-verify per WI-201 and WI-206 before dispositioning.",
+    }]
+    assert "foreign_document" not in scorer.findings(state, "false_call")
+    # and a number that appears in no retrieved passage still is
+    state["agent_rationale"] = "依照 WI-204 進行處理。"
+    assert scorer.findings(state, "false_call")["foreign_document"] == ["WI-204"]
+
+
+def test_a_class_named_with_a_typographic_hyphen_counts_as_named(scorer):
+    # The model writes `pin-hole` with U+2011 often enough that matching on the
+    # ASCII spelling reported a class as unnamed when it was named.
+    assert "class_not_named" not in scorer.findings(
+        _state("The vision model reports a pin\u2011hole with 94.7% confidence."), "pin-hole")
+
+
+def test_a_decimal_point_does_not_end_a_sentence(scorer):
+    # `21.1%` was split into `1%`, and the flagged fragments started mid-number.
+    assert scorer.sentences("rate 21.1% here. next") == ["rate 21.1% here", " next"]
