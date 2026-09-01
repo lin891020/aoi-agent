@@ -8311,3 +8311,59 @@ enough to say it never catches up, and a fixed 10 epochs is the honest limit on
 that claim.
 
 **What this does not establish.** One dataset, one architecture, one recipe, one test split, and a fixed 10 epochs -- an initialisation that only costs convergence time would show up in the epoch-1 column and be gone by epoch 10, which is why that column is here rather than a headline. Nothing about a colour or photographic front end, where the ImageNet features have something to be about.
+
+## 2026-09-01 · commit 0f8a54e
+
+### The floor with shape in it — hand features and a tree, still no network
+
+The 2026-08-31 model-free entry ends by naming the baseline it is not: connected-component geometry and a gradient-boosted tree. That is the floor a reviewer actually asks for, because the scalar one re-ranks candidates by the very quantity the AOI stage already selected them for. This is that baseline. 30 features per candidate from the same 64 px patch -- blob area, aspect, extent, solidity, circularity, elongation, distance to the nearest template edge, and the foreground the test image has that the template does not -- into a `HistGradientBoostingClassifier`. Same 7,322 test candidates, same by-image split per seed, same sweep, same budget. 38 s, CPU. `scripts/feature_baseline.py`.
+
+**The tree gets the easier problem on purpose**: binary false-call vs defect, where the network solves seven classes and is read on one of them. A floor should be given its best shot; handicapping it would make the gap above it meaningless. Its one hyper-parameter, the number of boosting iterations, is chosen exactly the way the network's epoch is: on the validation half of a by-image split, by review removed at the budget. sklearn's own early stopping splits by row, which puts patches from one board on both sides.
+
+| seed | iterations (val-chosen) | review removed @ budget | achieved escape | accuracy |
+|---|---|---|---|---|
+| 0 | 160 | **21.28%** | 0.497% | 92.7% |
+| 1 | 123 | **16.70%** | 0.497% | 92.7% |
+| 2 | 119 | **15.94%** | 0.497% | 91.5% |
+| **median** | — | **16.70%** | — | — |
+| ResNet-18, same array, same oracle | — | **52.79%** | 0.497% | — |
+
+Features carrying the most signal, by permutation importance on each seed's validation split (mean over seeds, AUC drop): `blob_distance_to_edge` +0.049, `elongation` +0.039, `centroid_offset` +0.017, `n_components` +0.009, `template_edge_density` +0.007, `circularity` +0.005.
+
+**The 40x becomes 3.1x, and that is the number to quote from now on.** The
+scalar floor of 1.3% was answering a question the AOI stage had already
+answered, so the ratio it produced was about the strawman, not about the
+network. Against a floor that can see shape, the re-verifier removes 52.79%
+where the tree removes 16.70% -- still a large gap, and now a gap over
+something a reviewer would accept as an attempt.
+
+**Which features carry it says the mechanism was right.** By permutation
+importance, on every seed, the top two are `blob_distance_to_edge` and
+`elongation` -- how close the difference blob lies to a template edge, and how
+long and thin it is. That is the registration-residual hypothesis measured
+rather than asserted: a false call is a sliver hugging a trace, a defect is
+not. What did *not* come out on top is the feature this script was written
+expecting to matter most, `delta_foreground_in_blob` -- whether the test image
+gained or lost foreground where the blob is. It is a clean open/short signal
+and the tree barely used it, which is a small reminder that a feature being
+obviously meaningful and a feature being *discriminative here* are different
+claims.
+
+**A second method reproduces the generalisation gap, and that is the most
+useful thing in this entry.** Every seed's tree does far better on the
+validation half of trainval than on the test split -- 30.15% / 28.61% / 30.16%
+against 21.28% / 16.70% / 15.94%, roughly half again. The 2026-08-31 threshold
+work found the same shape with the network and a cross-validated threshold: the
+selection set estimated 0.32% escape where test measured 0.66%. **The trainval
+boards are easier than the official test boards**, and it is now measured by a
+gradient-boosted tree over hand features as well as by a ResNet -- two methods
+that share no weights, no architecture and no training procedure. That makes it
+a property of the split rather than of the model, which is what the threshold
+entry could only assert.
+
+**The spread across seeds is wider than the network's**, 5.3 points against
+3.1, on a model that is far cheaper to re-run. Nothing here explains that; it
+is recorded because a single run of this baseline would have been reported as
+16.70% or as 21.28% with equal confidence.
+
+**What this does not establish.** One feature set, chosen by hand from what the difference of two binarised images makes available, and one tree with default-ish settings and no hyper-parameter search -- a stronger feature set or a tuned tree would move this floor up, and nothing here bounds how far. The patch is 64 px, so every feature is local: a defect's relation to the wider board is not in it. And this is DeepPCB, where the images are binarised and the residuals are crisp; on photographs the shape features would be measuring a different object, the same way the differencing stage was.
