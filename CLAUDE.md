@@ -107,6 +107,7 @@ uv run python scripts/pretrained_ablation.py     # is the ImageNet init worth an
 uv run python scripts/seed_variance.py           # what a re-run of the whole procedure lands on (~48 min)
 uv run python scripts/model_free_baseline.py     # the floor: the same job with no network at all
 uv run python scripts/feature_baseline.py        # the floor with shape in it: hand features + a tree (~40 s)
+uv run python scripts/calibration_report.py      # does calibrating let a threshold survive a retrain? (~3 min)
 uv run python scripts/agent_eval.py              # does the agent layer beat the classifier? (~9 min)
 uv run python scripts/analysis_eval.py           # does the planner plan the right lookups, and refuse the rest?
 uv run python scripts/analysis_eval.py --plan-only  # the same score, without the tools and the prose nobody scores

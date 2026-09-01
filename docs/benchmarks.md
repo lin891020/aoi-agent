@@ -8367,3 +8367,61 @@ is recorded because a single run of this baseline would have been reported as
 16.70% or as 21.28% with equal confidence.
 
 **What this does not establish.** One feature set, chosen by hand from what the difference of two binarised images makes available, and one tree with default-ish settings and no hyper-parameter search -- a stronger feature set or a tuned tree would move this floor up, and nothing here bounds how far. The patch is 64 px, so every feature is local: a defect's relation to the wider board is not in it. And this is DeepPCB, where the images are binarised and the residuals are crisp; on photographs the shape features would be measuring a different object, the same way the differencing stage was.
+
+## 2026-09-01 · commit eaac375
+
+### Does calibration let a threshold survive a retrain?
+
+Three documents in this project say the softmax is uncalibrated, that the swept threshold absorbs it, and that the cost is a threshold meaning nothing on a different checkpoint. None of them measured it. 3 models by the same recipe differing only in seed; each chooses its threshold on its own by-image validation half at the budget, never on test; each threshold is then applied to every model's test scores. Temperature scaling is fitted on the same validation half and everything repeats. 3 min. `scripts/calibration_report.py`.
+
+| seed | temperature | ECE test raw → calibrated | val-chosen threshold raw → calibrated |
+|---|---|---|---|
+| 0 | 1.035 | 0.0034 → 0.0035 | 0.6100 → 0.6050 |
+| 1 | 1.054 | 0.0050 → 0.0048 | 0.8060 → 0.7830 |
+| 2 | 0.973 | 0.0079 → 0.0083 | 0.9090 → 0.9177 |
+
+**A threshold on the model that chose it, and on a sibling.** The budget is 0.50%; the diagonal is what each threshold buys at home, the off-diagonal what it buys on a model it never saw.
+
+| | own model (diagonal) | a sibling (off-diagonal) | off-diagonal spread |
+|---|---|---|---|
+| uncalibrated | 0.828% (0.630%–0.928%) | **0.812%** (0.596%–1.060%) | 0.464% |
+| temperature-scaled | 0.828% (0.630%–0.928%) | **0.812%** (0.563%–1.060%) | 0.497% |
+
+**The stated failure condition was met: calibration does not buy threshold transfer here.**
+
+**Calibration is a no-op because there was nothing to calibrate.** The fitted
+temperatures are 1.035, 1.054 and 0.973 -- one of them below 1, so the models
+are not even consistently over-confident -- and test ECE is 0.0034 to 0.0079
+before any of it. A model with an expected calibration error under one percent
+does not have a calibration problem. So the standing "should add temperature
+scaling" item in this project's answers is closed the way an item should be:
+**measured, and not needed**, rather than carried as debt because it sounds like
+good practice.
+
+**The real finding is in the diagonal, not the comparison.** Each threshold was
+chosen on its own model's validation half at a 0.50% budget, and on that same
+model's *test* split it buys **0.630% to 0.928%**. The budget is missed at home,
+before any transfer question is asked. And the off-diagonal is barely worse --
+0.596% to 1.060% against 0.630% to 0.928% -- so **where a threshold came from
+matters far less than the fact that validation is not test.** The documents'
+framing, that 0.961 means "this model's 0.961", is true but small; what
+actually breaks the budget is the split.
+
+**That is the third independent measurement of the same gap.** The 2026-08-31
+threshold entry found the single-validation-split rule choosing 0.610 and
+escaping 0.93% on test; the 0.928% in the diagonal above is that number
+reproduced, and seed 0's chosen threshold here is 0.6100. The 2026-09-01
+hand-feature floor found every seed's tree doing half again better on the
+validation half than on test. Three methods -- a cross-validated threshold, a
+gradient-boosted tree over hand features, and now a per-seed validation choice
+with and without calibration -- and none of them shares the failure of the
+others. **The trainval boards are easier than the official test boards**, and
+that is now the best-supported claim in this file that is not about the model.
+
+**Which is also why the shipped procedure is the one it is.** `threshold_cv.py`
+does not choose on a single validation split and does not read the point
+estimate; it pools five out-of-fold predictions and takes the interval's upper
+bound. The diagonal above is what the rejected alternative costs, measured a
+second time on three seeds instead of one.
+
+**What this does not establish.** Temperature scaling is the cheapest calibration there is -- one scalar over all seven classes -- and a per-class or vector scaling, or isotonic regression on `P(false_call)` alone, would be a different experiment. The siblings differ only by seed, so this says nothing about a threshold surviving a change of dataset, architecture or recipe, which is the transfer a line would actually ask about. And ECE is measured over the predicted class's confidence, which is not the quantity the threshold reads.
