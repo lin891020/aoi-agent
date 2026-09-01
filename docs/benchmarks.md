@@ -8425,3 +8425,68 @@ bound. The diagonal above is what the rejected alternative costs, measured a
 second time on three seeds instead of one.
 
 **What this does not establish.** Temperature scaling is the cheapest calibration there is -- one scalar over all seven classes -- and a per-class or vector scaling, or isotonic regression on `P(false_call)` alone, would be a different experiment. The siblings differ only by seed, so this says nothing about a threshold surviving a change of dataset, architecture or recipe, which is the transfer a line would actually ask about. And ECE is measured over the predicted class's confidence, which is not the quantity the threshold reads.
+
+## 2026-09-01 · commit 20dee3c
+
+### Why are the trainval boards easier? Four readings
+
+Three measurements agree the official test boards are harder than trainval and none says why. Here the two sides are paired the way the shipped procedure pairs them -- 5-fold out-of-fold predictions over all 12,634 trainval candidates against the shipped checkpoint on the 7,322 test candidates -- and read at the shipped threshold 0.912. `scripts/gap_decomposition.py`.
+
+| | candidates | defects | boards | escapes | escape rate |
+|---|---|---|---|---|---|
+| trainval (out-of-fold) | 12,634 | 6,569 | 1,000 | 21 | **0.320%** |
+| test (shipped checkpoint) | 7,322 | 3,018 | 500 | 20 | **0.663%** |
+
+**Reading 1 — the score a defect is given.** The threshold cuts `P(false_call)`, so the gap has to appear in what that number is on defect-labelled candidates. Quantiles:
+
+| quantile | 50% | 75% | 90% | 95% | 99% |
+|---|---|---|---|---|---|
+| trainval | 0.0000 | 0.0001 | 0.0004 | 0.0021 | 0.2239 |
+| test | 0.0000 | 0.0000 | 0.0002 | 0.0012 | 0.5630 |
+
+**Reading 2 — how few boards hold the escaping.** On test 17 of 500 boards escape anything at all, the worst one holds 3 of 20, and the worst five hold 40%. On trainval: 17 of 999, worst five 43%.
+
+**Reading 3 — how many boards would have to go.** Removing the 8 worst test boards (1.6% of them) brings test down to 0.303%, trainval's own rate.
+
+**Reading 4 — composition, and this is the decisive one.** Test's defects re-weighted to trainval's own (class x size-tercile) mix give **0.739%** against the raw 0.663% -- direct standardisation closes -22% of the gap. Class mix and defect size are therefore not the story. Median defect area 621 px against 600 px; defects per board 6.6 against 6.0.
+
+**Putting the four together: it is a tail, not a difficulty.** Reading 1 is
+the surprise -- up to the 95th percentile the model scores test defects
+*better* than trainval defects (0.0012 against 0.0021 at 95%), so on the great
+majority of defects the test boards are not harder at all. The two sides part
+company only at the 99th percentile, 0.5630 against 0.2239. Reading 4 rules out
+the composition explanation and rules it out in the unhelpful direction:
+matching test's mix to trainval's makes the rate *worse*, 0.739% against
+0.663%, so test's class and size mix is if anything slightly favourable and the
+underlying difference is larger than the raw numbers show. Reading 3 says the
+excess sits on 8 boards of 500.
+
+**Which means the whole gap is about ten defects.** At trainval's rate the test
+split would escape 9.7; it escapes 20. The difference between "meets QP-110"
+and "misses it" on this checkpoint is ten regions out of 3,018, on eight boards
+out of five hundred. That is not a reason to dismiss the gap -- three
+independent methods found it and this one localises it -- but it is the reason
+the first invariant has carried a Wilson interval since 2026-08-24, and it is
+the honest headline: **the budget is decided by a tail thin enough to count on
+two hands.**
+
+**And that tail is also why the review-reduction gap is large.** The tree found
+28.6-30.2% on validation against 15.9-21.3% on test, which is thousands of
+candidates apart and cannot itself be ten defects. The two are the same story
+read at different ends: a handful of confidently-misread defects is what forces
+the budget-satisfying threshold upward, and a higher threshold dismisses far
+fewer false calls. **A few defects set the threshold; the threshold sets how
+much review disappears.** That is the operating-point structure of this whole
+project in one sentence, and it is the first time this file has been able to
+say it with a measurement behind each half.
+
+**What it does not license is a fix.** Eight boards can be removed from a
+report but not from a line, and picking them by which ones escaped is choosing
+on the split being reported -- the defect the 2026-08-31 threshold work exists
+to avoid, arriving in a new costume. The finding is diagnostic: the escape
+budget on this dataset rests on a small enough number of candidates that it
+should be quoted with its interval and confirmed by a second measurement that
+does not share the failure, which is what the class-escape entry already says
+about electrical test.
+
+**What this does not establish.** One checkpoint, one seed, one threshold, and an out-of-fold side whose predictions come from fold models rather than the shipped one -- that pairing is the procedure's own, but it means the two sides differ by more than the boards. Standardisation over (class x size) can only rule those two out; a difference in what a defect of a given class and size *looks like* on the test boards would pass through it untouched.
