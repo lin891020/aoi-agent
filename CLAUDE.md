@@ -59,7 +59,7 @@ scripts/                    gate_check, build_patches, train, report, seed_store
                             analysis_eval, add_operator, render_diagrams, demo_record,
                             build_detector_patches, crop_reverifier_report,
                             mark_unattributed_resolutions, ...
-tests/                      1,382 tests; dataset-dependent ones behind `-m dataset`
+tests/                      1,442 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/deck/                  the project-journey deck (pptx, html with a self-test
                             mode, study guide) -- built from scripts/deck_content.py,
@@ -79,7 +79,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 1,382 tests, no GPU needed, no model called
+uv run pytest                                    # 1,442 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/gate_check.py --dataset hripcb --split aligned --limit 693 --thresholds 10 15 20 30 45 60 \
     --out eval/results/gate_check_hripcb_aligned.json   # the same gate on photographs (~2 min)
@@ -417,7 +417,32 @@ board is back under the unscoped reading.
   the decision (`rationale_flags`), and the queue and region page show them
   as a warning -- the analysis page's figure check, one path over. It cannot
   see a real figure compared wrongly; it says so. Held by
-  `tests/test_rationale_check.py`.
+  `tests/test_rationale_check.py`. Read over a population for the first time
+  on 2026-09-01 (`scripts/rationale_eval.py`, the same 60 candidates in both
+  languages, no model judging a model): **`unsourced_figure` 0 of 120 and
+  `no_explanation` 0 of 120**, which is what makes the 0.85 incident a fixed
+  defect rather than a standing one. What the two-language reading found is
+  that the rationale is not the same record in both: clean **20/60 in Chinese
+  against 50/60 in English**, and the whole gap is one defect -- the model
+  translates a class exactly when Chinese has an idiomatic word for it
+  (`open` -> 開路 on 24 of 41, `short` -> 短路 on 3 of 3, every other class
+  0) and not on every row, so the queue's `defect_class` column and the
+  sentence beside it name the class in two vocabularies and neither is
+  stable. A note asking for identifiers to be kept was not enough; since
+  2026-09-02 `LANGUAGE_NOTE` lists the six class names as a closed set and
+  forbids the two renderings by name, and the same 60 re-run that day read
+  **`class_not_named` 0 of 60 and clean 45/60 in Chinese, 52/60 in
+  English** -- the word 開路 survives in 9 rows as the physical event beside
+  the identifier, never in place of it. What the re-read found instead is
+  the thing no check counts: 5 of 60 Chinese rationales write WI-201's
+  continuity clause backwards (「電測證實連續開路 ... cosmetic thinning 釋放」),
+  every word sourced, the condition reversed. Named in the 09-02 entry, not
+  fixed. Three of the eval's own six rows did not survive
+  adjudication and two of the three failures were the checker's: a document
+  check comparing WI numbers against file slugs, so it could never return
+  zero; a class name typeset with U+2011 counted as unnamed. Both are fixed
+  in `64d363a`; the pre-fix counts stay in the 09-01 entry under the commit
+  that produced them.
 - **Say what is simulated.** Production metadata is generated with **two
   planted signals, both by assignment** -- the seeder never writes a defect,
   it decides which DeepPCB board went to which machine. The first is M22,
@@ -516,6 +541,34 @@ placeholders in typed arguments and inside a SELECT
 (`<machine_id_from_previous_call>`, `'YOUR_BOARD_ID'`), and the guard refuses
 `b.id = '這片'` at run time, so the page shows a refusal rather than an
 empty answer. docs/benchmarks.md, "Adjudication — the listed-set rule".
+
+**The operator's rationale is scored now, and what the score cannot see is
+named.** 2026-09-01/02, `scripts/rationale_eval.py`, in docs/benchmarks.md
+under "Is the operator's rationale true of what the model was shown?". Three
+exact checks and three pattern flags over the same 60 candidates in both
+languages; the flags are published with the sentence for a person to
+resolve, and their counts are a floor on what a pattern can raise, not a
+rate. What is open: the third flag keeps raising a sentence that is true and
+reads as permission -- on `open` and `short`, whose work instructions admit
+nothing, the model writes 「仍屬於可接受範圍」 about the *machine's* rate
+next to criteria saying any confirmed one is critical. That is a wording
+question for whoever owns the prompt, not a count, and narrowing the flag to
+require the class name near the phrase is named in the entry and not made.
+The 09-02 re-read found the same shape with teeth: **5 of 60 Chinese
+rationales invert WI-201's disposition clause** -- "measures continuous on
+electrical test: release" written as 「電測證實連續開路，則可視為 cosmetic
+thinning 釋放」, which would release a confirmed open. Every word is sourced,
+so all six checks pass it; it is the grounded-phrase-compared-wrongly
+boundary with a count for the first time (2 of 60 before the note, 0 of 60
+in English either time). The fix is a prompt wording or a fourth flag, and
+neither is made or measured.
+The Chinese rationales also cite a *range* (「WI-201 至 WI-206」) that sweeps
+in four documents nothing retrieved; the corrected document check reads
+numbers, not ranges, and passes it. And the sample is 41 of 60 `open`,
+because `open` is what the router sends to investigation, so the Chinese
+count rides on one class. The eval scores the prose against the prompt; it
+does not ask whether the prompt was the right thing to show, and nothing
+does.
 
 Retraining from operator corrections -- now selectable by who made them, which
 is what `reviewer_auth` bought -- deploying the quantised model, demo video.

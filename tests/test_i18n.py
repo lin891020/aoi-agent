@@ -310,3 +310,17 @@ def test_the_lines_language_defaults_to_the_stations_and_tolerates_a_bad_value(m
     # A typo must not take the explanations off the line; it falls back.
     monkeypatch.setenv(LINE_LANGUAGE_ENV, "klingon")
     assert line_language() == DEFAULT_LOCALE
+
+
+def test_the_language_note_lists_every_class_it_asks_to_be_kept():
+    # "Leave defect classes as they appear" was measured on 2026-09-01 and the
+    # Chinese rationale translated `open` on 24 of 41 anyway. A closed set is
+    # enumerated, not described, and in both languages.
+    from aoi_agent.data.deeppcb import CLASS_NAMES, FALSE_CALL
+    from aoi_agent.i18n import LANGUAGE_NOTE
+
+    for note in LANGUAGE_NOTE.values():
+        for name in (*CLASS_NAMES.values(), FALSE_CALL):
+            assert f"`{name}`" in note
+    # and the two renderings it actually produced are forbidden by name
+    assert "開路" in LANGUAGE_NOTE["zh-TW"] and "短路" in LANGUAGE_NOTE["zh-TW"]

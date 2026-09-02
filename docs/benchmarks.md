@@ -8604,3 +8604,94 @@ one class, and the same measurement on a line whose queue is mostly `spur`
 would read far lower without anything having improved.
 
 **What this does not establish.** It asks whether the prose is true of the prompt, never whether the prompt was the right thing to show or whether the verdict beneath it was right -- `agent_eval.py` is the second and nothing is the first. A grounded figure used in a wrong comparison passes, which is `rationale_check.py`'s stated boundary and is inherited here. And the flags are patterns: their counts are a floor on what a pattern can raise, not a rate.
+
+## 2026-09-02 · commit 64d363a
+
+### Is the operator's rationale true of what the model was shown?
+
+The verdict came off the LLM on 2026-08-23 and what it still writes -- the one sentence on a queue row an operator reads -- had never been scored. Two answers in this project's own question bank said so. 60 candidates the router sends to investigation, run in zh-TW and en, 29 min on `gpt-oss:20b`. Ground truth is not read: this scores the prose against the prompt, not against the board. `scripts/rationale_eval.py`.
+
+**No model judges another model.** Three kinds are checked exactly from what the run stored; three are pattern matches published with the sentence attached, for a person to resolve.
+
+| kind | zh-TW | en | both |
+|---|---|---|---|
+| `unsourced_figure` | 0 | 0 | 0 |
+| `foreign_document` | 0 | 0 | 0 |
+| `no_explanation` | 0 | 0 | 0 |
+| | | | |
+| `class_not_named` | 0 | 0 | 0 |
+| `other_class_named` | 5 | 6 | 11 |
+| `limit_for_a_zero_tolerance_class` | 10 | 3 | 13 |
+
+Clean by language: zh-TW 45/60, en 52/60.
+
+The machine was checked for other work before and after the run -- `ollama ps` and the process table, because the first alone comes back clean while a torch job saturates the same silicon -- and was quiet both times.
+
+
+**Same 60, same checker, one sentence changed.** This is the 09-01
+measurement re-run after `i18n.LANGUAGE_NOTE` was changed to list the six
+class names as a closed set and forbid 開路 and 短路 by name -- identical
+candidates, classifier readings and retrieved criteria, the checker as fixed
+in `64d363a`. The header names `64d363a` because that is what `git rev-parse`
+returned; the note change was in the working tree when this ran and is
+committed together with this entry, so the commit that carries the entry is
+the one that reproduces it.
+
+**Before / after, by row.**
+
+| | 09-01 (`ff6e9fd`, checker pre-fix) | 09-02 (note enumerates classes) |
+|---|---|---|
+| clean, zh-TW | 20/60 | **45/60** |
+| clean, en | 50/60 | 52/60 |
+| `class_not_named`, zh-TW | 27 (`open` 24 of 41, `short` 3 of 3) | **0** |
+| `foreign_document`, zh-TW | 6 -- all the checker's | 0 (corrected check) |
+| `other_class_named`, zh / en | 2 / 7 | 5 / 6 |
+| `limit_for_a_zero_tolerance_class`, zh / en | 10 / 3 | 10 / 3 |
+
+Row by row in Chinese: 28 went from flagged to clean, 12 stayed flagged, 3
+went from clean to flagged, 17 were clean both times. In English 5 cleared, 3
+were newly flagged, 5 stayed. The rows that move in both directions are the
+two pattern flags, whose totals barely change (13 and 13; 9 and 11) and whose
+rows do -- a non-deterministic model raising the same kinds of sentence on
+different candidates. Nothing the note was written to fix is among them.
+
+**The defect is closed, and the word did not disappear.** 開路 still appears
+in 9 of 60 Chinese rationales and 短路 in 6, and every one of those rows names
+the class as `open` or `short` beside it. What changed is the role the word
+plays: 「判定為 open ... 若經電測證實連續開路」 -- the identifier is the
+label and the Chinese word is the physical event, which is the split the
+queue needs. The `defect_class` column and the sentence next to it now agree
+on all 60.
+
+**The remaining flags, adjudicated: 0 real of 24.** All thirteen
+`limit_for_a_zero_tolerance_class` rows are the machine's rate again
+(「LOT-2608012 在 L2-M21 的 open 佔比為 17.6%，低於車隊平均 21.1%，但仍屬於可接受範圍內」),
+and the 09-01 judgement stands unchanged. The eleven `other_class_named` rows
+are five `spur` rationales naming `short`, which WI-204's own text does ("a spur and a
+short differ only by whether the copper reaches the far conductor"); three
+Chinese `false_call` rows repeating the prompt's rule that `open` never uses
+the confident threshold; one `pin-hole` row quoting its document's "open
+joints"; and two English rows using `copper` as a material -- "the copper
+trace", "the copper bridge" -- where it is also a class name. A flag that
+raises the criteria's own wording is doing what a pattern can do, and the
+sentence is printed so a person takes two minutes rather than the flag
+deciding.
+
+**What the reading found that no check counts: 5 of 60 Chinese rationales
+invert WI-201's disposition clause.** The document says *suspected open that
+measures continuous on electrical test: record as cosmetic thinning, release
+the board*. Five rows write 「若經電測證實連續開路，則可視為 cosmetic thinning
+釋放」 -- if electrical test confirms a continuous *open*, release -- which is
+the clause with its condition reversed, and would release a confirmed open.
+Every word in it is sourced, so `unsourced_figure` and `foreign_document`
+pass it; no class is missing or foreign; it is a grounded phrase compared
+wrongly, which is `rationale_check.py`'s stated boundary, here with a count
+for the first time. The pre-note run had 2 of 60 of the same shape; English
+has 0 of 60 in both. This is a stronger form of the 「仍屬於可接受範圍」
+judgement: not permission read out of a machine's rate but the disposition
+rule itself, backwards, in the sentence the operator reads. It is named here
+and not fixed -- the fix is either in the prompt (the clause is ambiguous in
+translation because 連續 carries both "continuous" and "continuity") or a
+fourth pattern flag, and neither is made or measured.
+
+**What this does not establish.** It asks whether the prose is true of the prompt, never whether the prompt was the right thing to show or whether the verdict beneath it was right -- `agent_eval.py` is the second and nothing is the first. A grounded figure used in a wrong comparison passes, which is `rationale_check.py`'s stated boundary and is inherited here. And the flags are patterns: their counts are a floor on what a pattern can raise, not a rate.

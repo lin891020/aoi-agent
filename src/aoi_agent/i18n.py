@@ -27,6 +27,8 @@ rather than a 500 on a page whose figures are all still correct.
 
 from __future__ import annotations
 
+from aoi_agent.data.deeppcb import CLASS_NAMES
+
 #: What the shop floor reads. English is the second language here, not the
 #: first, and the default says so.
 DEFAULT_LOCALE = "zh-TW"
@@ -768,20 +770,36 @@ def line_language() -> str:
     return normalise(os.environ.get(LINE_LANGUAGE_ENV) or DEFAULT_LOCALE)
 
 
-#: Appended to a prompt that produces prose a person reads. One sentence, and
-#: only about the language: everything else in those prompts is a constraint
-#: that has been measured, and re-wording a measured constraint invalidates
-#: the measurement it was taken under. Identifiers stay as the data spells
-#: them, in both languages, so a rationale and the record it is stored
-#: against name the same class and the same document.
+#: Appended to a prompt that produces prose a person reads. About the
+#: language and nothing else: everything else in those prompts is a
+#: constraint that has been measured, and re-wording a measured constraint
+#: invalidates the measurement it was taken under. Identifiers stay as the
+#: data spells them, in both languages, so a rationale and the record it is
+#: stored against name the same class and the same document.
+#:
+#: The classes are listed rather than described. "Leave defect classes as
+#: they appear" was the whole instruction until 2026-09-02, and measured over
+#: 60 candidates (`scripts/rationale_eval.py`) the Chinese rationale wrote
+#: 開路 for `open` on 24 of 41 and 短路 for `short` on 3 of 3 while keeping
+#: `mousebite`, `spur` and `pin-hole` verbatim -- the model translated a
+#: class exactly when Chinese has an idiomatic word for it, and not every
+#: time. A closed set of six is cheaper to enumerate than to describe, and
+#: the two translations it actually produced are named so the instruction
+#: forbids the thing that happened rather than the category it belongs to.
+_CLASS_LIST = ", ".join(f"`{name}`" for name in CLASS_NAMES.values())
+
 LANGUAGE_NOTE = {
     "zh-TW": "Write all prose you produce in Traditional Chinese (繁體中文). "
              "Leave identifiers -- defect classes, line, machine and lot ids, "
              "document numbers, tool names -- exactly as they appear in the "
-             "data.",
+             f"data. The defect classes are {_CLASS_LIST} and `false_call`: "
+             "write each one in those exact Latin letters every time it is "
+             "named, never a Chinese rendering (not 開路, not 短路).",
     "en": "Write all prose you produce in English. Leave identifiers -- defect "
           "classes, line, machine and lot ids, document numbers, tool names -- "
-          "exactly as they appear in the data.",
+          f"exactly as they appear in the data. The defect classes are "
+          f"{_CLASS_LIST} and `false_call`: write each one in exactly that "
+          "spelling every time it is named.",
 }
 
 
