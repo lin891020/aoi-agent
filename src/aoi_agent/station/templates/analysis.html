@@ -210,7 +210,24 @@
     {% endif %}
 
     <div class="answer-block">
-      <h2>{{ t('analysis.s5') }}</h2>
+      {# The answer is the one section the switch may re-derive, and it does
+         not do so by itself: the badge says which text this is, and the
+         button is what writes the missing one. A rewrite is the stored
+         results down the same synthesis path in the other language -- never
+         the original prose translated. See `shown_answer` for the three
+         states. #}
+      <h2>{{ t('analysis.s5') }}
+        {%- if answer_state == 'rewritten' %}
+        <span class="as-asked" title="{{ t('analysis.answer.rewritten_title') }}">{{ t('analysis.answer.rewritten') }}</span>
+        {%- elif answer_state == 'as_asked' %} {{ as_asked(run) }}
+        {%- endif %}
+      </h2>
+      {% if answer_state == 'as_asked' and can_rewrite %}
+      <form class="rewrite" method="post" action="/ask/{{ run.id }}/answer">
+        <button type="submit">{{ t('analysis.answer.rewrite') }}</button>
+        <p class="sub dim">{{ t('analysis.answer.rewrite_note') }}</p>
+      </form>
+      {% endif %}
       {% if claims %}
       {# The figure check, on the page. A number the prose states that no
          result renders as, or one stated under the wrong machine, is named
@@ -236,7 +253,7 @@
          field a tag could arrive in. The boundary is `station/prose.py`; a
          `|safe` here would move it from one function to every use site. #}
       <div class="prose">
-      {%- for block in prose_blocks(run.answer) %}
+      {%- for block in prose_blocks(answer_text) %}
         {%- if block.kind == 'heading' %}
           <h{{ block.level }}>{{ spans(block.spans) }}</h{{ block.level }}>
         {%- elif block.kind == 'list' %}

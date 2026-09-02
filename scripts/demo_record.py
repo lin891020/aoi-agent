@@ -58,7 +58,7 @@ SCENES = {
   ("ask_done", "前後兩根柱，區間沒有重疊。圖是從結果的形狀畫出來的，文字就寫在數字旁邊。"),
   ("control",  "再問一個對照組：M31 換燈前後。"),
   ("control_done", "這次兩根區間重疊，系統就直接說沒差。有事件，不代表有影響。"),
-  ("switch",   "最後切換語言。問題和規劃段保留原文、標示出來；答案是用同一批結果重寫的，不是翻譯。每個門檻都引得到腳本，每個數字都在 benchmarks 裡。"),
+  ("switch",   "最後切換語言。問題和規劃段保留原文、標示出來；答案要按一下才重寫——用儲存的同一批結果再寫一次，不是翻譯，原文也留著。每個門檻都引得到腳本，每個數字都在 benchmarks 裡。"),
  ],
  "en": [
   ("cli",      "A board just came in. The AOI flagged thirty regions; the vision model cleared twenty-eight of them in milliseconds, and the two it wasn't sure about go to a person."),
@@ -71,7 +71,7 @@ SCENES = {
   ("ask_done", "Two bars, before and after, and the intervals don't overlap. The chart comes from the shape of the results; the prose sits right beside the numbers."),
   ("control",  "Now a control: the lamp replacement on M31."),
   ("control_done", "This time the intervals overlap, and the system says so. An event is not an effect."),
-  ("switch",   "Finally, switch the language. The question and the plan stay as written and are labelled; the answer is written again from the same results, not translated. Every threshold cites a script, and every figure is in the benchmarks file."),
+  ("switch",   "Finally, switch the language. The question and the plan stay as written and are labelled; the answer is written again only when asked, from the same stored results, not translated, and the original is kept. Every threshold cites a script, and every figure is in the benchmarks file."),
  ],
 }[LANG]
 
@@ -201,11 +201,18 @@ def main() -> None:
         def switch():
             pg.mouse.wheel(0, -4000); pg.wait_for_timeout(600)
             pg.goto(f"{BASE}/locale/{other}?next={pg.url.replace(BASE, '')}"); pg.wait_for_load_state("networkidle")
-            try:
-                pg.wait_for_selector("figure.chart", timeout=120000)
-            except Exception:
-                pass
             pg.wait_for_timeout(1500); slow_scroll(900, 8)
+            # The switch renders chrome; the answer is written again only when
+            # asked, because a GET on a stored run must not cost a model call.
+            # Press the button, wait out the one synthesis call, and read the
+            # answer that comes back under its badge.
+            button = pg.locator("form.rewrite button")
+            if button.count():
+                button.scroll_into_view_if_needed(); pg.wait_for_timeout(800)
+                button.click()
+                pg.wait_for_load_state("networkidle", timeout=180000)
+                pg.locator("div.prose").scroll_into_view_if_needed()
+                pg.wait_for_timeout(2500)
         scene("switch", switch)
 
         pg.wait_for_timeout(1500)

@@ -322,6 +322,18 @@ Re-planning is not an option either, for the reason the `analysis_runs` table
 exists: a model asked the same question twice does not produce the same plan,
 and a page that redraws differently every time it is opened is not a record.
 
+The rewrite is a button on the answer, not a side effect of the switch. Opening
+a stored run is a GET on a document and must not cost a model call, so the
+switch shows the original answer under the same badge the plan sections carry
+and offers to write this language; the press is `POST /ask/{id}/answer`, which
+runs `synthesise_timed` on the stored results and keeps the result beside the
+original under its own key -- a language already held redirects and calls
+nothing. **Nothing called this path until 2026-09-02.** The column, the store
+function and the diagram above all existed, and the page rendered the original
+answer under whichever heading the switch had set; the close-out check before
+the demo was recorded is what found it, by timing the switch and reading zero
+seconds.
+
 That is why adding a language makes the measurement *stronger* rather than
 diluting it. Two write-ups of one payload are a cross-check a single-language
 system cannot perform, so `scripts/synthesis_eval.py --lang both` scores both

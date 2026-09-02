@@ -21,8 +21,18 @@ from __future__ import annotations
 
 from typing import Any
 
+from aoi_agent.analysis.graph import synthesise_timed
 from aoi_agent.i18n import DEFAULT_LOCALE
 from aoi_agent.store import analysis as store
+
+
+class NothingToWrite(ValueError):
+    """The run has no results to write an answer from.
+
+    A refusal's answer is the reason it was refused, and that is not derived
+    from any result -- writing it again would be a translation, which is the
+    thing the language rule says this path never produces.
+    """
 
 
 def in_plan_order(results: list[dict]) -> list[dict]:
@@ -72,3 +82,27 @@ def answer_question(
         "lang": asked_lang or DEFAULT_LOCALE,
     })
     return store.get_run(persist_run(state, question, asked_by, asked_lang))
+
+
+def answer_again(client, run: dict, lang: str) -> dict[str, Any]:
+    """Write a stored run's answer in another language, from the same results.
+
+    The one re-derivable thing on the page. The plan is not re-run and the
+    prose is not translated: the stored `results_json` goes down the same
+    `synthesise_timed` the first answer came from, with the language changed,
+    and what comes back is kept beside the original under its own key. A
+    language already held is returned as it is -- `add_answer` only adds, so
+    a second press costs nothing and rewrites nothing.
+
+    Until 2026-09-02 nothing called this path. The column, the store function
+    and the docs describing it all existed, and the page rendered the original
+    answer under whichever heading the switch had set.
+    """
+    if lang in run["answers"]:
+        return run
+    if run["refused"] or not run["results"]:
+        raise NothingToWrite(f"run {run['id']} has no results to write an answer from")
+    text, _timing = synthesise_timed(
+        client, run["question"], run["plan"] or {}, run["results"], lang
+    )
+    return store.add_answer(run["id"], lang, text)

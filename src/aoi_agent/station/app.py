@@ -186,6 +186,7 @@ templates.env.globals["locale_choices"] = tuple(
 )
 
 _graph = None
+_analysis_client = None
 _analysis_graph = None
 _analysis_domains = None
 
@@ -223,6 +224,21 @@ def analysis_domains():
     return _analysis_domains
 
 
+def analysis_client():
+    """The one model client the analysis path talks through.
+
+    Held separately from the graph because one route needs the client and
+    not the graph: writing a stored run's answer again in the other language
+    is `synthesise_timed` on its own, and building a graph to reach a client
+    would be the wrong-shaped dependency. Tests replace this the way they
+    replace `_analysis_graph`.
+    """
+    global _analysis_client
+    if _analysis_client is None:
+        _analysis_client = OllamaClient(os.getenv("AOI_AGENT_MODEL", DEFAULT_MODEL))
+    return _analysis_client
+
+
 def analysis_graph():
     """The analysis flow, built on first use for the same reason as ``graph()``.
 
@@ -231,10 +247,7 @@ def analysis_graph():
     """
     global _analysis_graph
     if _analysis_graph is None:
-        _analysis_graph = build_analysis_graph(
-            OllamaClient(os.getenv("AOI_AGENT_MODEL", DEFAULT_MODEL)),
-            analysis_domains(),
-        )
+        _analysis_graph = build_analysis_graph(analysis_client(), analysis_domains())
     return _analysis_graph
 
 
@@ -846,17 +859,44 @@ def _flow_events(run: dict) -> list[dict]:
     return events
 
 
-def checked_claims(run: dict) -> list[dict]:
+def shown_answer(run: dict, locale: str | None) -> tuple[str, str]:
+    """Which answer the page shows in this language, and what to say about it.
+
+    Three states, one per badge the answer heading can carry:
+
+    ``asked``      -- the run was asked in this language; the original, no badge.
+    ``rewritten``  -- this language was written again from the same results;
+                      shown with a badge saying so.
+    ``as_asked``   -- nothing in this language yet; the original under the
+                      same "recorded in the language it was asked in" badge
+                      the plan sections carry, and the button that writes it.
+
+    The lookup is on `answers`, which the store fills with the original under
+    `asked_lang` -- so a run asked in this language is found there, and a run
+    stored before the column existed sits under `unrecorded`, which no locale
+    matches, and is offered the rewrite like any other.
+    """
+    answers = run.get("answers") or {}
+    if locale in answers:
+        state = "asked" if run.get("asked_lang") == locale else "rewritten"
+        return answers[locale], state
+    return run.get("answer") or "", "as_asked"
+
+
+def checked_claims(run: dict, answer: str | None = None) -> list[dict]:
     """The arithmetic findings over this run's answer, as the page shows them.
 
+    Over the answer the page shows, not the one the run was first written
+    with: a rewrite is prose from the same results and gets the same check.
     A refusal has no results and nothing to check; a checker that raises must
     not cost the page, so a failure here is an empty list and a log line.
     """
-    if not run.get("results") or not run.get("answer"):
+    answer = run.get("answer") if answer is None else answer
+    if not run.get("results") or not answer:
         return []
     try:
         findings, _waved, _derived = claims.check(
-            claims.normalise(run["answer"]), run.get("plan") or {}, run["results"]
+            claims.normalise(answer), run.get("plan") or {}, run["results"]
         )
     except Exception as error:  # noqa: BLE001 -- a broken checker is not a broken page
         log.warning("claim check failed on run %s: %s", run.get("id"), error)
@@ -887,8 +927,20 @@ def _analysis_context(run: dict | None, locale: str | None = None) -> dict:
     here too: the raw figures sit beside the prose for every tool, so a reader
     can catch a summary that describes correct data incorrectly.
     """
+    answer_text, answer_state = shown_answer(run, locale) if run else ("", "asked")
     return {
         "run": run,
+        # The answer in the reader's language when one has been written, the
+        # original otherwise -- `shown_answer` says which, and the heading
+        # badges it. The template renders this and never `run.answer`, so the
+        # figure check below reads the same text the reader does.
+        "answer_text": answer_text,
+        "answer_state": answer_state,
+        # Whether the button that writes this language may be offered: a
+        # refusal has no results to write from. What the button costs is one
+        # synthesis call, which is why it is a POST and not a side effect of
+        # the switch -- opening a stored run must never call a model.
+        "can_rewrite": bool(run and not run.get("refused") and run.get("results")),
         "examples": EXAMPLE_QUESTIONS,
         # The rules block: what can be asked, read off the registry at
         # request time so a tool added there appears here without anyone
@@ -939,7 +991,7 @@ def _analysis_context(run: dict | None, locale: str | None = None) -> dict:
         # deterministic and a stored verdict would outlive a fixed checker.
         # Only the two arithmetic kinds reach the page; the pattern kinds are
         # for a person reading the eval, not a supervisor reading an answer.
-        "claims": checked_claims(run) if run else [],
+        "claims": checked_claims(run, answer_text) if run else [],
         # The stage table under the answer: what the page waited at each
         # stage, and what the model reported as its own inference time.
         "timing_rows": timing_view.rows(run.get("timings")) if run else [],
@@ -1195,3 +1247,24 @@ def ask_result(request: Request, run_id: int):
     return templates.TemplateResponse(
         request, "analysis.html", _analysis_context(run, locale_of(request))
     )
+
+
+@app.post("/ask/{run_id}/answer")
+def ask_answer_again(request: Request, run_id: int):
+    """Write a stored run's answer in the reader's language, then redirect.
+
+    The one thing on the page the switch may re-derive, and the one thing it
+    does not do by itself: a GET on a stored run is a document and must not
+    cost a model call, so the rewrite is a button, and the button is a POST.
+    Post-redirect-get for the same reason `/ask` is -- a refresh re-reads the
+    stored answer rather than writing a third one. A language already held
+    redirects without calling anything.
+    """
+    run = analysis_store.get_run(run_id)
+    if run is None:
+        raise HTTPException(404, f"no analysis run {run_id}")
+    try:
+        analysis_service.answer_again(analysis_client(), run, locale_of(request))
+    except analysis_service.NothingToWrite as error:
+        raise HTTPException(400, str(error)) from error
+    return RedirectResponse(f"/ask/{run_id}", status_code=303)

@@ -81,6 +81,7 @@ import pathlib  # noqa: E402
 import pytest  # noqa: E402,F811
 from fastapi.testclient import TestClient  # noqa: E402
 
+from aoi_agent.llm.ollama import ChatResult, Timing  # noqa: E402
 from aoi_agent.station import app as station_app  # noqa: E402
 from aoi_agent.store.models import create_all, make_session_factory  # noqa: E402
 from conftest import read_in, sign_in  # noqa: E402
@@ -230,16 +231,46 @@ def test_the_registry_name_stays_on_the_page_beside_the_readable_one(
 # What the switch must not rewrite
 # ---------------------------------------------------------------------------
 
-def _asked_in(lang: str, question: str = "比較三條線") -> int:
+def _asked_in(
+    lang: str, question: str = "比較三條線", results: list | None = None,
+    refused: bool = False,
+) -> int:
     from aoi_agent.store import analysis as analysis_store
 
     return analysis_store.save_run(
         question=question,
         plan={"interpretation": "PLAN-PROSE", "assumptions": ["ASSUMED-PROSE"],
               "calls": []},
-        results=[], chart=None, answer="ANSWER-PROSE", timings={},
-        refused=False, asked_by="mike", asked_lang=lang,
+        results=results or [], chart=None, answer="ANSWER-PROSE", timings={},
+        refused=refused, asked_by="mike", asked_lang=lang,
     )
+
+
+# One tool result, as the store holds it. The figure is what the rewrite must
+# be written from; the hidden key is what it must never be shown.
+A_RESULT = [{
+    "tool": "list_candidates", "args": {"board": "20085294"}, "why": "w",
+    "position": 0, "ok": True, "elapsed_ms": 1.0, "error": None,
+    "data": {"regions": [{"index": 1, "score": 0.4711, "ground_truth": "ANSWER-KEY"}]},
+}]
+
+
+class RewritingClient:
+    """Answers the synthesis call and keeps what it was shown."""
+
+    def __init__(self, answer: str = "REWRITTEN-PROSE"):
+        self.answer = answer
+        self.calls: list[list[dict]] = []
+
+    def chat(self, messages, **kwargs) -> ChatResult:
+        self.calls.append(messages)
+        return ChatResult(text=self.answer, tool_calls=[], thinking="",
+                          timing=Timing(1.0, 0.0, 1.0, 1.0, 10, 10))
+
+
+class Exploding:
+    def chat(self, *a, **k):
+        raise AssertionError("a stored run must render without the model")
 
 
 def test_the_question_is_never_rewritten_by_the_switch(client):
@@ -286,6 +317,113 @@ def test_a_run_from_before_the_column_is_labelled_rather_than_claimed(client):
     for locale in ("zh-TW", "en"):
         page = read_in(client, locale).get(f"/ask/{run_id}").text
         assert STRINGS[locale]["analysis.as_asked"] in page
+
+
+# ---------------------------------------------------------------------------
+# The one thing the switch may re-derive, and how
+# ---------------------------------------------------------------------------
+
+def test_the_switch_offers_to_write_the_answer_again_rather_than_doing_it(client, monkeypatch):
+    """Opening a stored run in the other language shows the original answer,
+    badged, with the button that writes this language -- and calls no model.
+    The rewrite costs a synthesis call, so it is a POST and not a side effect
+    of a GET. Until 2026-09-02 the page had the badge and neither the button
+    nor the rewrite: the docs described a path nothing called."""
+    monkeypatch.setattr(station_app, "_analysis_client", Exploding())
+    run_id = _asked_in("zh-TW", results=A_RESULT)
+
+    english = read_in(client, "en").get(f"/ask/{run_id}").text
+    assert "ANSWER-PROSE" in english
+    assert STRINGS["en"]["analysis.answer.rewrite"] in english
+    assert f'action="/ask/{run_id}/answer"' in english
+
+    chinese = read_in(client, "zh-TW").get(f"/ask/{run_id}").text
+    assert STRINGS["zh-TW"]["analysis.answer.rewrite"] not in chinese, (
+        "a run asked in this language has its answer already"
+    )
+
+
+def test_writing_again_goes_down_the_synthesis_path_from_the_stored_results(client, monkeypatch):
+    """One model call, shown the stored results and not the stored prose;
+    the hidden key filtered the way the first pass filters it; the result kept
+    beside the original rather than over it, and the page then shows each
+    language its own answer under a badge saying which it is."""
+    model = RewritingClient("REWRITTEN-PROSE")
+    monkeypatch.setattr(station_app, "_analysis_client", model)
+    run_id = _asked_in("zh-TW", results=A_RESULT)
+
+    response = read_in(client, "en").post(f"/ask/{run_id}/answer", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == f"/ask/{run_id}"
+
+    assert len(model.calls) == 1
+    shown = "\n".join(m["content"] for m in model.calls[0])
+    assert "0.4711" in shown, "written from the results"
+    assert "ANSWER-PROSE" not in shown, "not from the prose -- that would be a translation"
+    assert "ANSWER-KEY" not in shown and "ground_truth" not in shown
+
+    english = read_in(client, "en").get(f"/ask/{run_id}").text
+    assert "REWRITTEN-PROSE" in english
+    assert "ANSWER-PROSE" not in english
+    assert STRINGS["en"]["analysis.answer.rewritten"] in english
+    assert STRINGS["en"]["analysis.answer.rewrite"] not in english, "nothing left to write"
+
+    chinese = read_in(client, "zh-TW").get(f"/ask/{run_id}").text
+    assert "ANSWER-PROSE" in chinese, "the original is kept"
+    assert "REWRITTEN-PROSE" not in chinese
+    assert STRINGS["zh-TW"]["analysis.answer.rewritten"] not in chinese
+
+
+def test_a_language_already_held_is_not_written_twice(client, monkeypatch):
+    """The stored answer is the one whose figures were checked. A second press
+    -- or a refresh of the POST -- redirects and calls nothing."""
+    model = RewritingClient()
+    monkeypatch.setattr(station_app, "_analysis_client", model)
+    run_id = _asked_in("zh-TW", results=A_RESULT)
+    english = read_in(client, "en")
+
+    english.post(f"/ask/{run_id}/answer", follow_redirects=False)
+    monkeypatch.setattr(station_app, "_analysis_client", Exploding())
+    second = english.post(f"/ask/{run_id}/answer", follow_redirects=False)
+    assert second.status_code == 303
+    assert len(model.calls) == 1
+
+    # The language it was asked in is held from the start; asking for it
+    # again is the same no-op.
+    third = read_in(client, "zh-TW").post(f"/ask/{run_id}/answer", follow_redirects=False)
+    assert third.status_code == 303
+
+
+def test_a_refusal_has_nothing_to_write_again(client, monkeypatch):
+    """A refusal's answer is the reason it was refused, derived from no result.
+    Writing it again would be a translation, which this path never produces:
+    no button, and the route says why rather than calling the model."""
+    monkeypatch.setattr(station_app, "_analysis_client", Exploding())
+    run_id = _asked_in("zh-TW", refused=True)
+
+    english = read_in(client, "en").get(f"/ask/{run_id}").text
+    assert STRINGS["en"]["analysis.as_asked"] in english
+    assert STRINGS["en"]["analysis.answer.rewrite"] not in english
+
+    response = read_in(client, "en").post(f"/ask/{run_id}/answer", follow_redirects=False)
+    assert response.status_code == 400
+    assert read_in(client, "en").post("/ask/999999/answer", follow_redirects=False).status_code == 404
+
+
+def test_the_figure_check_reads_the_answer_the_page_shows(client, monkeypatch):
+    """A rewrite is prose from the same results and gets the same check: a
+    figure no result renders as is flagged on the rewrite in its language and
+    not on the original in its own."""
+    model = RewritingClient("The top score was 0.99 on that board.")
+    monkeypatch.setattr(station_app, "_analysis_client", model)
+    run_id = _asked_in("zh-TW", results=A_RESULT)
+    read_in(client, "en").post(f"/ask/{run_id}/answer", follow_redirects=False)
+
+    english = read_in(client, "en").get(f"/ask/{run_id}").text
+    assert "0.99" in english and 'class="claims' in english
+
+    chinese = read_in(client, "zh-TW").get(f"/ask/{run_id}").text
+    assert 'class="claims' not in chinese
 
 
 def test_every_plannable_tool_says_what_it_does_in_both_languages():

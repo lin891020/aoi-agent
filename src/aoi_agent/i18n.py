@@ -337,6 +337,14 @@ STRINGS: dict[str, dict[str, str]] = {
         "analysis.as_asked_title":
             "這一段是規劃那次呼叫寫下的。規劃不會重跑，所以它是當時發生的事的"
             "紀錄，不會跟著語言切換重寫。",
+        "analysis.answer.rewrite": "用中文重寫這段回答",
+        "analysis.answer.rewrite_note":
+            "從儲存的同一批查詢結果、走同一條路徑再寫一次，不是翻譯。"
+            "會多呼叫一次模型；原文保留。",
+        "analysis.answer.rewritten": "由同一批結果重寫",
+        "analysis.answer.rewritten_title":
+            "這段回答是從儲存的查詢結果重新寫的，不是翻譯；規劃沒有重跑。"
+            "切回提問時的語言可以看到原文。",
         "analysis.s2": '3 · 它呼叫了什麼',
         "analysis.s3": '2 · 它假設了什麼',
         "analysis.s5": '5 · 回答',
@@ -709,6 +717,15 @@ STRINGS: dict[str, dict[str, str]] = {
             "This section is what the planning call wrote. The planning call "
             "is not made again, so it is a record of what happened and is not "
             "rewritten when the language changes.",
+        "analysis.answer.rewrite": "Write this answer again in English",
+        "analysis.answer.rewrite_note":
+            "From the same stored results, down the same path -- not a "
+            "translation. One more model call; the original is kept.",
+        "analysis.answer.rewritten": "written again from the same results",
+        "analysis.answer.rewritten_title":
+            "This answer was written again from the stored results, not "
+            "translated; the plan was not re-run. Switch back to the language "
+            "it was asked in to read the original.",
         "analysis.s2": '3 · What it called',
         "analysis.s3": '2 · What it assumed',
         "analysis.s5": '5 · Answer',

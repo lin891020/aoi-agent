@@ -395,6 +395,19 @@ table.kv td { padding: 0.15rem 0; vertical-align: top; }
             padding: 0.05rem 0.35rem; margin-left: 0.4rem;
             vertical-align: middle; white-space: nowrap; }
 
+/* The button that writes the answer in this language. Quiet, like the
+   deferral: it is an offer that costs a model call, not the page's default. */
+.rewrite { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem;
+           margin: 0 0 0.9rem; }
+.rewrite button {
+  background: transparent; color: var(--dim);
+  border: 1px dashed var(--line); border-radius: 8px;
+  padding: 0.45rem 0.9rem; font: inherit; font-size: 0.9rem; cursor: pointer;
+}
+.rewrite button:hover { color: var(--ink); border-color: var(--accent); }
+.rewrite button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.rewrite .sub { margin: 0; flex: 1 1 18rem; }
+
 /* The acceptance ruler. Two clicks for the reference, two for the measurement,
    and a ratio -- which needs no calibration, and is what all three conditional
    criteria are written as. */

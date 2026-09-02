@@ -392,7 +392,13 @@ board is back under the unscoped reading.
   The one re-derivable thing is the synthesised answer, and it is *written
   again* from the stored `results_json` down the same measured path -- never
   translated. A translation is a third artefact, produced from prose rather
-  than from results, and nothing here measures it. Two languages over one
+  than from results, and nothing here measures it. The rewrite is a button
+  (`POST /ask/{id}/answer`), not a side effect of the switch: opening a
+  stored run must not cost a model call. **Nothing called that path until
+  2026-09-02** -- the column, `add_answer` and the docs existed, and the page
+  showed the original answer under whichever heading was set; found by the
+  close-out check before the demo, and held by the rewrite tests in
+  `tests/test_i18n.py`. Two languages over one
   payload is a cross-check the single-language system never had, so
   `synthesis_eval.py` scores both and **refuses to publish a single-language
   report**: a figure written from one surface reads as a claim about the system
