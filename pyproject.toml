@@ -42,6 +42,35 @@ markers = [
     "dataset: requires DeepPCB to be cloned into data/DeepPCB",
 ]
 
+[tool.ruff]
+# The suppressions came first: 246 `# noqa` comments, each with a written
+# reason, were in the tree before any linter was configured to act on them.
+# `select` below is chosen so those comments mean something -- E402 and F811
+# in the tests, BLE001 at the boundaries that must not raise -- rather than
+# reading as unused directives.
+target-version = "py314"
+
+[tool.ruff.lint]
+select = [
+    "F",       # pyflakes: unused imports/variables, undefined names
+    "E4", "E7", "E9",  # pycodestyle errors worth failing on
+    "E402",    # import not at top of file -- 188 noqa comments cite this by name
+    "I",       # import sorting
+    "BLE",     # blind `except Exception` -- 5 noqa comments already cite this
+    "DTZ",     # naive datetime: results that differ by machine timezone
+    "PLW1510", # subprocess.run without `check=` -- failures pass silently
+    "RUF100",  # a `# noqa` that no longer suppresses anything
+]
+# Line length is not enforced: the prose in this codebase's comments is the
+# point of it, and reflowing to 88 columns would fight the docstrings.
+ignore = ["E501"]
+
+# Deliberately no per-file-ignores for E402/F811. Blanket-ignoring them in
+# tests would turn all 227 of the `# noqa` comments that cite them into unused
+# directives, which is the opposite of the point: each of those comments says
+# why that one line is exempt. A rule silenced per-line stays visible; a rule
+# silenced per-directory disappears.
+
 [dependency-groups]
 dev = [
     "onnx>=1.20.0",
