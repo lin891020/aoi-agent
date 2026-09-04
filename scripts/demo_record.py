@@ -237,7 +237,10 @@ def main() -> None:
                 button.click()
                 pg.wait_for_load_state("networkidle", timeout=180000)
                 pg.locator("div.prose").scroll_into_view_if_needed()
-                pg.wait_for_timeout(2500)
+                # The answer written again is the scene's point, and the call
+                # that produces it takes most of the scene: hold on it for
+                # its own time rather than the seconds left over.
+                pg.wait_for_timeout(9000)
         scene("switch", switch)
 
         pg.wait_for_timeout(1500)
