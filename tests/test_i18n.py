@@ -106,7 +106,7 @@ def client(tmp_path, monkeypatch, operators):
 
 
 def test_the_station_opens_in_the_language_the_line_reads(client):
-    page = client.get("/").text
+    page = client.get("/queue").text
 
     assert 'lang="zh-TW"' in page
     assert "待人工複判的區域" in page
@@ -156,7 +156,7 @@ def test_the_switch_cannot_be_used_to_send_someone_off_the_station(client):
     assert response.headers["location"] == "/"
 
 
-@pytest.mark.parametrize("path", ["/", "/corrections", "/ask", "/login"])
+@pytest.mark.parametrize("path", ["/", "/queue", "/corrections", "/ask", "/login"])
 def test_every_page_offers_the_other_language(client, path):
     page = client.get(path).text
 

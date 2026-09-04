@@ -2,6 +2,8 @@
 
     uv run --with playwright python scripts/demo_record.py --lang zh-TW --stem 00041208
     uv run --with playwright python scripts/demo_record.py --lang en    --stem 00041208
+    uv run --with playwright python scripts/demo_record.py --lang zh-TW --stem 00041208 --index 15 --silent
+                                        # video only, holds from HOLD_S, script.md for dubbing by hand
 
 Needs the station on :8110, Ollama with gpt-oss:20b, operators `mike` (senior,
 passphrase in AOI_DEMO_SENIOR_SECRET) and `watcher` (operator, in
@@ -20,7 +22,11 @@ from pathlib import Path
 
 _args = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 _args.add_argument("--lang", default="zh-TW", choices=("zh-TW", "en"))
-_args.add_argument("--stem", required=True, help="a board whose region #8 is on the queue")
+_args.add_argument("--stem", required=True, help="a board with a region on the queue")
+_args.add_argument("--index", type=int, default=8, help="which of that board's regions is on the queue")
+_args.add_argument("--silent", action="store_true",
+                   help="no narration and no subtitles: the video alone, each scene held for HOLD_S "
+                        "seconds, plus script.md (scene, start, end, the line to say) for dubbing over it")
 _args.add_argument("--base", default="http://127.0.0.1:8110")
 _args.add_argument("--tts", default="kokoro", choices=("kokoro", "say"),
                    help="kokoro: Kokoro-82M through ~/Projects/video_transfer's backend (neural, both languages); say: macOS")
@@ -33,7 +39,8 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "docs" / "demo" / "build" / LANG
 NARR = OUT / "narration"
 STEM = ARGS.stem
-REGION = f"{STEM}#8"
+INDEX = ARGS.index
+REGION = f"{STEM}#{INDEX}"
 SENIOR = ("mike", os.environ.get("AOI_DEMO_SENIOR_SECRET", ""))
 OPERATOR = ("watcher", os.environ.get("AOI_DEMO_OPERATOR_SECRET", ""))
 FFMPEG = "/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg"
@@ -49,6 +56,7 @@ Q_M31 = {"zh-TW": "M31 換燈前後，open 的比例有沒有變？",
 SCENES = {
  "zh-TW": [
   ("cli",      "好，一片 PCB 剛進來。AOI 標了三十個區域，視覺模型幾毫秒就排掉二十八個；剩下兩個它不敢判，就交給人。"),
+  ("home",     "登入後第一眼是這條線的分母：跑過的 PCB 幾片定案、幾片扣住、幾片放行、幾片還在等人，還有幾個區域等人看。失敗清單不在第一眼，要點進去才是。"),
   ("queue",    "這一頁就是等人看的清單。每一列都有模型的判定、信心、誤判機率，還有 agent 寫的一段說明。注意，agent 只負責解釋，不做決定。誰等最久，誰排前面。"),
   ("region",   "點進一個區域。左邊是黃金樣板、待測 PCB 和差異圖並排；右邊是這台機器的缺陷率，還有這一類的驗收標準。這一頁故意不顯示答案，因為作業員按下去的答案，就是下一輪訓練的標籤。"),
   ("defer",    "真的看不出來？按零。它不會被記成判定，區域會換到另一個隊伍，交給資深的人。"),
@@ -62,6 +70,7 @@ SCENES = {
  ],
  "en": [
   ("cli",      "A board just came in. The AOI flagged thirty regions; the vision model cleared twenty-eight of them in milliseconds, and the two it wasn't sure about go to a person."),
+  ("home",     "Sign in and the first screen is the line's denominator: how many boards settled, held, released, still waiting, and how many regions wait on a person. The list of failures is one click in, not the front door."),
   ("queue",    "This is the review queue. Every row has the model's class, its confidence, the false-call probability, and a short rationale from the agent. The agent explains — it never decides. Whoever has waited longest is on top."),
   ("region",   "Open one region. Template, PCB under test and difference side by side; on the right, this machine's defect rate and the acceptance criteria for the class. The answer key is deliberately not on this page, because whatever the operator presses becomes the next training label."),
   ("defer",    "Can't tell? Press zero. It isn't recorded as a verdict; the region moves to a second list for a senior reviewer."),
@@ -74,6 +83,12 @@ SCENES = {
   ("switch",   "Finally, switch the language. The question and the plan stay as written and are labelled; the answer is written again only when asked, from the same stored results, not translated, and the original is kept. Every threshold cites a script, and every figure is in the benchmarks file."),
  ],
 }[LANG]
+
+
+#: Seconds a scene stays on screen in the silent cut, once its action is done --
+#: room to say the line in SCENES at a speaking pace, not a synthetic one.
+HOLD_S = {"cli": 14.0, "home": 12.0, "queue": 14.0, "region": 40.0, "defer": 12.0, "blocked": 12.0,
+          "boards": 12.0, "ask": 8.0, "ask_done": 14.0, "control": 6.0, "control_done": 12.0, "switch": 18.0}
 
 
 def _duration(path: Path) -> float:
@@ -140,7 +155,7 @@ def main() -> None:
     from playwright.sync_api import sync_playwright
 
     OUT.mkdir(parents=True, exist_ok=True)
-    durations = tts()
+    durations = dict(HOLD_S) if ARGS.silent else tts()
     term = terminal_page()
     timeline: list[dict] = []
 
@@ -171,19 +186,29 @@ def main() -> None:
 
         # 1 terminal
         scene("cli", lambda: (pg.goto(term.as_uri()), pg.wait_for_timeout(7000)))
+        # 1b the front door: the denominator, then the queue one click in
+        scene("home", lambda: (login(pg, *SENIOR), pg.goto(f"{BASE}/"), pg.wait_for_load_state("networkidle"), pg.wait_for_timeout(1500)))
         # 2 queue
-        scene("queue", lambda: (login(pg, *SENIOR), pg.goto(f"{BASE}/"), pg.wait_for_load_state("networkidle"), pg.wait_for_timeout(1500), slow_scroll(500)))
+        scene("queue", lambda: (pg.goto(f"{BASE}/queue"), pg.wait_for_load_state("networkidle"), pg.wait_for_timeout(1500), slow_scroll(500)))
         # 3 region
-        scene("region", lambda: (pg.goto(f"{BASE}/c/{STEM}/8"), pg.wait_for_load_state("networkidle"), pg.wait_for_timeout(2500), slow_scroll(700, 10), pg.wait_for_timeout(800)))
+        def region():
+            # The scene the narration spends longest on, paced in three holds:
+            # the rationale and the triptych, then the model's reading beside
+            # the context and the criteria, then the verdict form and the note
+            # that the answer key is not on this page.
+            pg.goto(f"{BASE}/c/{STEM}/{INDEX}"); pg.wait_for_load_state("networkidle"); pg.wait_for_timeout(11000)
+            slow_scroll(700, 10); pg.wait_for_timeout(9000)
+            slow_scroll(900, 10); pg.wait_for_timeout(1000)
+        scene("region", region)
         # 4 defer with 0
         def defer():
-            pg.goto(f"{BASE}/c/{STEM}/8"); pg.wait_for_load_state("networkidle")
+            pg.goto(f"{BASE}/c/{STEM}/{INDEX}"); pg.wait_for_load_state("networkidle")
             pg.mouse.wheel(0, 1600); pg.wait_for_timeout(1200)
             pg.keyboard.press("0"); pg.wait_for_load_state("networkidle"); pg.wait_for_timeout(1000)
             pg.goto(f"{BASE}/deferred"); pg.wait_for_load_state("networkidle")
         scene("defer", defer)
         # 5 blocked as watcher
-        scene("blocked", lambda: (login(pg, *OPERATOR), pg.goto(f"{BASE}/c/{STEM}/8"), pg.wait_for_load_state("networkidle"), pg.wait_for_timeout(1500), pg.mouse.wheel(0, 1600), pg.wait_for_timeout(1500)))
+        scene("blocked", lambda: (login(pg, *OPERATOR), pg.goto(f"{BASE}/c/{STEM}/{INDEX}"), pg.wait_for_load_state("networkidle"), pg.wait_for_timeout(1500), pg.mouse.wheel(0, 1600), pg.wait_for_timeout(1500)))
         # 6 boards
         scene("boards", lambda: (login(pg, *SENIOR), pg.goto(f"{BASE}/boards"), pg.wait_for_load_state("networkidle"), pg.wait_for_timeout(1500), slow_scroll(300, 4)))
         # 7 ask
@@ -228,6 +253,23 @@ def main() -> None:
         end = min(t["end"], t["start"] + durations[t["key"]] + 1.5)
         srt.append(f"{i}\n{ts(t['start'])} --> {ts(end)}\n{text[t['key']]}\n")
     (OUT / "subs.srt").write_text("\n".join(srt))
+    if ARGS.silent:
+        # The video alone: no narration track, no burned subtitles. What goes
+        # beside it is the script -- one row per scene with the seconds the
+        # scene is on screen and the line to say over it -- so a person can
+        # dub it without operating the station by hand.
+        final = ROOT / "docs" / "demo" / f"aoi-agent-demo-{TAG}-silent.mp4"
+        subprocess.run([FFMPEG, "-y", "-i", str(video_path), "-an", "-c:v", "libx264", "-crf", "22",
+                        "-preset", "medium", "-pix_fmt", "yuv420p", str(final)], check=True, capture_output=True)
+        rows = "\n".join(f"| {i} | {t['key']} | {t['start']:.0f}–{t['end']:.0f} s | {text[t['key']]} |"
+                          for i, t in enumerate(timeline, 1))
+        (OUT / "script.md").write_text(
+            f"# {final.name} — 配音腳本 / dubbing script\n\n每一幕畫面停留的秒數，和要在那段時間裡講的話。"
+            f"影片沒有聲音、沒有字幕；`subs.srt` 是同一份台詞的字幕檔，可以疊上去對時間。\n\n"
+            f"| # | 幕 | 秒 | 台詞 |\n|---|---|---|---|\n{rows}\n")
+        print("wrote", final, f"{final.stat().st_size/1e6:.1f} MB; scenes:", len(timeline),
+              "; length", timeline[-1]["end"], "s; script:", OUT / "script.md")
+        return
     # audio: each narration delayed to its scene start, mixed
     inputs, delays = [], []
     for i, t in enumerate(timeline):

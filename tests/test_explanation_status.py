@@ -214,7 +214,7 @@ def test_the_queue_page_flags_the_absence_and_counts_it(store, stub_tools, monke
     service.start_review(graph, REFERENCE)
     monkeypatch.setattr(station_app, "_graph", graph)
 
-    body = read_in(sign_in(TestClient(station_app.app)), "en").get("/").text
+    body = read_in(sign_in(TestClient(station_app.app)), "en").get("/queue").text
     assert "no explanation" in body
     assert "1 of 1 carry no written explanation" in body
     assert "ReadTimeout" not in body

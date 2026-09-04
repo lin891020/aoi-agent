@@ -246,6 +246,19 @@ STRINGS: dict[str, dict[str, str]] = {
         "boards.released": '放行 {count}',
         "boards.waiting": '等待中 {count}',
         "boards.waiting_chip": '等待人工',
+        # The front page. One sentence, six figures, three doors -- nothing
+        # that explains, because the operator's work is one click behind it.
+        "home.title": '這條線現在的狀態',
+        "home.sub": '分母在這裡：跑過的 PCB 各自怎麼處置、還有幾個區域在等人。',
+        "home.settled": 'PCB 已定案',
+        "home.held": '扣住',
+        "home.released": '放行',
+        "home.waiting_boards": '等待中',
+        "home.queue": '待人工複判的區域',
+        "home.deferred": '待資深複判的區域',
+        "home.open_queue": '進佇列',
+        "home.open_boards": 'PCB 處置紀錄',
+        "home.open_ask": '問產線一個問題',
         "boards.truncated":
             "顯示最新 {shown} 片，共 {total} 片；另外 {hidden} 片不在這一頁上。"
             "上面的計數是對整張表數的，不是對這一頁數的。",
@@ -613,6 +626,17 @@ STRINGS: dict[str, dict[str, str]] = {
         "boards.released": 'released {count}',
         "boards.waiting": 'waiting {count}',
         "boards.waiting_chip": 'waiting on a person',
+        "home.title": 'The line right now',
+        "home.sub": 'The denominator: how the boards that ran were dispositioned, and how many regions still wait on a person.',
+        "home.settled": 'PCBs settled',
+        "home.held": 'held',
+        "home.released": 'released',
+        "home.waiting_boards": 'waiting',
+        "home.queue": 'regions awaiting review',
+        "home.deferred": 'regions awaiting senior review',
+        "home.open_queue": 'Open the queue',
+        "home.open_boards": 'PCB dispositions',
+        "home.open_ask": 'Ask the line a question',
         "boards.truncated":
             "Showing the {shown} most recent of {total}; {hidden} are not on "
             "this page. The counts above are taken over the whole table, not "

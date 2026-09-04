@@ -132,14 +132,14 @@ def test_a_verdict_outside_the_class_list_is_refused(store, graph):
 
 def test_the_queue_page_lists_what_is_waiting(client, graph):
     service.start_review(graph, REFERENCE)
-    page = client.get("/").text
+    page = client.get("/queue").text
 
     assert REFERENCE in page
     assert "open" in page
 
 
 def test_the_queue_page_says_so_when_it_is_empty(client):
-    assert "Nothing waiting" in read_in(client, "en").get("/").text
+    assert "Nothing waiting" in read_in(client, "en").get("/queue").text
 
 
 def test_the_station_shows_the_evidence_the_agent_had(client, graph):
@@ -215,7 +215,7 @@ def test_next_walks_the_queue_and_ends_at_the_queue_page(client, graph):
 
     client.post(f"/c/{STEM}/0/verdict", data={"verdict": "open"}, follow_redirects=False)
     client.post(f"/c/{STEM}/1/verdict", data={"verdict": "short"}, follow_redirects=False)
-    assert client.get("/next", follow_redirects=False).headers["location"] == "/"
+    assert client.get("/next", follow_redirects=False).headers["location"] == "/queue"
 
 
 def test_an_unknown_region_is_a_404(client):

@@ -437,6 +437,33 @@ def _next_pending(after: str | None = None) -> str | None:
 
 
 @app.get("/", response_class=HTMLResponse)
+def home_page(request: Request):
+    """The front door: the denominator, not the failures.
+
+    Until 2026-09-05 the front door was the queue -- the regions the agent
+    could *not* settle -- so the first thing anyone saw was a list of
+    failures, and a reviewer opening the station took them for the system.
+    ``/boards`` fixed the index but not the door. This page shows the shape of
+    the line before any one region: how the boards that ran were dispositioned
+    and how many regions wait on a person, every figure a ``COUNT(*)`` over its
+    table, and three doors in. No prose beyond one sentence; an operator's
+    work is the queue and this must not stand between them and it for longer
+    than one click.
+
+    Read-only, like ``/boards``. Nothing here dispositions anything.
+    """
+    return templates.TemplateResponse(
+        request,
+        "home.html",
+        {
+            "counts": dispositions.board_counts(),
+            "waiting": escalations.pending_count(),
+            "deferred": escalations.deferred_count(),
+        },
+    )
+
+
+@app.get("/queue", response_class=HTMLResponse)
 def queue_page(request: Request):
     """The queue, and an honest statement of how much of it is on screen.
 
@@ -474,7 +501,9 @@ def queue_page(request: Request):
 def _go_to_next(after: str | None) -> RedirectResponse:
     reference = _next_pending(after)
     if reference is None:
-        return RedirectResponse("/", status_code=303)
+        # The queue, which says "nothing waiting" -- not the front page, which
+        # would leave the operator one click further from their work.
+        return RedirectResponse("/queue", status_code=303)
     stem, _, index = reference.partition("#")
     return RedirectResponse(f"/c/{stem}/{index}", status_code=303)
 

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}{{ t('home.title') }}{% endblock %}
+{% block content %}
+<section class="panel home">
+  <h1>{{ t('home.title') }}</h1>
+  <p class="sub">{{ t('home.sub') }}</p>
+
+  {# The four figures are the denominator the queue cannot show. Each is a
+     COUNT(*) over its table (`dispositions.board_counts`), never the length
+     of a page, and each is a link into the list it counts. No `ground_truth`
+     can reach this page: nothing region-level is rendered here at all. #}
+  <div class="stats">
+    <a class="stat" href="/boards"><b>{{ counts.total }}</b><span>{{ t('home.settled') }}</span></a>
+    <a class="stat" href="/boards?status=held"><b class="warn">{{ counts.held }}</b><span>{{ t('home.held') }}</span></a>
+    <a class="stat" href="/boards?status=released"><b>{{ counts.released }}</b><span>{{ t('home.released') }}</span></a>
+    <a class="stat" href="/boards?status=waiting"><b>{{ counts.waiting }}</b><span>{{ t('home.waiting_boards') }}</span></a>
+  </div>
+  <div class="stats">
+    <a class="stat" href="/queue"><b>{{ waiting }}</b><span>{{ t('home.queue') }}</span></a>
+    <a class="stat" href="/deferred"><b>{{ deferred }}</b><span>{{ t('home.deferred') }}</span></a>
+  </div>
+
+  <p class="doors">
+    <a class="go" href="/queue">{{ t('home.open_queue') }}</a>
+    <a class="go" href="/boards">{{ t('home.open_boards') }}</a>
+    <a class="go" href="/ask">{{ t('home.open_ask') }}</a>
+  </p>
+</section>
+{% endblock %}

@@ -333,6 +333,15 @@ Verdicts post as ordinary forms and redirect, so the station works with
 JavaScript off; number keys pick a verdict for the operators who live in it all
 shift.
 
+Since 2026-09-05 the front door is not the queue. `/` is one sentence, six
+figures and three doors: how many boards stand settled, held, released and
+waiting, how many regions wait on a person and how many were handed back,
+every figure a `COUNT(*)` over its table and a link into the list it counts.
+The queue moved one click in, to `/queue`. The reason is the one `/boards`
+was built for: a door that opens on the regions the agent could *not* settle
+shows a reader the failures first, and they take them for the system.
+Nothing region-level is rendered on the door, so nothing on it can leak.
+
 Around the queue, since 2026-08-25: `/boards` is the index — held, released
 and *waiting* counted over the table rather than the page, because the queue
 shows only what the agent could not settle and a reader who sees only failures

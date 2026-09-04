@@ -168,7 +168,7 @@ def test_the_flag_reaches_the_queue_row_and_the_page(stub_tools, store, monkeypa
 
     monkeypatch.setattr(station_app, "_graph", graph)
     client = read_in(sign_in(TestClient(station_app.app)), "en")
-    queue = client.get("/").text
+    queue = client.get("/queue").text
     assert "1 figure(s) not in the evidence" in queue
     region = client.get(f"/c/{STEM}/0").text
     assert "0.85" in region and "never shown" in region

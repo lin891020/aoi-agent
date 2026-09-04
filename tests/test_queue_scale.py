@@ -110,7 +110,7 @@ def test_the_queue_page_reports_everyone_who_is_waiting(crowded_client):
     of them will always contain the digits you are looking for. A substring
     search over a whole page is not an assertion about the page.
     """
-    body = read_in(crowded_client, "en").get("/").text
+    body = read_in(crowded_client, "en").get("/queue").text
 
     assert f"of {OVER_THE_PAGE} waiting" in body, (
         "the page does not state the real total"
@@ -121,7 +121,7 @@ def test_the_queue_page_says_how_much_it_is_not_showing(crowded_client):
     """A truncated list that does not say it is truncated reads as a whole list,
     which is the half of this defect that survives fixing the number."""
     hidden = OVER_THE_PAGE - len(escalations.pending())
-    body = read_in(crowded_client, "en").get("/").text
+    body = read_in(crowded_client, "en").get("/queue").text
 
     assert f"{hidden} are not on this page" in body, (
         "the page shows a page of rows and never mentions the rest"
@@ -189,7 +189,7 @@ def test_the_queue_shows_when_each_region_started_waiting_labelled_utc(
     UTC+8 is an eight-hour lie by omission, which the board record and the
     corrections pages already close by saying UTC; this holds the queue to the
     same sentence."""
-    body = read_in(crowded_client, "en").get("/").text
+    body = read_in(crowded_client, "en").get("/queue").text
 
     assert "Waiting since (UTC)" in body
     # The fixture raises its escalations at 2026-08-25 08:00 plus seconds; the

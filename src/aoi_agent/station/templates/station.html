@@ -233,7 +233,7 @@
     <p class="dim">
       {{ t('region.no_longer_waiting') }}
       {% if next_reference %}<a class="go" href="/next">{{ t('region.next_waiting') }}</a>
-      {% else %}<a class="go" href="/">{{ t('region.back_to_queue') }}</a>{% endif %}
+      {% else %}<a class="go" href="/queue">{{ t('region.back_to_queue') }}</a>{% endif %}
     </p>
   </div>
   {% endif %}

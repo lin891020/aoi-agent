@@ -43,7 +43,9 @@ src/aoi_agent/
     i18n.py                 the two string tables, and the rule that the
                             switch renders chrome and never rewrites a record
     station/                the review station -- FastAPI + Jinja, the
-                            escalation queue, /ask and its SSE progress
+                            front door (`/`, the line's denominator: six
+                            counts and three doors, since 2026-09-05), the
+                            escalation queue (`/queue`), /ask and its SSE progress
                             stream, and service.py -- the review layer the
                             CLI shares with it. /ask has its own writer in
                             analysis/service.py.
@@ -754,7 +756,11 @@ On the station itself:
   *queued* region. So everything reachable from the front door was a region the
   agent could not settle: the 82% it did settle had no page, and a reviewer
   opening this station read the failures and took them for the system.
-  `/boards` is the index, and it carries the denominator the queue cannot --
+  `/boards` is the index, and since 2026-09-05 the front door is no longer
+  the queue at all: `/` shows the six counts and three doors, the queue is
+  one click in at `/queue`, and `/next` with nothing waiting lands on the
+  queue rather than the door (`tests/test_home.py`). `/boards` carries
+  the denominator the queue cannot --
   held and released as `COUNT(*)` over the standing rows, never the length of
   the page, which is the queue badge's own defect written down. A third count
   sits beside those two and not inside them, since 2026-08-26: **waiting**,

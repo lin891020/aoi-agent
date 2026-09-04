@@ -445,7 +445,8 @@ def test_a_session_signed_with_another_key_is_refused(operators, monkeypatch):
 @pytest.mark.parametrize(
     "path",
     [
-        "/",                      # the queue: the regions on one line
+        "/",                      # the front page: the line's denominator
+        "/queue",                 # the queue: the regions on one line
         "/c/20085293/0",          # one region, with its images and context
         "/corrections",           # who has been overruling the model
         "/board/20085293",        # a board's quality record

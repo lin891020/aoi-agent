@@ -70,7 +70,7 @@ def queue(tmp_path, monkeypatch, operators):
 
 
 def test_the_queue_shows_two_sentences_and_folds_the_rest(queue):
-    page = queue.get("/").text
+    page = queue.get("/queue").text
     assert "差異圖上的斷點不完整。" in page
     folded = page.index("<details")
     assert page.index("WI-201 規定") > folded, "the third sentence is inside the disclosure"
@@ -82,10 +82,10 @@ def test_the_queue_says_which_language_the_rationale_is_written_in_and_what_it_c
     from aoi_agent.i18n import LINE_LANGUAGE_ENV
 
     monkeypatch.delenv(LINE_LANGUAGE_ENV, raising=False)
-    page = queue.get("/").text
+    page = queue.get("/queue").text
     assert "以中文撰寫" in page and "17 秒" in page and "12 秒" in page
     monkeypatch.setenv(LINE_LANGUAGE_ENV, "en")
-    page = queue.get("/").text
+    page = queue.get("/queue").text
     assert "以英文撰寫" in page
 
 
@@ -100,6 +100,6 @@ def test_a_markdown_rationale_reaches_the_queue_as_elements_not_asterisks(queue,
         "model_class": "false_call", "model_confidence": 0.858, "false_call_probability": 0.858,
         "lot_id": "LOT-1", "line_id": "L1", "machine_id": "M11", "shift": "C",
     }])
-    page = queue.get("/").text
+    page = queue.get("/queue").text
     assert "**" not in page and "*false_call*" not in page
     assert "<strong>視覺模型輸出</strong>" in page and "<em>false_call</em>" in page
