@@ -83,3 +83,11 @@ def test_every_spot_names_one_element(script):
         spec = cue.spot.removeprefix("first:")
         sel = spec.split("@@")[0]
         assert sel.strip() and "," not in sel, f"{script.cue_id(key, i)}: {cue.spot!r} is a list, not one element"
+
+
+def test_every_cue_has_a_known_phase(script):
+    for key, i, cue in script.CUES:
+        assert cue.phase in script.PHASES, f"{script.cue_id(key, i)}: phase {cue.phase!r}"
+    # The scenes that wait on a model say something while they wait.
+    for key in ("ask", "control", "switch"):
+        assert script.cues_in(key, "wait"), f"{key} has no cue for the wait"

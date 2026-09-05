@@ -50,6 +50,15 @@ class Cue:
     #: takes the first of several; ``sel@@text`` the one whose text contains
     #: ``text`` (``{region}`` is filled with the take's region reference).
     spot: str | None = None
+    #: When in its scene the cue is said. ``type``: the recorder types or
+    #: clicks while it is up; ``before``: before the scene's model call;
+    #: ``wait``: while the model works -- the progress panel is what is on
+    #: screen, and whatever wait is left after these is fast-forwarded in the
+    #: cut; ``after``: once the result is up.
+    phase: str = "after"
+
+
+PHASES = ("type", "before", "wait", "after")
 
 
 #: In order. The key is the scene the recorder drives; the cues are said over
@@ -142,11 +151,15 @@ SCENES: list[tuple[str, list[Cue]]] = [
             "table.queue tbody tr:first-child"),
     ]),
     ("ask", [
-        Cue("主管的問題，直接用中文問。", "A supervisor's question, typed in plain language.", "form.ask"),
+        Cue("主管的問題，直接用中文問。", "A supervisor's question, typed in plain language.", "form.ask", "type"),
         Cue("系統先把問題變成一份查詢計畫，驗證過才跑。",
-            "The question becomes a plan of lookups, validated before anything runs.", "#progress"),
-        Cue("幾個查詢是平行的；等的是模型寫字的時間。",
-            "The lookups run in parallel; the wait is the model writing.", "#progress"),
+            "The question becomes a plan of lookups, validated before anything runs.", "#progress", "wait"),
+        Cue("規劃：模型挑要查哪些工具、帶什麼參數。",
+            "Planning: the model picks which tools to call, and with what.", "#progress", "wait"),
+        Cue("驗證：參數對不上資料庫真有的值，就拒絕。",
+            "Validation: an argument the store does not hold is refused.", "#progress", "wait"),
+        Cue("查詢幾毫秒就回來；剩下的等待，是模型在寫答案。",
+            "The lookups return in milliseconds; the rest of the wait is the model writing.", "#progress", "wait"),
         Cue("前後兩根柱，區間沒重疊：參數變更後 open 比例掉了。",
             "Two bars, before and after, intervals apart: the share of opens fell.", "figure.chart"),
         Cue("圖是從結果的形狀畫的，不是模型挑的。",
@@ -156,16 +169,21 @@ SCENES: list[tuple[str, list[Cue]]] = [
             "figure.chart + .answer-block"),
     ]),
     ("control", [
-        Cue("再問一個對照組：M31 換燈前後。", "Now a control: the lamp replacement on M31.", "form.ask"),
+        Cue("再問一個對照組：M31 換燈前後。", "Now a control: the lamp replacement on M31.", "form.ask", "type"),
+        Cue("同一份流程，換一台機器、換一個事件。",
+            "The same flow, on another machine and another event.", "#progress", "wait"),
         Cue("兩根區間重疊，系統就直接說沒差。", "The intervals overlap, and the system says so.", "figure.chart"),
         Cue("有事件，不代表有影響。", "An event is not an effect.", "figure.chart"),
     ]),
     ("switch", [
-        Cue("切換語言。", "Switch the language.", "nav.locale a"),
+        Cue("切換語言。", "Switch the language.", "nav.locale a", "type"),
         Cue("問題和規劃段保留原文，標示出來。",
-            "The question and the plan stay as written, and are labelled.", "first:.answer-block h2 .as-asked"),
+            "The question and the plan stay as written, and are labelled.",
+            "first:.answer-block h2 .as-asked", "before"),
         Cue("答案不會自己變，要按一下才重寫。",
-            "The answer does not change by itself; it is written again on request.", "form.rewrite"),
+            "The answer does not change by itself; it is written again on request.", "form.rewrite", "before"),
+        Cue("重寫走的是同一條量過的路，所以要等模型一次。",
+            "The rewrite takes the same measured path, so it waits on the model once.", "form.rewrite", "wait"),
         Cue("用儲存的同一批結果再寫一次：不是翻譯，原文也留著。",
             "Written again from the stored results, not translated; the original is kept.",
             "figure.chart + .answer-block"),
@@ -185,6 +203,11 @@ CUES: list[tuple[str, int, Cue]] = [(key, i, cue) for key, cues in SCENES for i,
 
 def cue_id(key: str, i: int) -> str:
     return f"{key}.{i}"
+
+
+def cues_in(key: str, phase: str) -> list[str]:
+    """The ids of one scene's cues in one phase, in order."""
+    return [cue_id(k, i) for k, i, c in CUES if k == key and c.phase == phase]
 
 
 def text(cue: Cue, lang: str) -> str:
@@ -227,7 +250,8 @@ def shot_list() -> str:
     rows = []
     for key, cues in SCENES:
         for i, cue in enumerate(cues):
-            rows.append(f"| {cue_id(key, i)} | {hold(cue, 'zh-TW'):.1f} s | `{cue.spot or ''}` | {cue.zh} | {cue.en} |")
+            when = {"type": "（邊打字）", "before": "", "wait": "（等模型時）", "after": ""}[cue.phase]
+            rows.append(f"| {cue_id(key, i)} | {hold(cue, 'zh-TW'):.1f} s | `{cue.spot or ''}`{when} | {cue.zh} | {cue.en} |")
     zh_total = sum(hold(c, "zh-TW") for _, _, c in CUES)
     return (
         "# 示範影片分鏡\n\n"
@@ -235,7 +259,8 @@ def shot_list() -> str:
         f"{len(SCENES)} 幕、{len(CUES)} 句。每一句是一段字幕（中文最多 16 字一行、兩行；英文 42 字元一行），"
         "顯示在頁面**下方的黑帶**裡，不蓋畫面；「框」那一欄是字幕上的時候框起來的元素。"
         f"無聲版每句停留「秒」欄那麼久（中文 {ZH_PACE:g} 字/秒的配音速度），合計約 {zh_total/60:.1f} 分鐘，"
-        "還沒算模型回答的等待。\n\n"
+        "還沒算模型回答的等待——等待中先講「（等模型時）」那幾句，剩下的等待在成片裡加速（預設 3 倍，"
+        "畫面幾乎不動，右上角標 >> 3x），所以成片比錄的短。\n\n"
         "錄：`uv run --with playwright python scripts/demo_record.py --lang zh-TW --stem 00041208 --index 15 --silent "
         "--base http://127.0.0.1:8111`（先用 `--check` 走一遍每一頁，確認要框的元素都在）。"
         "無聲版帶字幕、沒有聲音；旁邊的 `docs/demo/build/<lang>/script.md` 是同一份台詞加上每句的秒數，配音對著它講。"

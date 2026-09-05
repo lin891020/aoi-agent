@@ -48,7 +48,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from demo_script import CUES, SCENES, cue_id, hold, lines, text
+from demo_script import CUES, SCENES, cue_id, cues_in, hold, lines, text
 
 _args = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 _args.add_argument("--lang", default="zh-TW", choices=("zh-TW", "en"))
@@ -68,6 +68,12 @@ _args.add_argument("--tts", default="auto", choices=("auto", "qwen3tts", "kokoro
                    help="auto: video_transfer's own split -- Qwen3-TTS for Chinese (the one voice measured to read "
                         "mixed Chinese/English), Kokoro for English; or name a backend; say: macOS, no verification")
 _args.add_argument("--video-transfer", default=str(Path.home() / "Projects" / "video_transfer"))
+_args.add_argument("--fast-forward", type=float, default=3.0,
+                   help="speed of the cut through a wait no cue covers (the model working, the page barely "
+                        "moving); a badge in the corner says so")
+_args.add_argument("--fast-max", type=float, default=10.0,
+                   help="seconds a fast-forwarded wait may still take on screen; the speed rises past "
+                        "--fast-forward to keep under it")
 ARGS = _args.parse_args()
 
 LANG = ARGS.lang
@@ -327,6 +333,7 @@ SPOT_JS = """(el) => {
 
 
 def main() -> None:
+    from playwright.sync_api import Error as PlaywrightError
     from playwright.sync_api import sync_playwright
 
     OUT.mkdir(parents=True, exist_ok=True)
@@ -355,27 +362,41 @@ def main() -> None:
                 return None, n
             return loc.first, n
 
-        def cue(cid: str, during=None) -> None:
+        def cue(cid: str, during=None, optional: bool = False) -> None:
             c = CUE[cid]
             start = now()
             if c.spot:
-                loc, n = target(c.spot)
-                if loc is None:
-                    msg = f"{cid}: {c.spot!r} matches {n} elements on {pg.url}"
-                    if ARGS.check:
-                        missing.append(msg)
+                try:
+                    loc, n = target(c.spot)
+                    if loc is None:
+                        msg = f"{cid}: {c.spot!r} matches {n} elements on {pg.url}"
+                        if ARGS.check:
+                            missing.append(msg)
+                        elif optional:
+                            print(f"note: {msg}; said without a frame", file=sys.stderr)
+                        else:
+                            sys.exit(f"cannot frame {msg}")
                     else:
-                        sys.exit(f"cannot frame {msg}")
-                else:
-                    loc.scroll_into_view_if_needed()
-                    pg.evaluate(SPOT_JS, loc.element_handle())
-                    pg.wait_for_timeout(250)
+                        # A wait cue is said over a page that may be mid-navigation;
+                        # two seconds is the most framing it may cost before the
+                        # cue goes up unframed.
+                        patience = 2000 if optional else 30000
+                        loc.scroll_into_view_if_needed(timeout=patience)
+                        pg.evaluate(SPOT_JS, loc.element_handle(timeout=patience))
+                        pg.wait_for_timeout(250)
+                except PlaywrightError as exc:  # the page moved under a wait cue: say it unframed
+                    if not optional:
+                        raise
+                    print(f"note: {cid}: {exc.__class__.__name__} while framing; said without a frame", file=sys.stderr)
             if during is not None:
                 during()
             remaining = 0.15 if ARGS.check else durations[cid] - (now() - start)
             if remaining > 0:
                 pg.wait_for_timeout(int(remaining * 1000))
-            pg.evaluate(SPOT_JS, None)
+            try:
+                pg.evaluate(SPOT_JS, None)
+            except PlaywrightError:
+                pass  # the page navigated away with the frame on it
             timeline.append({"id": cid, "key": SCENE_OF[cid], "start": round(start, 2), "end": round(now(), 2)})
 
         def login(name: str, secret: str, cid: str | None = None) -> None:
@@ -479,6 +500,18 @@ def main() -> None:
             for cid in ("boards.0", "boards.1", "boards.2"):
                 cue(cid)
 
+        def say_while_waiting(key: str, done) -> None:
+            # The cues for the wait, until the result is up. Whatever wait is
+            # left after the last one is fast-forwarded in the cut; a cue the
+            # result overtakes is simply not said.
+            for cid in cues_in(key, "wait"):
+                if done():
+                    break
+                cue(cid, optional=True)
+
+        def chart_up() -> bool:
+            return pg.locator("figure.chart").count() > 0
+
         def scene_ask():
             if ARGS.check:
                 pg.goto(f"{BASE}/ask")
@@ -487,33 +520,40 @@ def main() -> None:
                 return
             ask(Q_M32, "ask.0")
             pg.wait_for_selector("#progress", state="visible", timeout=30000)
-            cue("ask.1")
-            cue("ask.2")
+            say_while_waiting("ask", chart_up)
             pg.wait_for_selector("figure.chart", timeout=180000)
             pg.wait_for_timeout(600)
-            for cid in ("ask.3", "ask.4", "ask.5"):
+            for cid in cues_in("ask", "after"):
                 cue(cid)
 
         def scene_control():
             ask(Q_M31, "control.0")
+            pg.wait_for_selector("#progress", state="visible", timeout=30000)
+            say_while_waiting("control", chart_up)
             pg.wait_for_selector("figure.chart", timeout=180000)
             pg.wait_for_timeout(600)
-            cue("control.1")
-            cue("control.2")
+            for cid in cues_in("control", "after"):
+                cue(cid)
 
         def scene_switch():
             cue("switch.0")
             pg.click("nav.locale a")
             pg.wait_for_load_state("networkidle")
             pg.wait_for_timeout(800)
-            cue("switch.1")
-            cue("switch.2")
+            for cid in cues_in("switch", "before"):
+                cue(cid)
             # The switch renders chrome; the answer is written again only when
             # asked, because a GET on a stored run must not cost a model call.
-            pg.click("form.rewrite button")
+            # The POST holds until the model is done, so the click must not
+            # wait on it: the old page stays up meanwhile, and the wait cues
+            # are said over it.
+            pg.click("form.rewrite button", no_wait_after=True)
+            say_while_waiting("switch", lambda: pg.locator("form.rewrite").count() == 0)
             pg.wait_for_load_state("networkidle", timeout=180000)
+            pg.wait_for_selector("form.rewrite", state="detached", timeout=180000)
             pg.wait_for_timeout(600)
-            cue("switch.3")
+            for cid in cues_in("switch", "after"):
+                cue(cid)
 
         def scene_outro():
             card(outro, [f"outro.{i}" for i in range(5)])
@@ -548,59 +588,118 @@ def main() -> None:
     finish(take, timeline, durations)
 
 
+def cuts(timeline: list[dict]) -> list[tuple[float, float | None, float]]:
+    """The take in segments with a speed each: real time while a cue is up and
+    for a second either side of it; the wait between two cues, when it is
+    longer than six seconds, at `--fast-forward` or faster. The page barely
+    moves during those waits -- a spinner and a phase label -- so what the
+    viewer needs is the start and the end, not the middle."""
+    segs: list[tuple[float, float | None, float]] = []
+    cursor = 0.0
+    for a, b in zip(timeline, timeline[1:]):
+        s, e = a["end"] + 1.0, b["start"] - 1.0
+        if e - s >= 6.0:
+            segs.append((cursor, s, 1.0))
+            segs.append((s, e, max(ARGS.fast_forward, (e - s) / ARGS.fast_max)))
+            cursor = e
+    segs.append((cursor, None, 1.0))
+    return segs
+
+
+def remap(segs):
+    """Take time -> cut time, for the subtitles, the script and the narration."""
+    marks, out = [], 0.0
+    for s, e, f in segs:
+        marks.append((s, e, f, out))
+        if e is not None:
+            out += (e - s) / f
+
+    def to_out(t: float) -> float:
+        for s, e, f, o in marks:
+            if e is None or t < e:
+                return o + (t - s) / f
+        return out
+    return to_out
+
+
 def finish(video_path: Path, timeline: list[dict], durations: dict[str, float]) -> None:
-    """Subtitles from the timeline into the band, then the silent cut or the narrated one."""
+    """The cut: waits fast-forwarded, subtitles in the band, then silent or narrated."""
     def ts(s):
         h, m, sec = int(s // 3600), int(s % 3600 // 60), s % 60
         return f"{h:02d}:{m:02d}:{sec:06.3f}".replace(".", ",")
-    # Where each cue's narration starts: its cue's start, unless the previous
-    # one is still talking -- then 0.3 s after it ends. The silent cut keeps
-    # its cue starts exactly, since its holds *are* the timeline.
+    segs = cuts(timeline)
+    to_out = remap(segs)
+    (OUT / "cuts.json").write_text(json.dumps(
+        [{"from": s, "to": e, "speed": round(f, 2), "at": round(to_out(s), 2)} for s, e, f in segs], indent=1))
+    # Where each cue's narration starts, in cut time: its cue's start, unless
+    # the previous one is still talking -- then 0.3 s after it ends. The
+    # silent cut keeps its cue starts exactly, since its holds *are* the
+    # timeline.
     starts, prev_end = [], -10.0
-    for t in timeline:
-        start = t["start"] if ARGS.silent else max(t["start"], prev_end + 0.3)
+    for c in timeline:
+        at = to_out(c["start"])
+        start = at if ARGS.silent else max(at, prev_end + 0.3)
         starts.append(start)
-        prev_end = start + durations[t["id"]]
-        if not ARGS.silent and prev_end > t["end"] + 1.0:
-            print(f"warning: {t['id']} narration runs {prev_end - t['end']:.1f}s past its cue", file=sys.stderr)
+        prev_end = start + durations[c["id"]]
+        if not ARGS.silent and prev_end > to_out(c["end"]) + 1.0:
+            print(f"warning: {c['id']} narration runs {prev_end - to_out(c['end']):.1f}s past its cue", file=sys.stderr)
     srt = []
-    for i, (t, start) in enumerate(zip(timeline, starts), 1):
-        end = t["end"] if ARGS.silent else max(start + durations[t["id"]], min(t["end"], start + durations[t["id"]] + 1.0))
-        srt.append(f"{i}\n{ts(start)} --> {ts(end)}\n" + "\n".join(lines(CUE[t["id"]], LANG)) + "\n")
+    for i, (c, start) in enumerate(zip(timeline, starts), 1):
+        until = to_out(c["end"])
+        end = until if ARGS.silent else max(start + durations[c["id"]], min(until, start + durations[c["id"]] + 1.0))
+        srt.append(f"{i}\n{ts(start)} --> {ts(end)}\n" + "\n".join(lines(CUE[c["id"]], LANG)) + "\n")
     (OUT / "subs.srt").write_text("\n".join(srt))
+
+    # The video: every segment trimmed and re-timed, joined, then the band.
+    n = len(segs)
+    graph = [f"[0:v]split={n}" + "".join(f"[i{k}]" for k in range(n))]
+    for k, (s, e, f) in enumerate(segs):
+        trim = f"trim=start={s:.3f}" + (f":end={e:.3f}" if e is not None else "")
+        graph.append(f"[i{k}]{trim},setpts=(PTS-STARTPTS)/{f:.4f}[c{k}]")
+    graph.append("".join(f"[c{k}]" for k in range(n)) + f"concat=n={n}:v=1:a=0,fps=25[vc]")
     font = "PingFang TC" if LANG == "zh-TW" else "Helvetica Neue"
     subs = str(OUT / "subs.srt").replace(":", "\\:")
     # libass sizes against a 288-line script by default, so FontSize=13 is
     # about 40 px on a 900 px frame: two lines and a margin in the 100 px band.
-    band = (f"[0:v]pad={W}:{H + BAND}:0:0:color=0x0b0d12,subtitles='{subs}':force_style="
+    band = (f"[vc]pad={W}:{H + BAND}:0:0:color=0x0b0d12,subtitles='{subs}':force_style="
             f"'FontName={font},FontSize=13,Alignment=2,MarginV=12,BorderStyle=1,Outline=1,Shadow=0,"
-            f"PrimaryColour=&H00F2F2F2,OutlineColour=&H00000000'[v]")
+            f"PrimaryColour=&H00F2F2F2,OutlineColour=&H00000000'")
+    for s, e, f in segs:
+        if f > 1.0:
+            band += (f",drawtext=text='>> {f:g}x':fontfile=/System/Library/Fonts/Helvetica.ttc:fontsize=26:"
+                     f"fontcolor=white:box=1:boxcolor=black@0.55:boxborderw=8:x=w-tw-20:y=64:"
+                     f"enable='between(t,{to_out(s):.2f},{to_out(e):.2f})'")
+    graph.append(band + "[v]")
     encode = ["-c:v", "libx264", "-crf", "22", "-preset", "medium", "-pix_fmt", "yuv420p"]
+    length = to_out(timeline[-1]["end"])
     if ARGS.silent:
         final = ROOT / "docs" / "demo" / f"aoi-agent-demo-{TAG}-silent.mp4"
-        subprocess.run([FFMPEG, "-y", "-i", str(video_path), "-filter_complex", band, "-map", "[v]", "-an",
+        subprocess.run([FFMPEG, "-y", "-i", str(video_path), "-filter_complex", ";".join(graph), "-map", "[v]", "-an",
                         *encode, str(final)], check=True, capture_output=True)
-        rows = "\n".join(f"| {t['id']} | {t['start']:.1f}–{t['end']:.1f} | {text(CUE[t['id']], LANG)} |" for t in timeline)
+        rows = "\n".join(f"| {c['id']} | {to_out(c['start']):.1f}–{to_out(c['end']):.1f} | {text(CUE[c['id']], LANG)} |"
+                          for c in timeline)
+        fast = ", ".join(f"{to_out(s):.0f}–{to_out(e):.0f} s ({f:g}x)" for s, e, f in segs if f > 1.0) or "none"
         (OUT / "script.md").write_text(
-            f"# {final.name} — 配音腳本 / dubbing script\n\n每一句字幕在畫面上的秒數，和要在那段時間裡講的話。"
-            f"影片有字幕、沒有聲音；`subs.srt` 是同一份字幕檔。\n\n| 句 | 秒 | 台詞 |\n|---|---|---|\n{rows}\n")
+            f"# {final.name} — 配音腳本 / dubbing script\n\n每一句字幕在成片裡的秒數，和要在那段時間裡講的話。"
+            f"影片有字幕、沒有聲音；`subs.srt` 是同一份字幕檔。加速的段落（右上角有標）：{fast}。\n\n"
+            f"| 句 | 秒 | 台詞 |\n|---|---|---|\n{rows}\n")
         print("wrote", final, f"{final.stat().st_size/1e6:.1f} MB; cues:", len(timeline),
-              "; length", timeline[-1]["end"], "s; script:", OUT / "script.md")
+              f"; length {length:.1f} s (take {timeline[-1]['end']:.1f} s); script:", OUT / "script.md")
         return
     ext = "aiff" if ARGS.tts == "say" else "wav"
     inputs, delays = [], []
-    for i, (t, start) in enumerate(zip(timeline, starts)):
-        inputs += ["-i", str(NARR / f"{t['id']}.{ext}")]
+    for i, (c, start) in enumerate(zip(timeline, starts)):
+        inputs += ["-i", str(NARR / f"{c['id']}.{ext}")]
         delays.append(f"[{i+1}:a]adelay={int(start*1000)}|{int(start*1000)}[a{i}]")
     # `apad` after the mix: `-shortest` otherwise ends the file where the last
     # cue's audio ends, and the last card holds longer than its line.
     mix = "".join(f"[a{i}]" for i in range(len(timeline))) + f"amix=inputs={len(timeline)}:normalize=0[mix];[mix]apad[narr]"
     final = ROOT / "docs" / "demo" / f"aoi-agent-demo-{TAG}.mp4"
     cmd = [FFMPEG, "-y", "-i", str(video_path), *inputs,
-           "-filter_complex", ";".join(delays) + ";" + mix + ";" + band,
+           "-filter_complex", ";".join(delays) + ";" + mix + ";" + ";".join(graph),
            "-map", "[v]", "-map", "[narr]", *encode, "-c:a", "aac", "-b:a", "128k", "-shortest", str(final)]
     subprocess.run(cmd, check=True, capture_output=True)
-    print("wrote", final, f"{final.stat().st_size/1e6:.1f} MB; cues:", len(timeline), "; length", timeline[-1]["end"], "s")
+    print("wrote", final, f"{final.stat().st_size/1e6:.1f} MB; cues:", len(timeline), f"; length {length:.1f} s")
 
 
 def narrate_existing() -> None:
@@ -609,7 +708,7 @@ def narrate_existing() -> None:
     and nothing in the store changes."""
     take = OUT / "take.webm"
     timeline = json.loads((OUT / "timeline.json").read_text()) if (OUT / "timeline.json").exists() else []
-    if not take.exists() or [t["id"] for t in timeline] != list(CUE):
+    if not take.exists() or not timeline or any(c["id"] not in CUE for c in timeline):
         sys.exit(f"no take with a matching timeline under {OUT}; record one with --silent first")
     finish(take, timeline, tts())
 
