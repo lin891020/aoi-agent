@@ -26,8 +26,8 @@ somebody is using), Ollama with gpt-oss:20b, operators `mike` (senior,
 passphrase in AOI_DEMO_SENIOR_SECRET) and `watcher` (operator, in
 AOI_DEMO_OPERATOR_SECRET), and a board whose region `<stem>#<index>` is on the
 queue. The board is run through the CLI first so the terminal scene shows
-real output. Everything lands under docs/demo/ (gitignored): the raw webm,
-cards, narration and subtitles under build/<lang>/, and the mp4 beside them.
+real output. Everything lands under docs/demo/ (gitignored): the master
+take, cards, narration and subtitles under build/<lang>/, and the cut beside them.
 A take hands the demo region back (the defer scene presses 0) and asks two
 questions on /ask; nothing else in the store changes.
 
@@ -37,6 +37,7 @@ filter, and `--tts say` uses the system voices.
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import re
@@ -58,7 +59,7 @@ _args.add_argument("--silent", action="store_true",
                    help="no narration: the video with its subtitles, each cue held for its reading time, "
                         "plus script.md (cue, seconds, the line) for dubbing over it")
 _args.add_argument("--narrate-existing", action="store_true",
-                   help="do not drive the station: take build/<lang>/take.webm and timeline.json from the last "
+                   help="do not drive the station: take build/<lang>/take.mp4 and timeline.json from the last "
                         "take, synthesise one narration per cue, and mux")
 _args.add_argument("--check", action="store_true",
                    help="drive the pages a take does not change (cards, terminal, login, home, queue, region, "
@@ -92,8 +93,17 @@ KOKORO_VOICE = {"zh-TW": "zf_xiaoxiao", "en": "af_heart"}[LANG]  # Kokoro: first
 TAG = "zh" if LANG == "zh-TW" else "en"
 REPO = "github.com/lin891020/aoi-agent"
 
-#: The page, and the band under it where the subtitles go.
-W, H, BAND = 1280, 800, 100
+#: The page in CSS pixels, captured at SCALE device pixels per CSS pixel and
+#: encoded at OUT_W wide; the band under it is where the subtitles go. The
+#: capture is Chrome's own screencast, frame by frame, not Playwright's video
+#: recorder: that one is VP8 at a fixed ~1 Mbps, and a page of 13 px text
+#: came out of it at 460 kbps -- legible, and mush. Mike asked whether the
+#: blur was his player. It was not.
+W, H, SCALE = 1280, 800, 2
+OUT_W = 1920
+OUT_H = H * OUT_W // W
+BAND = 100 * OUT_W // W
+FPS_CAP = 15.0
 #: Scenes a take changes something in -- `--check` does not run these.
 MUTATING = {"defer", "blocked", "ask", "control", "switch"}
 
@@ -343,13 +353,37 @@ def main() -> None:
     timeline: list[dict] = []
     missing: list[str] = []
 
+    frames_dir = OUT / "frames"
+    frames: list[tuple[float, Path]] = []
+
     with sync_playwright() as p:
         browser = p.chromium.launch(channel="chrome")
-        video = {} if ARGS.check else {"record_video_dir": str(OUT), "record_video_size": {"width": W, "height": H}}
-        ctx = browser.new_context(viewport={"width": W, "height": H}, color_scheme="dark", **video)
+        ctx = browser.new_context(viewport={"width": W, "height": H}, device_scale_factor=SCALE, color_scheme="dark")
         pg = ctx.new_page()
+        wall0 = time.time()
         t0 = time.monotonic()
         now = lambda: time.monotonic() - t0  # noqa: E731
+        if not ARGS.check:
+            shutil.rmtree(frames_dir, ignore_errors=True)
+            frames_dir.mkdir(parents=True)
+            cdp = ctx.new_cdp_session(pg)
+            last_kept = [-1.0]
+
+            def on_frame(params):
+                # Chrome sends a frame on every repaint and nothing while the
+                # page is still; each one is acked, and one in every 1/FPS_CAP
+                # seconds is kept, stamped in the take's own clock.
+                cdp.send("Page.screencastFrameAck", {"sessionId": params["sessionId"]})
+                ts = max(0.0, params["metadata"]["timestamp"] - wall0)
+                if frames and ts - last_kept[0] < 1.0 / FPS_CAP:
+                    return
+                path = frames_dir / f"{len(frames):06d}.jpg"
+                path.write_bytes(base64.b64decode(params["data"]))
+                frames.append((ts, path))
+                last_kept[0] = ts
+            cdp.on("Page.screencastFrame", on_frame)
+            cdp.send("Page.startScreencast", {"format": "jpeg", "quality": 92, "maxWidth": W * SCALE,
+                                              "maxHeight": H * SCALE, "everyNthFrame": 1})
 
         def target(spec: str):
             first = spec.startswith("first:")
@@ -578,14 +612,34 @@ def main() -> None:
                 sys.exit("missing:\n  " + "\n  ".join(missing))
             print("every framed element found")
             return
-        video_path = pg.video.path()
+        end = now() + 0.5
+        cdp.send("Page.stopScreencast")
         ctx.close()
         browser.close()
 
-    take = OUT / "take.webm"
-    shutil.move(video_path, take)
+    take = master(frames, end)
     (OUT / "timeline.json").write_text(json.dumps(timeline, indent=1))
     finish(take, timeline, durations)
+
+
+def master(frames: list[tuple[float, Path]], end: float) -> Path:
+    """The take as one constant-rate H.264 file at OUT_W wide, from the
+    screencast frames and the seconds each was on screen. The cut is made
+    from this, and `--narrate-existing` reads it again; the frames go."""
+    if not frames:
+        sys.exit("no frames arrived from the screencast")
+    lines_ = ["ffconcat version 1.0"]
+    for (ts, path), nxt in zip(frames, [f[0] for f in frames[1:]] + [max(end, frames[-1][0] + 0.5)]):
+        lines_ += [f"file '{path.name}'", f"duration {max(nxt - ts, 0.001):.3f}"]
+    lines_ += [f"file '{frames[-1][1].name}'"]
+    (frames[0][1].parent / "frames.txt").write_text("\n".join(lines_) + "\n")
+    take = OUT / "take.mp4"
+    subprocess.run([FFMPEG, "-y", "-f", "concat", "-safe", "0", "-i", str(frames[0][1].parent / "frames.txt"),
+                    "-vf", f"scale={OUT_W}:{OUT_H}:flags=lanczos,fps=25", "-c:v", "libx264", "-crf", "16",
+                    "-preset", "medium", "-pix_fmt", "yuv420p", str(take)], check=True, capture_output=True)
+    shutil.rmtree(frames[0][1].parent, ignore_errors=True)
+    print(f"master: {take} from {len(frames)} frames, {take.stat().st_size/1e6:.1f} MB")
+    return take
 
 
 def cuts(timeline: list[dict]) -> list[tuple[float, float | None, float]]:
@@ -661,16 +715,17 @@ def finish(video_path: Path, timeline: list[dict], durations: dict[str, float]) 
     subs = str(OUT / "subs.srt").replace(":", "\\:")
     # libass sizes against a 288-line script by default, so FontSize=13 is
     # about 40 px on a 900 px frame: two lines and a margin in the 100 px band.
-    band = (f"[vc]pad={W}:{H + BAND}:0:0:color=0x0b0d12,subtitles='{subs}':force_style="
+    band = (f"[vc]pad={OUT_W}:{OUT_H + BAND}:0:0:color=0x0b0d12,subtitles='{subs}':force_style="
             f"'FontName={font},FontSize=13,Alignment=2,MarginV=12,BorderStyle=1,Outline=1,Shadow=0,"
             f"PrimaryColour=&H00F2F2F2,OutlineColour=&H00000000'")
     for s, e, f in segs:
         if f > 1.0:
-            band += (f",drawtext=text='>> {f:g}x':fontfile=/System/Library/Fonts/Helvetica.ttc:fontsize=26:"
-                     f"fontcolor=white:box=1:boxcolor=black@0.55:boxborderw=8:x=w-tw-20:y=64:"
+            band += (f",drawtext=text='>> {f:g}x':fontfile=/System/Library/Fonts/Helvetica.ttc:"
+                     f"fontsize={26 * OUT_W // W}:fontcolor=white:box=1:boxcolor=black@0.55:boxborderw=8:"
+                     f"x=w-tw-{20 * OUT_W // W}:y={64 * OUT_W // W}:"
                      f"enable='between(t,{to_out(s):.2f},{to_out(e):.2f})'")
     graph.append(band + "[v]")
-    encode = ["-c:v", "libx264", "-crf", "22", "-preset", "medium", "-pix_fmt", "yuv420p"]
+    encode = ["-c:v", "libx264", "-crf", "20", "-preset", "medium", "-pix_fmt", "yuv420p", "-movflags", "+faststart"]
     length = to_out(timeline[-1]["end"])
     if ARGS.silent:
         final = ROOT / "docs" / "demo" / f"aoi-agent-demo-{TAG}-silent.mp4"
@@ -706,7 +761,7 @@ def narrate_existing() -> None:
     """Narrate the take already recorded, on its own timeline: one wav per
     cue at the cue's start, the same subtitles in the band. Nothing is driven
     and nothing in the store changes."""
-    take = OUT / "take.webm"
+    take = OUT / "take.mp4"
     timeline = json.loads((OUT / "timeline.json").read_text()) if (OUT / "timeline.json").exists() else []
     if not take.exists() or not timeline or any(c["id"] not in CUE for c in timeline):
         sys.exit(f"no take with a matching timeline under {OUT}; record one with --silent first")
