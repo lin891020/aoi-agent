@@ -17,7 +17,7 @@ the mux uses the Homebrew ffmpeg-full build for its subtitle filter.
 """
 from __future__ import annotations
 
-import argparse, json, os, re, subprocess, sys, time
+import argparse, json, os, re, shlex, subprocess, sys, time
 from pathlib import Path
 
 _args = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -31,8 +31,9 @@ _args.add_argument("--silent", action="store_true",
                    help="no narration and no subtitles: the video alone, each scene held for HOLD_S "
                         "seconds, plus script.md (scene, start, end, the line to say) for dubbing over it")
 _args.add_argument("--base", default="http://127.0.0.1:8110")
-_args.add_argument("--tts", default="kokoro", choices=("kokoro", "say"),
-                   help="kokoro: Kokoro-82M through ~/Projects/video_transfer's backend (neural, both languages); say: macOS")
+_args.add_argument("--tts", default="auto", choices=("auto", "qwen3tts", "kokoro", "say"),
+                   help="auto: video_transfer's own split -- Qwen3-TTS for Chinese (the one voice measured to read "
+                        "mixed Chinese/English), Kokoro for English; or name a backend; say: macOS, no verification")
 _args.add_argument("--video-transfer", default=str(Path.home() / "Projects" / "video_transfer"))
 ARGS = _args.parse_args()
 
@@ -100,28 +101,75 @@ def _duration(path: Path) -> float:
 
 
 def tts() -> dict[str, float]:
-    """One narration file per scene, and its length. Kokoro-82M through
-    ~/Projects/video_transfer's TTS backend by default -- the same neural voice
-    that project dubs with -- with macOS `say` as the fallback."""
+    """One narration file per scene, and its length.
+
+    Through ~/Projects/video_transfer's own path -- `source env.sh local`,
+    `get_tts_backend(name, language=...)`, `dubscript.to_dub_text()` -- and not
+    around it. Until 2026-09-05 this constructed `KokoroBackend()` directly and
+    skipped both: the Chinese take read "好一片剛進來，照標了三十個區域" for
+    "一片 PCB 剛進來，AOI 標了三十個區域" -- PCB gone, AOI turned into 照, M32
+    into 32 -- and every sentence stayed grammatical, so nobody heard it go.
+    Kokoro is the voice video_transfer measured at 1/96 English words surviving
+    a mixed sentence; Qwen3-TTS is the one it keeps for Chinese (93/96), and
+    its backend listens every piece back through Whisper as it goes.
+
+    Each finished line is listened back once more here and the Latin tokens
+    of the script (PCB, AOI, M32, benchmarks...) are checked against what was
+    heard, so a word that silently vanished is printed rather than shipped.
+    """
     NARR.mkdir(parents=True, exist_ok=True)
     if ARGS.tts == "say":
         for key, text in SCENES:
             subprocess.run(["say", "-v", VOICE, "-r", "175" if LANG == "en" else "190",
                             "-o", str(NARR / f"{key}.aiff"), text], check=True)
         return {key: _duration(NARR / f"{key}.aiff") for key, _ in SCENES}
+    lang = "zh" if LANG == "zh-TW" else "en"
+    name = {"zh": "qwen3tts", "en": "kokoro"}[lang] if ARGS.tts == "auto" else ARGS.tts
     spec = NARR / "lines.json"
     spec.write_text(json.dumps([{"key": k, "text": t} for k, t in SCENES], ensure_ascii=False))
     runner = (
-        "import json, sys\nfrom pathlib import Path\nfrom video_pipeline.tts import KokoroBackend\n"
-        "spec, out, voice = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3]\n"
-        "b = KokoroBackend()\n"
+        "import json, sys\nfrom pathlib import Path\n"
+        "from video_pipeline import dubscript\n"
+        "from video_pipeline.tts import get_tts_backend\n"
+        "from video_pipeline.transcribe import transcribe\n"
+        "spec, out, voice, name, lang = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3], sys.argv[4], sys.argv[5]\n"
+        "import re, shutil\n"
+        "def missing_of(sent, heard):\n"
+        "    flat = re.sub(r'[\\s\\-_]', '', heard).lower()\n"
+        "    return [t for t in re.findall(r'[A-Za-z][A-Za-z0-9]+', sent) if t.lower() not in flat]\n"
+        "b = get_tts_backend(name, language=lang)\n"
+        "prior = json.loads((out / 'heard.json').read_text()) if (out / 'heard.json').exists() else {}\n"
+        "heard = {}\n"
         "for line in json.loads(spec.read_text()):\n"
-        "    b.synthesize(line['text'], out / (line['key'] + '.wav'), speaker=voice)\n"
+        "    key, text = line['key'], dubscript.to_dub_text(line['text'])\n"
+        "    wav, old = out / (key + '.wav'), prior.get(key)\n"
+        "    if wav.exists() and old and old.get('sent') == text and old.get('backend') == b.name and not missing_of(text, old['heard']):\n"
+        "        heard[key] = old; continue\n"
+        "    best = None\n"
+        "    for attempt in range(1, 4):\n"
+        "        take = out / (key + '.take.wav')\n"
+        "        b.synthesize(text, take, speaker=voice)\n"
+        "        h = ' '.join(s.text for s in transcribe(take, language=lang).segments)\n"
+        "        entry = {'backend': b.name, 'sent': text, 'heard': h, 'missing': missing_of(text, h), 'attempts': attempt}\n"
+        "        if best is None or len(entry['missing']) < len(best['missing']):\n"
+        "            best = entry; shutil.copy(take, wav)\n"
+        "        if not entry['missing']: break\n"
+        "    take.unlink(missing_ok=True); heard[key] = best\n"
+        "(out / 'heard.json').write_text(json.dumps(heard, ensure_ascii=False, indent=1))\n"
     )
-    subprocess.run(["uv", "run", "--project", ARGS.video_transfer, "python", "-c", runner,
-                    str(spec), str(NARR), KOKORO_VOICE],
-                   check=True, cwd=ARGS.video_transfer, env={**os.environ, "VT_TTS_BACKEND": "kokoro"},
-                   capture_output=True)
+    cmd = (f"source env.sh local >/dev/null && uv run --project . python -c {shlex.quote(runner)} "
+           f"{shlex.quote(str(spec))} {shlex.quote(str(NARR))} {KOKORO_VOICE} {name} {lang}")
+    done = subprocess.run(["bash", "-c", cmd], cwd=ARGS.video_transfer, capture_output=True, text=True)
+    if done.returncode:
+        sys.exit(f"video_transfer's TTS failed ({name}):\n" + done.stderr[-3000:])
+    heard = json.loads((NARR / "heard.json").read_text())
+    for key, entry in heard.items():
+        flat = re.sub(r"[\s\-_]", "", entry["heard"]).lower()
+        tokens = re.findall(r"[A-Za-z][A-Za-z0-9]+", entry["sent"])
+        missing = [t for t in tokens if t.lower() not in flat]
+        if missing:
+            print(f"warning: {key}: not heard back: {', '.join(missing)}\n  sent:  {entry['sent']}\n  heard: {entry['heard']}", file=sys.stderr)
+    print(f"narration: {name}; {len(heard)} lines; listen-back in {NARR / 'heard.json'}")
     return {key: _duration(NARR / f"{key}.wav") for key, _ in SCENES}
 
 
@@ -258,10 +306,21 @@ def finish(video_path, timeline: list[dict], durations: dict[str, float]) -> Non
     """Subtitles from the timeline, then either the silent cut or the narrated one."""
     def ts(s): h = int(s // 3600); m = int(s % 3600 // 60); sec = s % 60; return f"{h:02d}:{m:02d}:{sec:06.3f}".replace(".", ",")
     text = dict(SCENES)
+    # Where each line starts. Normally its scene's start; a line that ran past
+    # its scene pushes the next one back by the overrun rather than being
+    # talked over -- the silent cut keeps its scene starts exactly, since its
+    # holds *are* the timeline.
+    starts, prev_end = [], -10.0
+    for t in timeline:
+        start = t["start"] if ARGS.silent else max(t["start"], prev_end + 0.3)
+        starts.append(start); prev_end = start + durations[t["key"]]
+        if not ARGS.silent and prev_end > t["end"]:
+            print(f"warning: {t['key']} narration ends {prev_end - t['end']:.1f}s into the next scene "
+                  f"(starts {start - t['start']:.1f}s late)", file=sys.stderr)
     srt = []
-    for i, t in enumerate(timeline, 1):
-        end = min(t["end"], t["start"] + durations[t["key"]] + 1.5)
-        srt.append(f"{i}\n{ts(t['start'])} --> {ts(end)}\n{text[t['key']]}\n")
+    for i, (t, start) in enumerate(zip(timeline, starts), 1):
+        end = max(min(t["end"], start + durations[t["key"]] + 1.5), start + durations[t["key"]])
+        srt.append(f"{i}\n{ts(start)} --> {ts(end)}\n{text[t['key']]}\n")
     (OUT / "subs.srt").write_text("\n".join(srt))
     if ARGS.silent:
         # The video alone: no narration track, no burned subtitles. What goes
@@ -281,18 +340,11 @@ def finish(video_path, timeline: list[dict], durations: dict[str, float]) -> Non
               "; length", timeline[-1]["end"], "s; script:", OUT / "script.md")
         return
     # audio: each narration delayed to its scene start, mixed
-    for t in timeline:
-        # A line longer than its scene runs into the next one. Said here rather
-        # than discovered on playback; the silent cut's holds were sized to a
-        # speaking pace and a synthetic voice may not fit them.
-        if durations[t["key"]] > t["end"] - t["start"]:
-            print(f"warning: {t['key']} narration {durations[t['key']]:.1f}s exceeds its "
-                  f"{t['end'] - t['start']:.1f}s scene", file=sys.stderr)
     inputs, delays = [], []
-    for i, t in enumerate(timeline):
+    for i, (t, start) in enumerate(zip(timeline, starts)):
         ext = "aiff" if ARGS.tts == "say" else "wav"
         inputs += ["-i", str(NARR / f"{t['key']}.{ext}")]
-        delays.append(f"[{i+1}:a]adelay={int(t['start']*1000)}|{int(t['start']*1000)}[a{i}]")
+        delays.append(f"[{i+1}:a]adelay={int(start*1000)}|{int(start*1000)}[a{i}]")
     # `apad` after the mix: `-shortest` otherwise ends the file where the last
     # line ends, and the last scene holds on the answer longer than its line.
     mix = "".join(f"[a{i}]" for i in range(len(timeline))) + f"amix=inputs={len(timeline)}:normalize=0[mix];[mix]apad[narr]"
