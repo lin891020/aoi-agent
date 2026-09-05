@@ -366,7 +366,6 @@ def main() -> None:
             shutil.rmtree(frames_dir, ignore_errors=True)
             frames_dir.mkdir(parents=True)
             cdp = ctx.new_cdp_session(pg)
-            last_kept = [-1.0]
 
             def on_frame(params):
                 # Chrome sends a frame on every repaint and nothing while the
@@ -379,12 +378,18 @@ def main() -> None:
                 # scene by scene.
                 cdp.send("Page.screencastFrameAck", {"sessionId": params["sessionId"]})
                 ts = now()
-                if frames and ts - last_kept[0] < 1.0 / FPS_CAP:
+                data = base64.b64decode(params["data"])
+                if frames and ts - frames[-1][0] < 1.0 / FPS_CAP:
+                    # Within a tick of the last kept frame: this one *replaces*
+                    # it rather than being dropped. A static page arrives as
+                    # two frames a few ms apart -- the blank commit and the
+                    # paint -- and dropping the second left the intro card
+                    # black for twenty seconds and the outro card never shown.
+                    frames[-1][1].write_bytes(data)
                     return
                 path = frames_dir / f"{len(frames):06d}.jpg"
-                path.write_bytes(base64.b64decode(params["data"]))
+                path.write_bytes(data)
                 frames.append((ts, path))
-                last_kept[0] = ts
             cdp.on("Page.screencastFrame", on_frame)
             cdp.send("Page.startScreencast", {"format": "jpeg", "quality": 92, "maxWidth": W * SCALE,
                                               "maxHeight": H * SCALE, "everyNthFrame": 1})
