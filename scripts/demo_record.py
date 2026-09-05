@@ -250,18 +250,26 @@ def terminal_page() -> Path:
     first three regions the model settled, one line standing for the rest,
     the regions that went to the queue, and the board's own line."""
     raw = cli_transcript()
+    (OUT / "cli.txt").write_text("\n".join(raw) + "\n")  # what the fold below was made from
     head = [x for x in raw if "AOI candidates" in x][:1]
     foot = [x for x in raw if x.strip().startswith(("board ", "under model")) and "candidates" not in x]
+    # A block is one region: its verdict line and the indented lines under it.
+    # An escalated region prints `escalated: <ref>`, its reason and two notes
+    # *before* its QUEUED line, so that block stays open until the line with
+    # the reference arrives.
     blocks: list[list[str]] = []
+    open_escalation = False
     for row in raw:
         s = row.strip()
         if row in head or row in foot:
             continue
         if s.startswith("escalated:"):
             blocks.append([row])
+            open_escalation = True
         elif re.match(r"\d{8}#\d+\s", s):
-            if blocks and len(blocks[-1]) == 1 and blocks[-1][0].strip().startswith("escalated:"):
+            if open_escalation:
                 blocks[-1].append(row)
+                open_escalation = False
             else:
                 blocks.append([row])
         elif blocks:

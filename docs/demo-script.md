@@ -16,7 +16,7 @@
 | intro.3 | 3.5 s | `` | 兩個都收不掉的，才交給人。 | Only what neither can settle reaches a person. |
 | cli.0 | 5.9 s | `#hdr` | 一片 PCB 進來，AOI 標了 30 個區域。 | One PCB comes in. The AOI flagged thirty regions. |
 | cli.1 | 4.8 s | `#first` | 一個區域一行，大多數模型幾毫秒就判掉。 | One line per region; most of them the model settles in milliseconds. |
-| cli.2 | 4.2 s | `#queued` | 三個它不敢判的，進佇列，交給人。 | The three it was not sure about go to the queue, to a person. |
+| cli.2 | 4.2 s | `#queued` | 兩個它不敢判的，進佇列，交給人。 | The two it was not sure about go to the queue, to a person. |
 | cli.3 | 4.2 s | `#board` | 整片 PCB 先扣留，等人判完。 | The whole board is held until they answer. |
 | login.0 | 5.3 s | `form.signin-form` | 作業員登入。之後每個判定都記在這個名字下。 | An operator signs in. Every verdict from here on carries this name. |
 | home.0 | 5.0 s | `.home h1` | 登入後第一眼是主畫面：這條線現在的狀態。 | The first screen is the line as it stands right now. |
