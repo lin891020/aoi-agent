@@ -134,9 +134,14 @@ def tts() -> dict[str, float]:
         "from video_pipeline.transcribe import transcribe\n"
         "spec, out, voice, name, lang = Path(sys.argv[1]), Path(sys.argv[2]), sys.argv[3], sys.argv[4], sys.argv[5]\n"
         "import re, shutil\n"
+        # What must be heard back: in a Chinese line every Latin token is an
+        # identifier; in an English line only the identifiers are (PCB, AOI,
+        # M32) -- Whisper writes thirty as 30 and labelled as labeled, and
+        # a check over every word would spend the retries on spelling.
+        "TOKEN = r'[A-Za-z][A-Za-z0-9]+' if lang == 'zh' else r'\\b[A-Z][A-Z0-9]+'\n"
         "def missing_of(sent, heard):\n"
         "    flat = re.sub(r'[\\s\\-_]', '', heard).lower()\n"
-        "    return [t for t in re.findall(r'[A-Za-z][A-Za-z0-9]+', sent) if t.lower() not in flat]\n"
+        "    return [t for t in re.findall(TOKEN, sent) if t.lower() not in flat]\n"
         "b = get_tts_backend(name, language=lang)\n"
         "prior = json.loads((out / 'heard.json').read_text()) if (out / 'heard.json').exists() else {}\n"
         "heard = {}\n"
@@ -165,7 +170,7 @@ def tts() -> dict[str, float]:
     heard = json.loads((NARR / "heard.json").read_text())
     for key, entry in heard.items():
         flat = re.sub(r"[\s\-_]", "", entry["heard"]).lower()
-        tokens = re.findall(r"[A-Za-z][A-Za-z0-9]+", entry["sent"])
+        tokens = re.findall(r"[A-Za-z][A-Za-z0-9]+" if lang == "zh" else r"\b[A-Z][A-Z0-9]+", entry["sent"])
         missing = [t for t in tokens if t.lower() not in flat]
         if missing:
             print(f"warning: {key}: not heard back: {', '.join(missing)}\n  sent:  {entry['sent']}\n  heard: {entry['heard']}", file=sys.stderr)
