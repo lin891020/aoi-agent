@@ -24,6 +24,9 @@ _args = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.Ra
 _args.add_argument("--lang", default="zh-TW", choices=("zh-TW", "en"))
 _args.add_argument("--stem", required=True, help="a board with a region on the queue")
 _args.add_argument("--index", type=int, default=8, help="which of that board's regions is on the queue")
+_args.add_argument("--narrate-existing", action="store_true",
+                   help="do not drive the station: take the silent cut already under docs/demo/ and its "
+                        "build/<lang>/timeline.json, synthesise the narration, and mux the two")
 _args.add_argument("--silent", action="store_true",
                    help="no narration and no subtitles: the video alone, each scene held for HOLD_S "
                         "seconds, plus script.md (scene, start, end, the line to say) for dubbing over it")
@@ -248,7 +251,11 @@ def main() -> None:
         ctx.close(); browser.close()
 
     (OUT / "timeline.json").write_text(json.dumps(timeline, indent=1))
-    # subtitles
+    finish(video_path, timeline, durations)
+
+
+def finish(video_path, timeline: list[dict], durations: dict[str, float]) -> None:
+    """Subtitles from the timeline, then either the silent cut or the narrated one."""
     def ts(s): h = int(s // 3600); m = int(s % 3600 // 60); sec = s % 60; return f"{h:02d}:{m:02d}:{sec:06.3f}".replace(".", ",")
     text = dict(SCENES)
     srt = []
@@ -274,12 +281,21 @@ def main() -> None:
               "; length", timeline[-1]["end"], "s; script:", OUT / "script.md")
         return
     # audio: each narration delayed to its scene start, mixed
+    for t in timeline:
+        # A line longer than its scene runs into the next one. Said here rather
+        # than discovered on playback; the silent cut's holds were sized to a
+        # speaking pace and a synthetic voice may not fit them.
+        if durations[t["key"]] > t["end"] - t["start"]:
+            print(f"warning: {t['key']} narration {durations[t['key']]:.1f}s exceeds its "
+                  f"{t['end'] - t['start']:.1f}s scene", file=sys.stderr)
     inputs, delays = [], []
     for i, t in enumerate(timeline):
         ext = "aiff" if ARGS.tts == "say" else "wav"
         inputs += ["-i", str(NARR / f"{t['key']}.{ext}")]
         delays.append(f"[{i+1}:a]adelay={int(t['start']*1000)}|{int(t['start']*1000)}[a{i}]")
-    mix = "".join(f"[a{i}]" for i in range(len(timeline))) + f"amix=inputs={len(timeline)}:normalize=0[narr]"
+    # `apad` after the mix: `-shortest` otherwise ends the file where the last
+    # line ends, and the last scene holds on the answer longer than its line.
+    mix = "".join(f"[a{i}]" for i in range(len(timeline))) + f"amix=inputs={len(timeline)}:normalize=0[mix];[mix]apad[narr]"
     font = "PingFang TC" if LANG == "zh-TW" else "Helvetica Neue"
     subs = str(OUT / "subs.srt").replace(":", "\\:")
     final = ROOT / "docs" / "demo" / f"aoi-agent-demo-{TAG}.mp4"
@@ -291,5 +307,20 @@ def main() -> None:
     print("wrote", final, f"{final.stat().st_size/1e6:.1f} MB; scenes:", len(timeline), "; length", timeline[-1]["end"], "s")
 
 
+def narrate_existing() -> None:
+    """Narrate the silent cut already recorded, on its own timeline.
+
+    The video is what a person was going to dub over by hand; this puts the
+    Kokoro voice over it instead, at the scene starts the silent take
+    recorded, and burns the same lines in as subtitles. Nothing is driven and
+    nothing in the store changes.
+    """
+    video = ROOT / "docs" / "demo" / f"aoi-agent-demo-{TAG}-silent.mp4"
+    timeline = json.loads((OUT / "timeline.json").read_text())
+    if not video.exists() or {t["key"] for t in timeline} != {k for k, _ in SCENES}:
+        sys.exit(f"no silent cut with a matching timeline under {OUT}; record one with --silent first")
+    finish(video, timeline, tts())
+
+
 if __name__ == "__main__":
-    main()
+    narrate_existing() if ARGS.narrate_existing else main()
