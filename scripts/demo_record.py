@@ -59,13 +59,13 @@ Q_M31 = {"zh-TW": "M31 換燈前後，open 的比例有沒有變？",
 
 SCENES = {
  "zh-TW": [
-  ("cli",      "好，一片 PCB 剛進來。AOI 標了三十個區域，視覺模型幾毫秒就排掉二十八個；剩下兩個它不敢判，就交給人。"),
-  ("home",     "登入後第一眼是這條線的分母：跑過的 PCB 幾片定案、幾片扣住、幾片放行、幾片還在等人，還有幾個區域等人看。失敗清單不在第一眼，要點進去才是。"),
+  ("cli",      "好，一片 PCB 剛進來。AOI 標了三十個區域，視覺模型和 agent 幾秒內收掉二十七個；剩下三個不敢判，就交給人。"),
+  ("home",     "登入後第一眼是主畫面：跑過的 PCB 幾片已處置、幾片扣留、幾片放行、幾片待判，還有幾個區域等人看。失敗清單不在第一眼，要點進去才是。"),
   ("queue",    "這一頁就是等人看的清單。每一列都有模型的判定、信心、誤判機率，還有 agent 寫的一段說明。注意，agent 只負責解釋，不做決定。誰等最久，誰排前面。"),
-  ("region",   "點進一個區域。左邊是黃金樣板、待測 PCB 和差異圖並排；右邊是這台機器的缺陷率，還有這一類的驗收標準。這一頁故意不顯示答案，因為作業員按下去的答案，就是下一輪訓練的標籤。"),
+  ("region",   "點進一個區域。左邊是 golden image、待測 PCB 和差異圖並排；右邊是這台機器的缺陷率，還有這一類的驗收標準。這一頁故意不顯示答案，因為作業員按下去的答案，就是下一輪訓練的標籤。"),
   ("defer",    "真的看不出來？按零。它不會被記成判定，區域會換到另一個隊伍，交給資深的人。"),
   ("blocked",  "換一般作業員登入，打開同一個區域，按鈕不見了。退回的區域只有資深能答，這是整個站唯一的權限。"),
-  ("boards",   "這是 PCB 處置紀錄：已定案、扣住、放行、等待中。分母在這裡，不在待複判清單。"),
+  ("boards",   "這是 PCB 處置紀錄：已處置、扣留、放行、待判。整條線的全貌在這裡，不在待複判清單。"),
   ("ask",      "主管問：M32 參數變更前後，open 的比例有沒有變？系統先把問題變成一份查詢計畫，驗證過才跑，幾個查詢是平行的。"),
   ("ask_done", "前後兩根柱，區間沒有重疊。圖是從結果的形狀畫出來的，文字就寫在數字旁邊。"),
   ("control",  "再問一個對照組：M31 換燈前後。"),
@@ -73,13 +73,13 @@ SCENES = {
   ("switch",   "最後切換語言。問題和規劃段保留原文、標示出來；答案要按一下才重寫——用儲存的同一批結果再寫一次，不是翻譯，原文也留著。每個門檻都引得到腳本，每個數字都在 benchmarks 裡。"),
  ],
  "en": [
-  ("cli",      "A board just came in. The AOI flagged thirty regions; the vision model cleared twenty-eight of them in milliseconds, and the two it wasn't sure about go to a person."),
-  ("home",     "Sign in and the first screen is the line's denominator: how many boards settled, held, released, still waiting, and how many regions wait on a person. The list of failures is one click in, not the front door."),
+  ("cli",      "A board just came in. The AOI flagged thirty regions; the vision model and the agent settled twenty-seven of them within seconds, and the three they weren't sure about go to a person."),
+  ("home",     "Sign in and the first screen is the whole line: how many PCBs dispositioned, held, released, still waiting, and how many regions wait on a person. The list of failures is one click in, not the front door."),
   ("queue",    "This is the review queue. Every row has the model's class, its confidence, the false-call probability, and a short rationale from the agent. The agent explains — it never decides. Whoever has waited longest is on top."),
-  ("region",   "Open one region. Template, PCB under test and difference side by side; on the right, this machine's defect rate and the acceptance criteria for the class. The answer key is deliberately not on this page, because whatever the operator presses becomes the next training label."),
+  ("region",   "Open one region. Golden image, PCB under test and difference side by side; on the right, this machine's defect rate and the acceptance criteria for the class. The answer key is deliberately not on this page, because whatever the operator presses becomes the next training label."),
   ("defer",    "Can't tell? Press zero. It isn't recorded as a verdict; the region moves to a second list for a senior reviewer."),
   ("blocked",  "Sign in as an ordinary operator, open the same region, and the buttons are gone. Handed-back regions are for seniors only — that's the station's one permission."),
-  ("boards",   "PCB dispositions: settled, held, released, waiting. The denominator lives here, not on the queue."),
+  ("boards",   "PCB dispositions: dispositioned, held, released, waiting. The whole line is counted here, not on the queue."),
   ("ask",      "A supervisor asks: did the parameter change on M32 move its share of opens? The question becomes a plan of lookups, validated before anything runs, then executed in parallel."),
   ("ask_done", "Two bars, before and after, and the intervals don't overlap. The chart comes from the shape of the results; the prose sits right beside the numbers."),
   ("control",  "Now a control: the lamp replacement on M31."),
@@ -237,7 +237,7 @@ def main() -> None:
 
         # 1 terminal
         scene("cli", lambda: (pg.goto(term.as_uri()), pg.wait_for_timeout(7000)))
-        # 1b the front door: the denominator, then the queue one click in
+        # 1b the front door: the whole line in six figures, then the queue one click in
         scene("home", lambda: (login(pg, *SENIOR), pg.goto(f"{BASE}/"), pg.wait_for_load_state("networkidle"), pg.wait_for_timeout(1500)))
         # 2 queue
         scene("queue", lambda: (pg.goto(f"{BASE}/queue"), pg.wait_for_load_state("networkidle"), pg.wait_for_timeout(1500), slow_scroll(500)))

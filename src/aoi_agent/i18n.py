@@ -140,7 +140,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "common.none": '—',
         "queue.title": '待人工複判的區域',
         "queue.waiting": '件待處理',
-        "queue.sub": '每一列都是視覺模型無法定案、agent 也不願臆測的區域。最舊的在前。',
+        "queue.sub": '每一列都是視覺模型判不了、agent 也不願臆測的區域。最舊的在前。',
         "queue.unexplained":
             '{count} 件（共 {total} 件）沒有書面說明。每一件的處置仍是複判模型的判定、不受影響；缺的是作業員讀的那段文字。',
         # A page that shows part of a list has to say so. Before 2026-08-25 the
@@ -201,7 +201,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "region.unsourced_figures": '說明裡有 {count} 個數字，模型看到的證據裡沒有',
         "region.unsourced_figures_note": '這些數字不在分類結果、產線資料或任何準則段落裡。判定不受影響；讀說明時把它們當成未經證實。',
         "region.triptych_alt": '旗標區域周圍的樣板、待測與差異影像',
-        "region.template": '黃金樣板',
+        "region.template": 'golden image',
         "region.under_test": '待測 PCB',
         "region.difference": '差異',
         "region.what_model_read": '模型讀到什麼',
@@ -238,22 +238,22 @@ STRINGS: dict[str, dict[str, str]] = {
         "region.timings": '耗時',
         "boards.title": 'PCB 處置紀錄',
         "boards.sub":
-            "佇列上的是 agent 無法定案的區域，也就是失敗的那一小塊。這一頁是另一邊："
-            "已經有PCB 處置的每一片 PCB，往哪一邊倒，以及底下有多少區域支撐它。"
+            "佇列上的是 agent 收不掉的區域，也就是失敗的那一小塊。這一頁是另一邊："
+            "已經處置過的每一片 PCB，往哪一邊倒，以及底下有多少區域支撐它。"
             "只讀——這裡不判定任何東西，只是已經做過的判定的紀錄。",
-        "boards.all": '已定案 {count}',
-        "boards.held": '扣住 {count}',
+        "boards.all": '已處置 {count}',
+        "boards.held": '扣留 {count}',
         "boards.released": '放行 {count}',
-        "boards.waiting": '等待中 {count}',
+        "boards.waiting": '待判 {count}',
         "boards.waiting_chip": '等待人工',
         # The front page. One sentence, six figures, three doors -- nothing
         # that explains, because the operator's work is one click behind it.
         "home.title": '這條線現在的狀態',
-        "home.sub": '分母在這裡：跑過的 PCB 各自怎麼處置、還有幾個區域在等人。',
-        "home.settled": 'PCB 已定案',
-        "home.held": '扣住',
+        "home.sub": '跑過的 PCB 各自怎麼處置、還有幾個區域在等人。',
+        "home.settled": 'PCB 已處置',
+        "home.held": '扣留',
         "home.released": '放行',
-        "home.waiting_boards": '等待中',
+        "home.waiting_boards": '待判',
         "home.queue": '待人工複判的區域',
         "home.deferred": '待資深複判的區域',
         "home.open_queue": '進佇列',
@@ -574,7 +574,7 @@ STRINGS: dict[str, dict[str, str]] = {
         "region.unsourced_figures_note": 'None of these appears in the classifier reading, the production context or any retrieved criterion. The disposition is unaffected; read them as unverified.',
         "region.triptych_alt":
             'template, test and difference around the flagged region',
-        "region.template": 'golden template',
+        "region.template": 'golden image',
         "region.under_test": 'PCB under test',
         "region.difference": 'difference',
         "region.what_model_read": 'What the model read',
@@ -627,8 +627,8 @@ STRINGS: dict[str, dict[str, str]] = {
         "boards.waiting": 'waiting {count}',
         "boards.waiting_chip": 'waiting on a person',
         "home.title": 'The line right now',
-        "home.sub": 'The denominator: how the boards that ran were dispositioned, and how many regions still wait on a person.',
-        "home.settled": 'PCBs settled',
+        "home.sub": 'How the PCBs that ran were dispositioned, and how many regions still wait on a person.',
+        "home.settled": 'PCBs dispositioned',
         "home.held": 'held',
         "home.released": 'released',
         "home.waiting_boards": 'waiting',

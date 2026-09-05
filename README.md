@@ -311,7 +311,7 @@ uv run python -m aoi_agent station                  # http://aoi.test
 
 The station shows the operator the evidence the agent had:
 
-- **the golden template, the board under test, and their difference**, side by
+- **the golden image, the board under test, and their difference**, side by
   side at a legible scale with the flagged region marked. The difference alone
   is what the AOI saw, and judging from it alone is what produces false calls in
   the first place.
