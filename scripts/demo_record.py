@@ -360,7 +360,6 @@ def main() -> None:
         browser = p.chromium.launch(channel="chrome")
         ctx = browser.new_context(viewport={"width": W, "height": H}, device_scale_factor=SCALE, color_scheme="dark")
         pg = ctx.new_page()
-        wall0 = time.time()
         t0 = time.monotonic()
         now = lambda: time.monotonic() - t0  # noqa: E731
         if not ARGS.check:
@@ -372,9 +371,14 @@ def main() -> None:
             def on_frame(params):
                 # Chrome sends a frame on every repaint and nothing while the
                 # page is still; each one is acked, and one in every 1/FPS_CAP
-                # seconds is kept, stamped in the take's own clock.
+                # seconds is kept, stamped on arrival in the take's own clock.
+                # Not with the frame's own `metadata.timestamp`: that is the
+                # renderer's clock, and a take that crosses from file:// cards
+                # to the station's pages crosses renderer processes -- the
+                # first take mastered that way ran 29 s long and drifted
+                # scene by scene.
                 cdp.send("Page.screencastFrameAck", {"sessionId": params["sessionId"]})
-                ts = max(0.0, params["metadata"]["timestamp"] - wall0)
+                ts = now()
                 if frames and ts - last_kept[0] < 1.0 / FPS_CAP:
                     return
                 path = frames_dir / f"{len(frames):06d}.jpg"
@@ -617,28 +621,39 @@ def main() -> None:
         ctx.close()
         browser.close()
 
-    take = master(frames, end)
     (OUT / "timeline.json").write_text(json.dumps(timeline, indent=1))
+    take = master(frames, end)
     finish(take, timeline, durations)
 
 
 def master(frames: list[tuple[float, Path]], end: float) -> Path:
-    """The take as one constant-rate H.264 file at OUT_W wide, from the
-    screencast frames and the seconds each was on screen. The cut is made
-    from this, and `--narrate-existing` reads it again; the frames go."""
+    """The take as one constant-rate H.264 file at OUT_W wide: for every
+    fortieth of a second up to `end`, the latest screencast frame on screen
+    at that instant, as a hard link, so the master's clock is the take's by
+    construction and no demuxer's idea of a duration comes into it. The cut
+    is made from this and `--narrate-existing` reads it again; the frames go
+    once the length has been checked."""
     if not frames:
         sys.exit("no frames arrived from the screencast")
-    lines_ = ["ffconcat version 1.0"]
-    for (ts, path), nxt in zip(frames, [f[0] for f in frames[1:]] + [max(end, frames[-1][0] + 0.5)]):
-        lines_ += [f"file '{path.name}'", f"duration {max(nxt - ts, 0.001):.3f}"]
-    lines_ += [f"file '{frames[-1][1].name}'"]
-    (frames[0][1].parent / "frames.txt").write_text("\n".join(lines_) + "\n")
+    seq = frames[0][1].parent / "seq"
+    shutil.rmtree(seq, ignore_errors=True)
+    seq.mkdir()
+    ticks = int(round(max(end, frames[-1][0] + 0.5) * 25))
+    i = 0
+    for k in range(ticks):
+        while i + 1 < len(frames) and frames[i + 1][0] <= k / 25:
+            i += 1
+        os.link(frames[i][1], seq / f"{k:06d}.jpg")
     take = OUT / "take.mp4"
-    subprocess.run([FFMPEG, "-y", "-f", "concat", "-safe", "0", "-i", str(frames[0][1].parent / "frames.txt"),
-                    "-vf", f"scale={OUT_W}:{OUT_H}:flags=lanczos,fps=25", "-c:v", "libx264", "-crf", "16",
+    subprocess.run([FFMPEG, "-y", "-framerate", "25", "-i", str(seq / "%06d.jpg"),
+                    "-vf", f"scale={OUT_W}:{OUT_H}:flags=lanczos", "-c:v", "libx264", "-crf", "16",
                     "-preset", "medium", "-pix_fmt", "yuv420p", str(take)], check=True, capture_output=True)
+    probe = subprocess.run([str(Path(FFMPEG).with_name("ffprobe")), "-v", "error", "-show_entries", "format=duration",
+                            "-of", "csv=p=0", str(take)], capture_output=True, text=True, check=False).stdout.strip()
+    if abs(float(probe) - ticks / 25) > 0.5:
+        sys.exit(f"master is {probe} s for {ticks / 25:.1f} s of take; frames kept under {frames[0][1].parent}")
     shutil.rmtree(frames[0][1].parent, ignore_errors=True)
-    print(f"master: {take} from {len(frames)} frames, {take.stat().st_size/1e6:.1f} MB")
+    print(f"master: {take} from {len(frames)} frames over {ticks / 25:.1f} s, {take.stat().st_size/1e6:.1f} MB")
     return take
 
 
