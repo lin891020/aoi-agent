@@ -58,7 +58,8 @@ src/aoi_agent/
                             scheme does not protect against
     cli.py
 scripts/                    gate_check, build_patches, train, report, seed_store,
-                            analysis_eval, add_operator, render_diagrams, demo_record,
+                            analysis_eval, add_operator, render_diagrams, demo_record
+                            (and demo_script, the shot list it drives),
                             build_detector_patches, crop_reverifier_report,
                             mark_unattributed_resolutions, ...
 tests/                      1,442 tests; dataset-dependent ones behind `-m dataset`
@@ -95,8 +96,12 @@ uv run python scripts/crop_reverifier_report.py  # its ordering against the dete
 uv run python scripts/render_diagrams.py         # the two README flow diagrams, from the graphs' constants
 uv run --with python-pptx --with playwright python scripts/build_deck.py [--embed-video]
                                                  # the journey deck: docs/deck/*.pptx, .html, study guide
-uv run --with playwright python scripts/demo_record.py --lang zh-TW --stem <stem>
-                                                 # the demo video: Playwright + say + ffmpeg, ~5 min, macOS only
+uv run python scripts/demo_script.py             # the shot list -> docs/demo-script.md (one row per cue)
+uv run --with playwright python scripts/demo_record.py --lang zh-TW --stem <stem> --index <n> --check --base http://127.0.0.1:8111
+                                                 # every element a cue frames exists on the station's pages
+uv run --with playwright python scripts/demo_record.py --lang zh-TW --stem <stem> --index <n> --silent --base http://127.0.0.1:8111
+                                                 # the demo take: Playwright cue by cue, subtitles in a band under
+                                                 # the page, no audio (~6 min, macOS only); --narrate-existing dubs it
 uv run python scripts/train.py                   # ~4 min on the M5 Air (MPS)
 uv run python scripts/report.py                  # operating-point table -> docs/benchmarks.md
 uv run python scripts/routing_report.py          # how much never reaches the LLM

@@ -1,35 +1,68 @@
-"""Record the demo video: Playwright drives the station, `say` narrates, ffmpeg muxes.
+"""Record the demo video: Playwright drives the station cue by cue, ffmpeg puts
+the subtitles in a band under the page, and the narration -- when there is
+one -- comes through ~/Projects/video_transfer's own TTS path.
 
-    uv run --with playwright python scripts/demo_record.py --lang zh-TW --stem 00041208
-    uv run --with playwright python scripts/demo_record.py --lang en    --stem 00041208
+    uv run --with playwright python scripts/demo_record.py --lang zh-TW --stem 00041208 --index 15 --check
+                                        # walk the non-mutating pages and confirm every framed element exists
     uv run --with playwright python scripts/demo_record.py --lang zh-TW --stem 00041208 --index 15 --silent
-                                        # video only, holds from HOLD_S, script.md for dubbing by hand
+                                        # the take: video + subtitles, no audio; script.md beside it
+    uv run --with playwright python scripts/demo_record.py --lang zh-TW --stem 00041208 --index 15 --narrate-existing
+                                        # dub that take: one wav per cue, listened back, mixed in
 
-Needs the station on :8110, Ollama with gpt-oss:20b, operators `mike` (senior,
+The shot list is scripts/demo_script.py (docs/demo-script.md is generated
+from it): thirteen scenes, fifty-odd *cues*, each one sentence with its own
+hold and, usually, one element on the page it frames. Until 2026-09-05 the
+recorder held one paragraph per scene and burned it across the page; Mike
+watched the English take and said three things: the subtitle covered what it
+was describing, the login flashed past, and the script assumed the viewer
+knew what an AOI queue was. So: subtitles of at most two short lines in a
+100 px band *below* the 1280x800 page, a spotlight (dimmed page, one framed
+element -- the driver.js pattern, injected rather than imported) while a cue
+is up, a one-second pause on the sign-in form, and a title card before any
+page that says what the system is for.
+
+Needs a station (`--base`; record against a second instance, never the one
+somebody is using), Ollama with gpt-oss:20b, operators `mike` (senior,
 passphrase in AOI_DEMO_SENIOR_SECRET) and `watcher` (operator, in
-AOI_DEMO_OPERATOR_SECRET), and a board whose region ``<stem>#8`` is on the queue.
-The board is run through the CLI first so the terminal scene shows real output.
-Everything lands under docs/demo/ (gitignored): the intermediate webm, narration
-and subtitles under build/<lang>/, and aoi-agent-demo-<lang>.mp4 beside them.
+AOI_DEMO_OPERATOR_SECRET), and a board whose region `<stem>#<index>` is on the
+queue. The board is run through the CLI first so the terminal scene shows
+real output. Everything lands under docs/demo/ (gitignored): the raw webm,
+cards, narration and subtitles under build/<lang>/, and the mp4 beside them.
+A take hands the demo region back (the defer scene presses 0) and asks two
+questions on /ask; nothing else in the store changes.
 
-macOS only: narration comes from `say` (Meijia for zh-TW, Samantha for en) and
-the mux uses the Homebrew ffmpeg-full build for its subtitle filter.
+macOS only: the mux uses the Homebrew ffmpeg-full build for its subtitle
+filter, and `--tts say` uses the system voices.
 """
 from __future__ import annotations
 
-import argparse, json, os, re, shlex, subprocess, sys, time
+import argparse
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import time
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from demo_script import CUES, SCENES, cue_id, hold, lines, text
 
 _args = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 _args.add_argument("--lang", default="zh-TW", choices=("zh-TW", "en"))
 _args.add_argument("--stem", required=True, help="a board with a region on the queue")
-_args.add_argument("--index", type=int, default=8, help="which of that board's regions is on the queue")
-_args.add_argument("--narrate-existing", action="store_true",
-                   help="do not drive the station: take the silent cut already under docs/demo/ and its "
-                        "build/<lang>/timeline.json, synthesise the narration, and mux the two")
+_args.add_argument("--index", type=int, default=15, help="which of that board's regions is on the queue")
 _args.add_argument("--silent", action="store_true",
-                   help="no narration and no subtitles: the video alone, each scene held for HOLD_S "
-                        "seconds, plus script.md (scene, start, end, the line to say) for dubbing over it")
+                   help="no narration: the video with its subtitles, each cue held for its reading time, "
+                        "plus script.md (cue, seconds, the line) for dubbing over it")
+_args.add_argument("--narrate-existing", action="store_true",
+                   help="do not drive the station: take build/<lang>/take.webm and timeline.json from the last "
+                        "take, synthesise one narration per cue, and mux")
+_args.add_argument("--check", action="store_true",
+                   help="drive the pages a take does not change (cards, terminal, login, home, queue, region, "
+                        "boards, the /ask form) and report every framed element that is missing; no video")
 _args.add_argument("--base", default="http://127.0.0.1:8110")
 _args.add_argument("--tts", default="auto", choices=("auto", "qwen3tts", "kokoro", "say"),
                    help="auto: video_transfer's own split -- Qwen3-TTS for Chinese (the one voice measured to read "
@@ -51,57 +84,29 @@ FFMPEG = "/opt/homebrew/opt/ffmpeg-full/bin/ffmpeg"
 VOICE = {"zh-TW": "Meijia", "en": "Samantha"}[LANG]            # macOS say
 KOKORO_VOICE = {"zh-TW": "zf_xiaoxiao", "en": "af_heart"}[LANG]  # Kokoro: first letter is the language
 TAG = "zh" if LANG == "zh-TW" else "en"
+REPO = "github.com/lin891020/aoi-agent"
+
+#: The page, and the band under it where the subtitles go.
+W, H, BAND = 1280, 800, 100
+#: Scenes a take changes something in -- `--check` does not run these.
+MUTATING = {"defer", "blocked", "ask", "control", "switch"}
+
+CUE = {cue_id(k, i): c for k, i, c in CUES}
+SCENE_OF = {cue_id(k, i): k for k, i, _ in CUES}
 
 Q_M32 = {"zh-TW": "M32 參數變更前後，open 的比例有沒有變？",
          "en": "Did the parameter change on M32 move its share of opens?"}[LANG]
 Q_M31 = {"zh-TW": "M31 換燈前後，open 的比例有沒有變？",
          "en": "Did the lamp replacement on M31 move its share of opens?"}[LANG]
 
-SCENES = {
- "zh-TW": [
-  ("cli",      "好，一片 PCB 剛進來。AOI 標了三十個區域，視覺模型和 agent 幾秒內收掉二十七個；剩下三個不敢判，就交給人。"),
-  ("home",     "登入後第一眼是主畫面：跑過的 PCB 幾片已處置、幾片扣留、幾片放行、幾片待判，還有幾個區域等人看。失敗清單不在第一眼，要點進去才是。"),
-  ("queue",    "這一頁就是等人看的清單。每一列都有模型的判定、信心、誤判機率，還有 agent 寫的一段說明。注意，agent 只負責解釋，不做決定。誰等最久，誰排前面。"),
-  ("region",   "點進一個區域。左邊是 golden image、待測 PCB 和差異圖並排；右邊是這台機器的缺陷率，還有這一類的驗收標準。這一頁故意不顯示答案，因為作業員按下去的答案，就是下一輪訓練的標籤。"),
-  ("defer",    "真的看不出來？按零。它不會被記成判定，區域會換到另一個隊伍，交給資深的人。"),
-  ("blocked",  "換一般作業員登入，打開同一個區域，按鈕不見了。退回的區域只有資深能答，這是整個站唯一的權限。"),
-  ("boards",   "這是 PCB 處置紀錄：已處置、扣留、放行、待判。整條線的全貌在這裡，不在待複判清單。"),
-  ("ask",      "主管問：M32 參數變更前後，open 的比例有沒有變？系統先把問題變成一份查詢計畫，驗證過才跑，幾個查詢是平行的。"),
-  ("ask_done", "前後兩根柱，區間沒有重疊。圖是從結果的形狀畫出來的，文字就寫在數字旁邊。"),
-  ("control",  "再問一個對照組：M31 換燈前後。"),
-  ("control_done", "這次兩根區間重疊，系統就直接說沒差。有事件，不代表有影響。"),
-  ("switch",   "最後切換語言。問題和規劃段保留原文、標示出來；答案要按一下才重寫——用儲存的同一批結果再寫一次，不是翻譯，原文也留著。每個門檻都引得到腳本，每個數字都在 benchmarks 裡。"),
- ],
- "en": [
-  ("cli",      "A board just came in. The AOI flagged thirty regions; the vision model and the agent settled twenty-seven of them within seconds, and the three they weren't sure about go to a person."),
-  ("home",     "Sign in and the first screen is the whole line: how many PCBs dispositioned, held, released, still waiting, and how many regions wait on a person. The list of failures is one click in, not the front door."),
-  ("queue",    "This is the review queue. Every row has the model's class, its confidence, the false-call probability, and a short rationale from the agent. The agent explains — it never decides. Whoever has waited longest is on top."),
-  ("region",   "Open one region. Golden image, PCB under test and difference side by side; on the right, this machine's defect rate and the acceptance criteria for the class. The answer key is deliberately not on this page, because whatever the operator presses becomes the next training label."),
-  ("defer",    "Can't tell? Press zero. It isn't recorded as a verdict; the region moves to a second list for a senior reviewer."),
-  ("blocked",  "Sign in as an ordinary operator, open the same region, and the buttons are gone. Handed-back regions are for seniors only — that's the station's one permission."),
-  ("boards",   "PCB dispositions: dispositioned, held, released, waiting. The whole line is counted here, not on the queue."),
-  ("ask",      "A supervisor asks: did the parameter change on M32 move its share of opens? The question becomes a plan of lookups, validated before anything runs, then executed in parallel."),
-  ("ask_done", "Two bars, before and after, and the intervals don't overlap. The chart comes from the shape of the results; the prose sits right beside the numbers."),
-  ("control",  "Now a control: the lamp replacement on M31."),
-  ("control_done", "This time the intervals overlap, and the system says so. An event is not an effect."),
-  ("switch",   "Finally, switch the language. The question and the plan stay as written and are labelled; the answer is written again only when asked, from the same stored results, not translated, and the original is kept. Every threshold cites a script, and every figure is in the benchmarks file."),
- ],
-}[LANG]
-
-
-#: Seconds a scene stays on screen in the silent cut, once its action is done --
-#: room to say the line in SCENES at a speaking pace, not a synthetic one.
-HOLD_S = {"cli": 14.0, "home": 12.0, "queue": 14.0, "region": 40.0, "defer": 12.0, "blocked": 12.0,
-          "boards": 12.0, "ask": 8.0, "ask_done": 14.0, "control": 6.0, "control_done": 12.0, "switch": 18.0}
-
 
 def _duration(path: Path) -> float:
-    info = subprocess.run(["afinfo", str(path)], capture_output=True, text=True).stdout
-    return float([l for l in info.splitlines() if "estimated duration" in l][0].split(":")[1].split("sec")[0])
+    info = subprocess.run(["afinfo", str(path)], capture_output=True, text=True, check=False).stdout
+    return float([x for x in info.splitlines() if "estimated duration" in x][0].split(":")[1].split("sec")[0])
 
 
 def tts() -> dict[str, float]:
-    """One narration file per scene, and its length.
+    """One narration file per cue, and its length.
 
     Through ~/Projects/video_transfer's own path -- `source env.sh local`,
     `get_tts_backend(name, language=...)`, `dubscript.to_dub_text()` -- and not
@@ -113,20 +118,21 @@ def tts() -> dict[str, float]:
     a mixed sentence; Qwen3-TTS is the one it keeps for Chinese (93/96), and
     its backend listens every piece back through Whisper as it goes.
 
-    Each finished line is listened back once more here and the Latin tokens
-    of the script (PCB, AOI, M32, benchmarks...) are checked against what was
-    heard, so a word that silently vanished is printed rather than shipped.
+    Each finished cue is listened back once more here and its identifiers
+    (every Latin token of a Chinese cue; PCB, AOI, M32 and their kind in an
+    English one) are checked against what was heard, so a word that silently
+    vanished is printed rather than shipped.
     """
     NARR.mkdir(parents=True, exist_ok=True)
     if ARGS.tts == "say":
-        for key, text in SCENES:
+        for cid, c in CUE.items():
             subprocess.run(["say", "-v", VOICE, "-r", "175" if LANG == "en" else "190",
-                            "-o", str(NARR / f"{key}.aiff"), text], check=True)
-        return {key: _duration(NARR / f"{key}.aiff") for key, _ in SCENES}
+                            "-o", str(NARR / f"{cid}.aiff"), text(c, LANG)], check=True)
+        return {cid: _duration(NARR / f"{cid}.aiff") for cid in CUE}
     lang = "zh" if LANG == "zh-TW" else "en"
     name = {"zh": "qwen3tts", "en": "kokoro"}[lang] if ARGS.tts == "auto" else ARGS.tts
     spec = NARR / "lines.json"
-    spec.write_text(json.dumps([{"key": k, "text": t} for k, t in SCENES], ensure_ascii=False))
+    spec.write_text(json.dumps([{"key": cid, "text": text(c, LANG)} for cid, c in CUE.items()], ensure_ascii=False))
     runner = (
         "import json, sys\nfrom pathlib import Path\n"
         "from video_pipeline import dubscript\n"
@@ -164,219 +170,440 @@ def tts() -> dict[str, float]:
     )
     cmd = (f"source env.sh local >/dev/null && uv run --project . python -c {shlex.quote(runner)} "
            f"{shlex.quote(str(spec))} {shlex.quote(str(NARR))} {KOKORO_VOICE} {name} {lang}")
-    done = subprocess.run(["bash", "-c", cmd], cwd=ARGS.video_transfer, capture_output=True, text=True)
+    done = subprocess.run(["bash", "-c", cmd], cwd=ARGS.video_transfer, capture_output=True, text=True, check=False)
     if done.returncode:
         sys.exit(f"video_transfer's TTS failed ({name}):\n" + done.stderr[-3000:])
     heard = json.loads((NARR / "heard.json").read_text())
     for key, entry in heard.items():
-        flat = re.sub(r"[\s\-_]", "", entry["heard"]).lower()
-        tokens = re.findall(r"[A-Za-z][A-Za-z0-9]+" if lang == "zh" else r"\b[A-Z][A-Z0-9]+", entry["sent"])
-        missing = [t for t in tokens if t.lower() not in flat]
-        if missing:
-            print(f"warning: {key}: not heard back: {', '.join(missing)}\n  sent:  {entry['sent']}\n  heard: {entry['heard']}", file=sys.stderr)
-    print(f"narration: {name}; {len(heard)} lines; listen-back in {NARR / 'heard.json'}")
-    return {key: _duration(NARR / f"{key}.wav") for key, _ in SCENES}
+        if entry["missing"]:
+            print(f"warning: {key}: not heard back: {', '.join(entry['missing'])}\n  sent:  {entry['sent']}\n"
+                  f"  heard: {entry['heard']}", file=sys.stderr)
+    print(f"narration: {name}; {len(heard)} cues; listen-back in {NARR / 'heard.json'}")
+    return {cid: _duration(NARR / f"{cid}.wav") for cid in CUE}
+
+
+# --- the pages the recorder makes itself ------------------------------------
+
+CARD_CSS = """
+body{margin:0;background:#0b0d12;color:#e6e8ee;font:18px/1.5 -apple-system,"PingFang TC","Helvetica Neue",sans-serif}
+.card{box-sizing:border-box;width:1280px;height:800px;padding:40px 80px 32px;display:flex;flex-direction:column;gap:12px}
+h1{font-size:38px;font-weight:600;margin:0;letter-spacing:-.01em}
+p.lead{font-size:21px;color:#aeb4c2;margin:0;max-width:1000px}
+.diagram{flex:1;display:flex;align-items:center;justify-content:center;min-height:0}
+.diagram svg{width:100%;height:auto;max-height:100%}
+.figures{display:flex;gap:56px;margin-top:22px}
+.figures div{display:flex;flex-direction:column;gap:6px}
+.figures b{font-size:64px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
+.figures span{font-size:20px;color:#aeb4c2;max-width:320px}
+.foot{margin-top:auto;color:#8b93a5;font:20px "SF Mono",Menlo,monospace}
+"""
+
+
+def card_page(name: str, title: str, lead: str, svg: Path | None = None,
+              figures: list[tuple[str, str]] | None = None, foot: str = "") -> Path:
+    body = f"<h1>{title}</h1><p class='lead'>{lead}</p>"
+    if svg is not None:
+        body += f"<div class='diagram'>{svg.read_text()}</div>"
+    if figures:
+        body += "<div class='figures'>" + "".join(f"<div><b>{n}</b><span>{label}</span></div>" for n, label in figures) + "</div>"
+    if foot:
+        body += f"<p class='foot'>{foot}</p>"
+    path = OUT / f"{name}.html"
+    path.write_text(f"<!doctype html><html><head><meta charset='utf-8'><style>{CARD_CSS}</style></head>"
+                    f"<body><div class='card'>{body}</div></body></html>")
+    return path
+
+
+def intro_page() -> Path:
+    title = {"zh-TW": "AOI 複判站", "en": "AOI re-verification station"}[LANG]
+    lead = {"zh-TW": "AOI 標出來的區域，六成是誤報，每一個都要人看。一個視覺模型、一個 agent，收不掉的才交給人。",
+            "en": "Six in ten regions an AOI flags are false calls, and every one goes to a person. "
+                  "A vision model, then an agent; only what neither settles reaches a person."}[LANG]
+    svg = ROOT / "docs" / "diagrams" / ("disposition-flow-dark.zh-TW.svg" if LANG == "zh-TW" else "disposition-flow-dark.svg")
+    return card_page("intro", title, lead, svg=svg, foot=REPO)
+
+
+def outro_page() -> Path:
+    zh = LANG == "zh-TW"
+    return card_page(
+        "outro",
+        "數字都在 README" if zh else "The numbers are in the README",
+        "DeepPCB 測試集，門檻不在報成績的那份資料上挑。" if zh else "DeepPCB test split; the threshold was chosen off the split it is reported against.",
+        figures=[("55.6%", "人工複判省掉" if zh else "of manual review removed"),
+                 ("0.66%", "漏檢（預算 0.5%）" if zh else "escape (budget 0.5%)"),
+                 ("85.9%", "的區域不經 LLM" if zh else "of regions never reach an LLM")],
+        foot=REPO,
+    )
 
 
 def cli_transcript() -> list[str]:
     """Run the board through the flow and keep what the CLI printed, minus the
     HTTP client's log lines, for the terminal scene."""
     out = subprocess.run(["uv", "run", "python", "-m", "aoi_agent", "board", STEM, "--queue"],
-                         capture_output=True, text=True, cwd=ROOT).stdout
+                         capture_output=True, text=True, cwd=ROOT, check=False).stdout
     out = re.sub(r"\x1b\[[0-9;]*[a-zA-Z]", "", out)
-    return [l for l in out.splitlines() if l.strip() and "INFO" not in l and "http" not in l and "HTTP/1.1" not in l]
+    return [x for x in out.splitlines() if x.strip() and "INFO" not in x and "http" not in x and "HTTP/1.1" not in x]
 
 
 def terminal_page() -> Path:
-    lines = cli_transcript()
+    """The CLI's output, folded to what the cues point at: the header, the
+    first three regions the model settled, one line standing for the rest,
+    the regions that went to the queue, and the board's own line."""
+    raw = cli_transcript()
+    head = [x for x in raw if "AOI candidates" in x][:1]
+    foot = [x for x in raw if x.strip().startswith(("board ", "under model")) and "candidates" not in x]
+    blocks: list[list[str]] = []
+    for row in raw:
+        s = row.strip()
+        if row in head or row in foot:
+            continue
+        if s.startswith("escalated:"):
+            blocks.append([row])
+        elif re.match(r"\d{8}#\d+\s", s):
+            if blocks and len(blocks[-1]) == 1 and blocks[-1][0].strip().startswith("escalated:"):
+                blocks[-1].append(row)
+            else:
+                blocks.append([row])
+        elif blocks:
+            blocks[-1].append(row)
+    queued = [b for b in blocks if any("QUEUED" in x for x in b)]
+    settled = [b for b in blocks if b not in queued]
+    first, rest = settled[:3], settled[3:]
+    fold = f"      … {len(rest)} more regions settled by the model or the agent, a few ms each …"
+
+    def div(id_, rows):
+        return {"id": id_, "lines": [x for b in rows for x in b]}
+    parts = [div("hdr", [head]), div("first", first), div("fold", [[fold]]), div("queued", queued), div("board", [foot])]
     html = f"""<!doctype html><html><head><meta charset="utf-8"><style>
-body{{margin:0;background:#0f1115;color:#d7dae0;font:15px/1.5 "SF Mono",Menlo,monospace;padding:28px 36px}}
-.prompt{{color:#7ee787}} .dim{{color:#8b949e}} .q{{color:#f0b429}} .d{{color:#8b949e}}
-</style></head><body><div id="t"><span class="prompt">$</span> uv run python -m aoi_agent board {STEM} --queue</div>
+body{{margin:0;background:#0f1115;color:#d7dae0;font:16px/1.55 "SF Mono",Menlo,monospace;padding:28px 36px}}
+.prompt{{color:#7ee787}} .q{{color:#f0b429}} .d{{color:#8b949e}} #fold{{color:#8b949e;font-style:italic}}
+div div{{white-space:pre}} .hidden{{display:none}}
+</style></head><body><div><span class="prompt">$</span> uv run python -m aoi_agent board {STEM} --queue</div>
+{"".join(f'<div id="{p["id"]}"></div>' for p in parts)}
 <script>
-const lines = {json.dumps(lines)};
-const t = document.getElementById('t'); let i = 0;
-function tick(){{ if (i >= lines.length) return; const l = lines[i++]; const d = document.createElement('div');
-  d.textContent = l; if (l.includes('QUEUED') || l.includes('escalated')) d.className='q'; else if (l.trim().startsWith('path') || l.trim().startsWith('classify')) d.className='d';
-  t.appendChild(d); window.scrollTo(0, document.body.scrollHeight);
-  setTimeout(tick, l.includes('reason:') ? 900 : 55); }}
-setTimeout(tick, 900);
+const parts = {json.dumps(parts)};
+const todo = []; for (const p of parts) for (const l of p.lines) todo.push([p.id, l]);
+let i = 0;
+function tick(){{ if (i >= todo.length) return; const [id, l] = todo[i++]; const d = document.createElement('div');
+  d.textContent = l; if (l.includes('QUEUED') || l.includes('escalated')) d.className='q';
+  else if (l.trim().startsWith('path') || l.trim().startsWith('classify')) d.className='d';
+  document.getElementById(id).appendChild(d); setTimeout(tick, 60); }}
+setTimeout(tick, 700);
 </script></body></html>"""
     path = OUT / "terminal.html"
     path.write_text(html)
     return path
 
 
+# --- the spotlight -----------------------------------------------------------
+
+SPOT_JS = """(el) => {
+  document.querySelectorAll('.demo-spot').forEach(e => e.remove());
+  if (!el) return;
+  const vh = window.innerHeight, pad = 8;
+  let r = el.getBoundingClientRect();
+  // Bring the element's top into view (under the sticky nav) when it is
+  // taller than the screen or not wholly on it: scrollIntoView on a tall
+  // column landed on its empty bottom half.
+  if (r.height > vh - 130 || r.top < 70 || r.bottom > vh) {
+    window.scrollTo({top: window.scrollY + r.top - 84, behavior: 'instant'});
+    r = el.getBoundingClientRect();
+  }
+  const top = Math.max(r.top - pad, 66), bottom = Math.min(r.bottom + pad, vh - 6);
+  const d = document.createElement('div'); d.className = 'demo-spot';
+  Object.assign(d.style, {position: 'fixed', left: (r.left - pad) + 'px', top: top + 'px',
+    width: (r.width + 2 * pad) + 'px', height: (bottom - top) + 'px', border: '2px solid #f0b429',
+    borderRadius: '6px', boxShadow: '0 0 0 9999px rgba(0,0,0,0.5)', pointerEvents: 'none', zIndex: 2147483647});
+  document.body.appendChild(d);
+}"""
+
+
 def main() -> None:
     from playwright.sync_api import sync_playwright
 
     OUT.mkdir(parents=True, exist_ok=True)
-    durations = dict(HOLD_S) if ARGS.silent else tts()
+    durations = {cid: hold(c, LANG) for cid, c in CUE.items()} if (ARGS.silent or ARGS.check) else tts()
+    intro, outro = intro_page(), outro_page()
     term = terminal_page()
     timeline: list[dict] = []
-
-    def login(pg, name, secret):
-        pg.context.clear_cookies()
-        pg.goto(f"{BASE}/login"); pg.fill("input[name=name]", name); pg.fill("input[name=secret]", secret)
-        pg.click("button[type=submit], input[type=submit]"); pg.wait_for_load_state("networkidle")
-        pg.goto(f"{BASE}/locale/{LANG}?next=/"); pg.wait_for_load_state("networkidle")
+    missing: list[str] = []
 
     with sync_playwright() as p:
         browser = p.chromium.launch(channel="chrome")
-        ctx = browser.new_context(viewport={"width": 1280, "height": 800}, color_scheme="dark",
-                                  record_video_dir=str(OUT), record_video_size={"width": 1280, "height": 800})
+        video = {} if ARGS.check else {"record_video_dir": str(OUT), "record_video_size": {"width": W, "height": H}}
+        ctx = browser.new_context(viewport={"width": W, "height": H}, color_scheme="dark", **video)
         pg = ctx.new_page()
         t0 = time.monotonic()
+        now = lambda: time.monotonic() - t0  # noqa: E731
 
-        def scene(key, action):
-            start = time.monotonic() - t0
-            action()
-            elapsed = time.monotonic() - t0 - start
-            hold = max(0.0, durations[key] + 1.0 - elapsed)
-            pg.wait_for_timeout(int(hold * 1000))
-            timeline.append({"key": key, "start": round(start, 2), "end": round(time.monotonic() - t0, 2)})
+        def target(spec: str):
+            first = spec.startswith("first:")
+            sel, _, txt = spec.removeprefix("first:").partition("@@")
+            loc = pg.locator(sel)
+            if txt:
+                loc = loc.filter(has_text=txt.replace("{region}", REGION))
+            n = loc.count()
+            if n == 0 or (n > 1 and not first):
+                return None, n
+            return loc.first, n
 
-        def slow_scroll(px, steps=8):
-            for _ in range(steps):
-                pg.mouse.wheel(0, px // steps); pg.wait_for_timeout(180)
+        def cue(cid: str, during=None) -> None:
+            c = CUE[cid]
+            start = now()
+            if c.spot:
+                loc, n = target(c.spot)
+                if loc is None:
+                    msg = f"{cid}: {c.spot!r} matches {n} elements on {pg.url}"
+                    if ARGS.check:
+                        missing.append(msg)
+                    else:
+                        sys.exit(f"cannot frame {msg}")
+                else:
+                    loc.scroll_into_view_if_needed()
+                    pg.evaluate(SPOT_JS, loc.element_handle())
+                    pg.wait_for_timeout(250)
+            if during is not None:
+                during()
+            remaining = 0.15 if ARGS.check else durations[cid] - (now() - start)
+            if remaining > 0:
+                pg.wait_for_timeout(int(remaining * 1000))
+            pg.evaluate(SPOT_JS, None)
+            timeline.append({"id": cid, "key": SCENE_OF[cid], "start": round(start, 2), "end": round(now(), 2)})
 
-        # 1 terminal
-        scene("cli", lambda: (pg.goto(term.as_uri()), pg.wait_for_timeout(7000)))
-        # 1b the front door: the whole line in six figures, then the queue one click in
-        scene("home", lambda: (login(pg, *SENIOR), pg.goto(f"{BASE}/"), pg.wait_for_load_state("networkidle"), pg.wait_for_timeout(1500)))
-        # 2 queue
-        scene("queue", lambda: (pg.goto(f"{BASE}/queue"), pg.wait_for_load_state("networkidle"), pg.wait_for_timeout(1500), slow_scroll(500)))
-        # 3 region
-        def region():
-            # The scene the narration spends longest on, paced in three holds:
-            # the rationale and the triptych, then the model's reading beside
-            # the context and the criteria, then the verdict form and the note
-            # that the answer key is not on this page.
-            pg.goto(f"{BASE}/c/{STEM}/{INDEX}"); pg.wait_for_load_state("networkidle"); pg.wait_for_timeout(11000)
-            slow_scroll(700, 10); pg.wait_for_timeout(9000)
-            slow_scroll(900, 10); pg.wait_for_timeout(1000)
-        scene("region", region)
-        # 4 defer with 0
-        def defer():
-            pg.goto(f"{BASE}/c/{STEM}/{INDEX}"); pg.wait_for_load_state("networkidle")
-            pg.mouse.wheel(0, 1600); pg.wait_for_timeout(1200)
-            pg.keyboard.press("0"); pg.wait_for_load_state("networkidle"); pg.wait_for_timeout(1000)
-            pg.goto(f"{BASE}/deferred"); pg.wait_for_load_state("networkidle")
-        scene("defer", defer)
-        # 5 blocked as watcher
-        scene("blocked", lambda: (login(pg, *OPERATOR), pg.goto(f"{BASE}/c/{STEM}/{INDEX}"), pg.wait_for_load_state("networkidle"), pg.wait_for_timeout(1500), pg.mouse.wheel(0, 1600), pg.wait_for_timeout(1500)))
-        # 6 boards
-        scene("boards", lambda: (login(pg, *SENIOR), pg.goto(f"{BASE}/boards"), pg.wait_for_load_state("networkidle"), pg.wait_for_timeout(1500), slow_scroll(300, 4)))
-        # 7 ask
-        def ask(question):
-            pg.goto(f"{BASE}/ask"); pg.wait_for_load_state("networkidle")
-            pg.click("input[name=question]"); pg.type("input[name=question]", question, delay=45)
-            pg.wait_for_timeout(600); pg.press("input[name=question]", "Enter")
+        def login(name: str, secret: str, cid: str | None = None) -> None:
+            # A second on the form before anything is typed: the viewer has to
+            # see that there is a sign-in at all.
+            pg.context.clear_cookies()
+            pg.goto(f"{BASE}/login")
+            pg.wait_for_load_state("networkidle")
+            pg.goto(f"{BASE}/locale/{LANG}?next=/login")
+            pg.wait_for_load_state("networkidle")
+            pg.wait_for_timeout(1000)
+
+            def type_in():
+                pg.type("input[name=name]", name, delay=70)
+                pg.wait_for_timeout(300)
+                pg.type("input[name=secret]", secret, delay=70)
+                pg.wait_for_timeout(500)
+            if cid:
+                cue(cid, during=type_in)
+            else:
+                type_in()
+            pg.click("button[type=submit], input[type=submit]")
+            pg.wait_for_load_state("networkidle")
+
+        def ask(question: str, cid: str) -> None:
+            pg.goto(f"{BASE}/ask")
+            pg.wait_for_load_state("networkidle")
+            pg.wait_for_timeout(600)
+
+            def type_in():
+                pg.click("input[name=question]")
+                pg.type("input[name=question]", question, delay=45)
+            cue(cid, during=type_in)
+            pg.press("input[name=question]", "Enter")
+
+        def card(page: Path, ids: list[str]) -> None:
+            pg.goto(page.as_uri())
+            pg.wait_for_timeout(800)
+            for cid in ids:
+                cue(cid)
+
+        def scene_intro():
+            card(intro, ["intro.0", "intro.1", "intro.2", "intro.3"])
+
+        def scene_cli():
+            pg.goto(term.as_uri())
+            pg.wait_for_timeout(1400)
+            for cid in ("cli.0", "cli.1", "cli.2", "cli.3"):
+                cue(cid)
+
+        def scene_login():
+            login(*SENIOR, cid="login.0")
+
+        def scene_home():
+            pg.goto(f"{BASE}/")
+            pg.wait_for_load_state("networkidle")
+            pg.wait_for_timeout(800)
+            for cid in ("home.0", "home.1", "home.2", "home.3"):
+                cue(cid)
+
+        def scene_queue():
+            pg.goto(f"{BASE}/queue")
+            pg.wait_for_load_state("networkidle")
+            pg.wait_for_timeout(800)
+            for cid in ("queue.0", "queue.1", "queue.2"):
+                cue(cid)
+
+        def scene_region():
+            pg.goto(f"{BASE}/c/{STEM}/{INDEX}")
+            pg.wait_for_load_state("networkidle")
+            pg.wait_for_timeout(800)
+            for i in range(9):
+                cue(f"region.{i}")
+
+        def scene_defer():
+            cue("defer.0")
+            # The key handler submits the defer form; wait for that navigation
+            # itself rather than issuing another one under it (net::ERR_ABORTED).
+            with pg.expect_navigation(timeout=15000):
+                pg.keyboard.press("0")
+            pg.wait_for_load_state("networkidle")
+            if "/deferred" not in pg.url:
+                pg.goto(f"{BASE}/deferred")
+                pg.wait_for_load_state("networkidle")
+            pg.wait_for_timeout(600)
+            cue("defer.1")
+
+        def scene_blocked():
+            login(*OPERATOR)
+            pg.goto(f"{BASE}/c/{STEM}/{INDEX}")
+            pg.wait_for_load_state("networkidle")
+            pg.wait_for_timeout(800)
+            for cid in ("blocked.0", "blocked.1", "blocked.2"):
+                cue(cid)
+
+        def scene_boards():
+            login(*SENIOR)
+            pg.goto(f"{BASE}/boards")
+            pg.wait_for_load_state("networkidle")
+            pg.wait_for_timeout(800)
+            for cid in ("boards.0", "boards.1", "boards.2"):
+                cue(cid)
+
+        def scene_ask():
+            if ARGS.check:
+                pg.goto(f"{BASE}/ask")
+                pg.wait_for_load_state("networkidle")
+                cue("ask.0")
+                return
+            ask(Q_M32, "ask.0")
+            pg.wait_for_selector("#progress", state="visible", timeout=30000)
+            cue("ask.1")
+            cue("ask.2")
             pg.wait_for_selector("figure.chart", timeout=180000)
-        scene("ask", lambda: ask(Q_M32))
-        scene("ask_done", lambda: (pg.wait_for_timeout(500), pg.locator("figure.chart").scroll_into_view_if_needed(), pg.wait_for_timeout(1500)))
-        scene("control", lambda: ask(Q_M31))
-        scene("control_done", lambda: (pg.wait_for_timeout(500), pg.locator("figure.chart").scroll_into_view_if_needed(), pg.wait_for_timeout(1500)))
-        # 9 language switch on the answer page
-        other = "en" if LANG == "zh-TW" else "zh-TW"
-        def switch():
-            pg.mouse.wheel(0, -4000); pg.wait_for_timeout(600)
-            pg.goto(f"{BASE}/locale/{other}?next={pg.url.replace(BASE, '')}"); pg.wait_for_load_state("networkidle")
-            pg.wait_for_timeout(1500); slow_scroll(900, 8)
+            pg.wait_for_timeout(600)
+            for cid in ("ask.3", "ask.4", "ask.5"):
+                cue(cid)
+
+        def scene_control():
+            ask(Q_M31, "control.0")
+            pg.wait_for_selector("figure.chart", timeout=180000)
+            pg.wait_for_timeout(600)
+            cue("control.1")
+            cue("control.2")
+
+        def scene_switch():
+            cue("switch.0")
+            pg.click("nav.locale a")
+            pg.wait_for_load_state("networkidle")
+            pg.wait_for_timeout(800)
+            cue("switch.1")
+            cue("switch.2")
             # The switch renders chrome; the answer is written again only when
             # asked, because a GET on a stored run must not cost a model call.
-            # Press the button, wait out the one synthesis call, and read the
-            # answer that comes back under its badge.
-            button = pg.locator("form.rewrite button")
-            if button.count():
-                button.scroll_into_view_if_needed(); pg.wait_for_timeout(800)
-                button.click()
-                pg.wait_for_load_state("networkidle", timeout=180000)
-                pg.locator("div.prose").scroll_into_view_if_needed()
-                # The answer written again is the scene's point, and the call
-                # that produces it takes most of the scene: hold on it for
-                # its own time rather than the seconds left over.
-                pg.wait_for_timeout(9000)
-        scene("switch", switch)
+            pg.click("form.rewrite button")
+            pg.wait_for_load_state("networkidle", timeout=180000)
+            pg.wait_for_timeout(600)
+            cue("switch.3")
 
+        def scene_outro():
+            card(outro, [f"outro.{i}" for i in range(5)])
+
+        flow = [("intro", scene_intro), ("cli", scene_cli), ("login", scene_login), ("home", scene_home),
+                ("queue", scene_queue), ("region", scene_region), ("defer", scene_defer), ("blocked", scene_blocked),
+                ("boards", scene_boards), ("ask", scene_ask), ("control", scene_control), ("switch", scene_switch),
+                ("outro", scene_outro)]
+        assert [k for k, _ in flow] == [k for k, _ in SCENES], "the recorder and the shot list disagree on the scenes"
+        for key, run in flow:
+            if ARGS.check and key in MUTATING and key != "ask":
+                continue
+            run()
         pg.wait_for_timeout(1500)
+        if ARGS.check:
+            ctx.close()
+            browser.close()
+            checked = {t["id"] for t in timeline}
+            skipped = [cid for cid, c in CUE.items() if c.spot and cid not in checked]
+            print(f"checked {len(checked)} cues; not checked (a take changes these pages): {', '.join(skipped)}")
+            if missing:
+                sys.exit("missing:\n  " + "\n  ".join(missing))
+            print("every framed element found")
+            return
         video_path = pg.video.path()
-        ctx.close(); browser.close()
+        ctx.close()
+        browser.close()
 
+    take = OUT / "take.webm"
+    shutil.move(video_path, take)
     (OUT / "timeline.json").write_text(json.dumps(timeline, indent=1))
-    finish(video_path, timeline, durations)
+    finish(take, timeline, durations)
 
 
-def finish(video_path, timeline: list[dict], durations: dict[str, float]) -> None:
-    """Subtitles from the timeline, then either the silent cut or the narrated one."""
-    def ts(s): h = int(s // 3600); m = int(s % 3600 // 60); sec = s % 60; return f"{h:02d}:{m:02d}:{sec:06.3f}".replace(".", ",")
-    text = dict(SCENES)
-    # Where each line starts. Normally its scene's start; a line that ran past
-    # its scene pushes the next one back by the overrun rather than being
-    # talked over -- the silent cut keeps its scene starts exactly, since its
-    # holds *are* the timeline.
+def finish(video_path: Path, timeline: list[dict], durations: dict[str, float]) -> None:
+    """Subtitles from the timeline into the band, then the silent cut or the narrated one."""
+    def ts(s):
+        h, m, sec = int(s // 3600), int(s % 3600 // 60), s % 60
+        return f"{h:02d}:{m:02d}:{sec:06.3f}".replace(".", ",")
+    # Where each cue's narration starts: its cue's start, unless the previous
+    # one is still talking -- then 0.3 s after it ends. The silent cut keeps
+    # its cue starts exactly, since its holds *are* the timeline.
     starts, prev_end = [], -10.0
     for t in timeline:
         start = t["start"] if ARGS.silent else max(t["start"], prev_end + 0.3)
-        starts.append(start); prev_end = start + durations[t["key"]]
-        if not ARGS.silent and prev_end > t["end"]:
-            print(f"warning: {t['key']} narration ends {prev_end - t['end']:.1f}s into the next scene "
-                  f"(starts {start - t['start']:.1f}s late)", file=sys.stderr)
+        starts.append(start)
+        prev_end = start + durations[t["id"]]
+        if not ARGS.silent and prev_end > t["end"] + 1.0:
+            print(f"warning: {t['id']} narration runs {prev_end - t['end']:.1f}s past its cue", file=sys.stderr)
     srt = []
     for i, (t, start) in enumerate(zip(timeline, starts), 1):
-        end = max(min(t["end"], start + durations[t["key"]] + 1.5), start + durations[t["key"]])
-        srt.append(f"{i}\n{ts(start)} --> {ts(end)}\n{text[t['key']]}\n")
+        end = t["end"] if ARGS.silent else max(start + durations[t["id"]], min(t["end"], start + durations[t["id"]] + 1.0))
+        srt.append(f"{i}\n{ts(start)} --> {ts(end)}\n" + "\n".join(lines(CUE[t["id"]], LANG)) + "\n")
     (OUT / "subs.srt").write_text("\n".join(srt))
-    if ARGS.silent:
-        # The video alone: no narration track, no burned subtitles. What goes
-        # beside it is the script -- one row per scene with the seconds the
-        # scene is on screen and the line to say over it -- so a person can
-        # dub it without operating the station by hand.
-        final = ROOT / "docs" / "demo" / f"aoi-agent-demo-{TAG}-silent.mp4"
-        subprocess.run([FFMPEG, "-y", "-i", str(video_path), "-an", "-c:v", "libx264", "-crf", "22",
-                        "-preset", "medium", "-pix_fmt", "yuv420p", str(final)], check=True, capture_output=True)
-        rows = "\n".join(f"| {i} | {t['key']} | {t['start']:.0f}–{t['end']:.0f} s | {text[t['key']]} |"
-                          for i, t in enumerate(timeline, 1))
-        (OUT / "script.md").write_text(
-            f"# {final.name} — 配音腳本 / dubbing script\n\n每一幕畫面停留的秒數，和要在那段時間裡講的話。"
-            f"影片沒有聲音、沒有字幕；`subs.srt` 是同一份台詞的字幕檔，可以疊上去對時間。\n\n"
-            f"| # | 幕 | 秒 | 台詞 |\n|---|---|---|---|\n{rows}\n")
-        print("wrote", final, f"{final.stat().st_size/1e6:.1f} MB; scenes:", len(timeline),
-              "; length", timeline[-1]["end"], "s; script:", OUT / "script.md")
-        return
-    # audio: each narration delayed to its scene start, mixed
-    inputs, delays = [], []
-    for i, (t, start) in enumerate(zip(timeline, starts)):
-        ext = "aiff" if ARGS.tts == "say" else "wav"
-        inputs += ["-i", str(NARR / f"{t['key']}.{ext}")]
-        delays.append(f"[{i+1}:a]adelay={int(start*1000)}|{int(start*1000)}[a{i}]")
-    # `apad` after the mix: `-shortest` otherwise ends the file where the last
-    # line ends, and the last scene holds on the answer longer than its line.
-    mix = "".join(f"[a{i}]" for i in range(len(timeline))) + f"amix=inputs={len(timeline)}:normalize=0[mix];[mix]apad[narr]"
     font = "PingFang TC" if LANG == "zh-TW" else "Helvetica Neue"
     subs = str(OUT / "subs.srt").replace(":", "\\:")
+    # libass sizes against a 288-line script by default, so FontSize=13 is
+    # about 40 px on a 900 px frame: two lines and a margin in the 100 px band.
+    band = (f"[0:v]pad={W}:{H + BAND}:0:0:color=0x0b0d12,subtitles='{subs}':force_style="
+            f"'FontName={font},FontSize=13,Alignment=2,MarginV=12,BorderStyle=1,Outline=1,Shadow=0,"
+            f"PrimaryColour=&H00F2F2F2,OutlineColour=&H00000000'[v]")
+    encode = ["-c:v", "libx264", "-crf", "22", "-preset", "medium", "-pix_fmt", "yuv420p"]
+    if ARGS.silent:
+        final = ROOT / "docs" / "demo" / f"aoi-agent-demo-{TAG}-silent.mp4"
+        subprocess.run([FFMPEG, "-y", "-i", str(video_path), "-filter_complex", band, "-map", "[v]", "-an",
+                        *encode, str(final)], check=True, capture_output=True)
+        rows = "\n".join(f"| {t['id']} | {t['start']:.1f}–{t['end']:.1f} | {text(CUE[t['id']], LANG)} |" for t in timeline)
+        (OUT / "script.md").write_text(
+            f"# {final.name} — 配音腳本 / dubbing script\n\n每一句字幕在畫面上的秒數，和要在那段時間裡講的話。"
+            f"影片有字幕、沒有聲音；`subs.srt` 是同一份字幕檔。\n\n| 句 | 秒 | 台詞 |\n|---|---|---|\n{rows}\n")
+        print("wrote", final, f"{final.stat().st_size/1e6:.1f} MB; cues:", len(timeline),
+              "; length", timeline[-1]["end"], "s; script:", OUT / "script.md")
+        return
+    ext = "aiff" if ARGS.tts == "say" else "wav"
+    inputs, delays = [], []
+    for i, (t, start) in enumerate(zip(timeline, starts)):
+        inputs += ["-i", str(NARR / f"{t['id']}.{ext}")]
+        delays.append(f"[{i+1}:a]adelay={int(start*1000)}|{int(start*1000)}[a{i}]")
+    # `apad` after the mix: `-shortest` otherwise ends the file where the last
+    # cue's audio ends, and the last card holds longer than its line.
+    mix = "".join(f"[a{i}]" for i in range(len(timeline))) + f"amix=inputs={len(timeline)}:normalize=0[mix];[mix]apad[narr]"
     final = ROOT / "docs" / "demo" / f"aoi-agent-demo-{TAG}.mp4"
     cmd = [FFMPEG, "-y", "-i", str(video_path), *inputs,
-           "-filter_complex", ";".join(delays) + ";" + mix + f";[0:v]subtitles='{subs}':force_style='FontName={font},FontSize=15,PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,BorderStyle=4,BackColour=&H90000000,MarginV=28'[v]",
-           "-map", "[v]", "-map", "[narr]", "-c:v", "libx264", "-crf", "22", "-preset", "medium", "-pix_fmt", "yuv420p",
-           "-c:a", "aac", "-b:a", "128k", "-shortest", str(final)]
+           "-filter_complex", ";".join(delays) + ";" + mix + ";" + band,
+           "-map", "[v]", "-map", "[narr]", *encode, "-c:a", "aac", "-b:a", "128k", "-shortest", str(final)]
     subprocess.run(cmd, check=True, capture_output=True)
-    print("wrote", final, f"{final.stat().st_size/1e6:.1f} MB; scenes:", len(timeline), "; length", timeline[-1]["end"], "s")
+    print("wrote", final, f"{final.stat().st_size/1e6:.1f} MB; cues:", len(timeline), "; length", timeline[-1]["end"], "s")
 
 
 def narrate_existing() -> None:
-    """Narrate the silent cut already recorded, on its own timeline.
-
-    The video is what a person was going to dub over by hand; this puts the
-    Kokoro voice over it instead, at the scene starts the silent take
-    recorded, and burns the same lines in as subtitles. Nothing is driven and
-    nothing in the store changes.
-    """
-    video = ROOT / "docs" / "demo" / f"aoi-agent-demo-{TAG}-silent.mp4"
-    timeline = json.loads((OUT / "timeline.json").read_text())
-    if not video.exists() or {t["key"] for t in timeline} != {k for k, _ in SCENES}:
-        sys.exit(f"no silent cut with a matching timeline under {OUT}; record one with --silent first")
-    finish(video, timeline, tts())
+    """Narrate the take already recorded, on its own timeline: one wav per
+    cue at the cue's start, the same subtitles in the band. Nothing is driven
+    and nothing in the store changes."""
+    take = OUT / "take.webm"
+    timeline = json.loads((OUT / "timeline.json").read_text()) if (OUT / "timeline.json").exists() else []
+    if not take.exists() or [t["id"] for t in timeline] != list(CUE):
+        sys.exit(f"no take with a matching timeline under {OUT}; record one with --silent first")
+    finish(take, timeline, tts())
 
 
 if __name__ == "__main__":
