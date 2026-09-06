@@ -22,6 +22,7 @@ import sys
 
 from aoi_agent.graph.flow import DEFAULT_MODEL, build_graph, explanation_notice
 from aoi_agent.llm.ollama import OllamaClient
+from aoi_agent.mcp_servers.classify import classify_defect
 from aoi_agent.provenance import ReviewerIdentity
 from aoi_agent.station import service
 from aoi_agent.store import dispositions, escalations
@@ -329,6 +330,13 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     if args.limit:
         records = records[: args.limit]
+
+    # A station keeps the weights resident; this process loads them on its
+    # first region, and until 2026-09-06 that load -- about 1.4 s -- was
+    # printed as the first region's classify time beside 30 ms for the rest.
+    # One reading before the clock starts, discarded: the tool has no side
+    # effects, so the only thing it changes is what the first line reports.
+    classify_defect(records[0]["reference"])
 
     print(f"board {args.board}: {len(records)} AOI candidates\n")
     for record in records:

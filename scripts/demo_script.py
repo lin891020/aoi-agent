@@ -81,6 +81,8 @@ SCENES: list[tuple[str, list[Cue]]] = [
         Cue("作業員的判定會記錄下來，作為下一輪訓練的標註資料。",
             "The operator's verdict is recorded, as the label for the next training round.", "#f-label"),
         Cue("主管也可直接用中文，詢問產線的問題。", "A supervisor can ask the line a question in plain words.", "#f-ask"),
+        Cue("以下示範用公開資料集 DeepPCB；AOI 與產線紀錄為模擬。",
+            "The demo runs on the public DeepPCB set; the AOI and line records are simulated.", "#f-data"),
     ]),
     ("cli", [
         Cue("這是工程師看的執行紀錄：一片 PCB，每個區域一行。",

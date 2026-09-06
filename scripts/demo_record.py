@@ -208,7 +208,7 @@ CARD_CSS = """
 body{margin:0;background:#0b0d12;color:#e6e8ee;font:18px/1.5 -apple-system,"PingFang TC","Helvetica Neue",sans-serif}
 .card{box-sizing:border-box;width:1280px;height:800px;padding:40px 80px 32px;display:flex;flex-direction:column;gap:12px}
 h1{font-size:38px;font-weight:600;margin:0;letter-spacing:-.01em}
-p.lead{font-size:21px;color:#aeb4c2;margin:0;max-width:1000px}
+p.lead{font-size:21px;color:#aeb4c2;margin:0;max-width:1120px;text-wrap:balance}
 .body{flex:1;display:flex;flex-direction:column;justify-content:center;padding-bottom:40px}
 .flow{display:flex;align-items:stretch}
 .flow .box{box-sizing:border-box;width:176px;padding:16px 14px;border:2px solid #2f3748;border-radius:10px;background:#141926;display:flex;flex-direction:column;gap:7px}
@@ -225,6 +225,7 @@ p.lead{font-size:21px;color:#aeb4c2;margin:0;max-width:1000px}
 .figures div{display:flex;flex-direction:column;gap:6px}
 .figures b{font-size:64px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
 .figures span{font-size:20px;color:#aeb4c2;max-width:320px}
+.data{margin:0 0 6px;color:#aeb4c2;font-size:19px;width:fit-content;padding:4px 8px 4px 0}
 .foot{margin-top:auto;color:#8b93a5;font:20px "SF Mono",Menlo,monospace}
 """
 
@@ -249,8 +250,15 @@ def intro_page() -> Path:
     at nothing on and which the screencast could not keep sharp."""
     zh = LANG == "zh-TW"
     title = "AOI 複判站" if zh else "AOI re-verification station"
-    lead = ("AOI 標出的區域，六成是誤報，卻每一個都要人工複判。" if zh else
-            "Six in ten regions an AOI flags are false calls, and every one goes to a person.")
+    lead = ("AOI 標出的區域，六成是誤報，卻每一個都要人工複判。本系統在 DeepPCB 上減少 55.6% 的複判工作。" if zh else
+            "Six in ten regions an AOI flags are false calls, and every one goes to a person. "
+            "On DeepPCB this system removes 55.6% of that review.")
+    # Said out loud once (intro.9) and written where the cue can frame it:
+    # the dataset is public, the AOI is a simulator, the line records are
+    # seeded. The page footnotes say so; a viewer who finds it there first
+    # reads the intro's "behind the AOI the line already has" as a claim.
+    data = ("示範資料：DeepPCB 公開資料集；AOI 與產線紀錄為模擬。" if zh else
+            "Demo data: the public DeepPCB set; the AOI and the line records are simulated.")
 
     def box(id_: str, name: str, what: str, note: str) -> str:
         return f"<div class='box' id='{id_}'><b>{name}</b><i>{what}</i><small>{note}</small></div>"
@@ -271,7 +279,7 @@ def intro_page() -> Path:
         system, ask = "this system · behind the AOI the line already has", "<b>supervisor</b><i>asks the line a question in plain words &rarr; line analytics</i>"
     flow = (f"<div class='body'><div class='flow'>{boxes[0]}{arrow}<div class='system' id='f-system'><span>{system}</span>"
             f"{boxes[1]}{arrow}{boxes[2]}{arrow}{boxes[3]}</div>{arrow}{boxes[4]}</div>"
-            f"<div class='ask' id='f-ask'>{ask}</div></div>")
+            f"<div class='ask' id='f-ask'>{ask}</div></div><p class='data' id='f-data'>{data}</p>")
     return card_page("intro", title, lead, html=flow, foot=REPO)
 
 
