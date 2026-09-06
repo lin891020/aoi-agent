@@ -766,6 +766,16 @@ def finish(video_path: Path, timeline: list[dict], durations: dict[str, float]) 
     for i, (c, start) in enumerate(zip(timeline, starts)):
         inputs += ["-i", str(NARR / f"{c['id']}.{ext}")]
         delays.append(f"[{i+1}:a]adelay={int(start*1000)}|{int(start*1000)}[a{i}]")
+    # The last lines of a voice slower than the holds run past the picture;
+    # the picture's last frame is held until they are done, plus a breath.
+    spoken_end = max(start + durations[c["id"]] for c, start in zip(timeline, starts))
+    master_len = float(subprocess.run([str(Path(FFMPEG).with_name("ffprobe")), "-v", "error", "-show_entries",
+                                       "format=duration", "-of", "csv=p=0", str(video_path)],
+                                      capture_output=True, text=True, check=False).stdout.strip() or 0)
+    extra = spoken_end + 1.0 - to_out(master_len)
+    if extra > 0:
+        graph[-2] = graph[-2].replace(",fps=25[vc]", f",fps=25,tpad=stop_mode=clone:stop_duration={extra:.2f}[vc]")
+        print(f"tail held {extra:.1f}s for the last lines", file=sys.stderr)
     # `apad` after the mix: `-shortest` otherwise ends the file where the last
     # cue's audio ends, and the last card holds longer than its line.
     mix = "".join(f"[a{i}]" for i in range(len(timeline))) + f"amix=inputs={len(timeline)}:normalize=0[mix];[mix]apad[narr]"
