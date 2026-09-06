@@ -110,6 +110,10 @@ MUTATING = {"defer", "blocked", "ask", "control", "switch"}
 CUE = {cue_id(k, i): c for k, i, c in CUES}
 SCENE_OF = {cue_id(k, i): k for k, i, _ in CUES}
 
+
+def ids(key: str) -> list[str]:
+    return [cue_id(k, i) for k, i, _ in CUES if k == key]
+
 Q_M32 = {"zh-TW": "M32 參數變更前後，open 的比例有沒有變？",
          "en": "Did the parameter change on M32 move its share of opens?"}[LANG]
 Q_M31 = {"zh-TW": "M31 換燈前後，open 的比例有沒有變？",
@@ -232,7 +236,7 @@ def card_page(name: str, title: str, lead: str, svg: Path | None = None,
 
 def intro_page() -> Path:
     title = {"zh-TW": "AOI 複判站", "en": "AOI re-verification station"}[LANG]
-    lead = {"zh-TW": "AOI 標出來的區域，六成是誤報，每一個都要人看。一個視覺模型、一個 agent，收不掉的才交給人。",
+    lead = {"zh-TW": "AOI 標出的區域，六成是誤報，卻每一個都要人工複判。視覺模型與 agent 先行判定，兩者都無法判定的才交給作業員。",
             "en": "Six in ten regions an AOI flags are false calls, and every one goes to a person. "
                   "A vision model, then an agent; only what neither settles reaches a person."}[LANG]
     svg = ROOT / "docs" / "diagrams" / ("disposition-flow-dark.zh-TW.svg" if LANG == "zh-TW" else "disposition-flow-dark.svg")
@@ -244,10 +248,10 @@ def outro_page() -> Path:
     return card_page(
         "outro",
         "數字都在 README" if zh else "The numbers are in the README",
-        "DeepPCB 測試集，門檻不在報成績的那份資料上挑。" if zh else "DeepPCB test split; the threshold was chosen off the split it is reported against.",
-        figures=[("55.6%", "人工複判省掉" if zh else "of manual review removed"),
-                 ("0.66%", "漏檢（預算 0.5%）" if zh else "escape (budget 0.5%)"),
-                 ("85.9%", "的區域不經 LLM" if zh else "of regions never reach an LLM")],
+        "DeepPCB 測試集；判定門檻不在報告成績的那份資料上選定。" if zh else "DeepPCB test split; the threshold was chosen off the split it is reported against.",
+        figures=[("55.6%", "人工複判工作量減少" if zh else "of manual review removed"),
+                 ("0.66%", "漏檢率（預算 0.5%）" if zh else "escape (budget 0.5%)"),
+                 ("85.9%", "的區域不經過 LLM" if zh else "of regions never reach an LLM")],
         foot=REPO,
     )
 
@@ -301,7 +305,8 @@ def terminal_page() -> Path:
     html = f"""<!doctype html><html><head><meta charset="utf-8"><style>
 body{{margin:0;background:#0f1115;color:#d7dae0;font:16px/1.55 "SF Mono",Menlo,monospace;padding:28px 36px}}
 .prompt{{color:#7ee787}} .q{{color:#f0b429}} .d{{color:#8b949e}} #fold{{color:#8b949e;font-style:italic}}
-div div{{white-space:pre}} .hidden{{display:none}}
+#hdr,#first,#fold,#queued,#board{{width:fit-content;max-width:1150px;padding:6px 14px;margin:6px 0 6px -14px}}
+div div{{white-space:pre-wrap;overflow-wrap:anywhere}} .hidden{{display:none}}
 </style></head><body><div><span class="prompt">$</span> uv run python -m aoi_agent board {STEM} --queue</div>
 {"".join(f'<div id="{p["id"]}"></div>' for p in parts)}
 <script>
@@ -482,12 +487,12 @@ def main() -> None:
                 cue(cid)
 
         def scene_intro():
-            card(intro, ["intro.0", "intro.1", "intro.2", "intro.3"])
+            card(intro, ids("intro"))
 
         def scene_cli():
             pg.goto(term.as_uri())
             pg.wait_for_timeout(1400)
-            for cid in ("cli.0", "cli.1", "cli.2", "cli.3"):
+            for cid in ids("cli"):
                 cue(cid)
 
         def scene_login():
@@ -497,22 +502,22 @@ def main() -> None:
             pg.goto(f"{BASE}/")
             pg.wait_for_load_state("networkidle")
             pg.wait_for_timeout(800)
-            for cid in ("home.0", "home.1", "home.2", "home.3"):
+            for cid in ids("home"):
                 cue(cid)
 
         def scene_queue():
             pg.goto(f"{BASE}/queue")
             pg.wait_for_load_state("networkidle")
             pg.wait_for_timeout(800)
-            for cid in ("queue.0", "queue.1", "queue.2"):
+            for cid in ids("queue"):
                 cue(cid)
 
         def scene_region():
             pg.goto(f"{BASE}/c/{STEM}/{INDEX}")
             pg.wait_for_load_state("networkidle")
             pg.wait_for_timeout(800)
-            for i in range(9):
-                cue(f"region.{i}")
+            for cid in ids("region"):
+                cue(cid)
 
         def scene_defer():
             cue("defer.0")
@@ -532,7 +537,7 @@ def main() -> None:
             pg.goto(f"{BASE}/c/{STEM}/{INDEX}")
             pg.wait_for_load_state("networkidle")
             pg.wait_for_timeout(800)
-            for cid in ("blocked.0", "blocked.1", "blocked.2"):
+            for cid in ids("blocked"):
                 cue(cid)
 
         def scene_boards():
@@ -540,7 +545,7 @@ def main() -> None:
             pg.goto(f"{BASE}/boards")
             pg.wait_for_load_state("networkidle")
             pg.wait_for_timeout(800)
-            for cid in ("boards.0", "boards.1", "boards.2"):
+            for cid in ids("boards"):
                 cue(cid)
 
         def say_while_waiting(key: str, done) -> None:
@@ -599,7 +604,7 @@ def main() -> None:
                 cue(cid)
 
         def scene_outro():
-            card(outro, [f"outro.{i}" for i in range(5)])
+            card(outro, ids("outro"))
 
         flow = [("intro", scene_intro), ("cli", scene_cli), ("login", scene_login), ("home", scene_home),
                 ("queue", scene_queue), ("region", scene_region), ("defer", scene_defer), ("blocked", scene_blocked),
