@@ -36,7 +36,8 @@ def test_every_cue_wraps_to_two_lines_under_the_guide(script):
             wrapped = script.lines(cue, lang)
             assert len(wrapped) <= 2, f"{script.cue_id(key, i)} ({lang}) needs {len(wrapped)} lines"
             for line in wrapped:
-                assert len(line) <= limit, f"{script.cue_id(key, i)} ({lang}): {len(line)} > {limit}: {line!r}"
+                w = script.width(line, lang)
+                assert w <= limit, f"{script.cue_id(key, i)} ({lang}): {w} > {limit}: {line!r}"
             assert "".join(wrapped).replace(" ", "") == script.text(cue, lang).replace(" ", ""), "wrap lost text"
 
 
@@ -62,11 +63,15 @@ def test_both_languages_are_the_same_shot_list(script):
 
 def test_the_audience_is_told_what_the_system_is_before_any_page(script):
     """Somebody who has never seen an AOI queue watches this. The first
-    scene is a card, not a page, and it says what an AOI is for."""
+    scene is a card, not a page, and it says what an AOI is for -- and since
+    2026-09-06 every line of it frames the step of the flow it is about,
+    because forty seconds on one still with nothing pointed at is forty
+    seconds the viewer spends wondering where to look."""
     first_key, first_cues = script.SCENES[0]
     assert first_key == "intro"
-    assert first_cues[0].spot is None
     assert "AOI" in first_cues[0].zh and "AOI" in first_cues[0].en
+    for cue in first_cues:
+        assert cue.spot and cue.spot.startswith("#f-"), f"an intro cue frames nothing on the card: {cue.zh}"
 
 
 def test_the_shot_list_document_is_the_table(script):

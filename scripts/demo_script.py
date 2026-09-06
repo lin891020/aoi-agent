@@ -69,17 +69,18 @@ PHASES = ("type", "before", "wait", "after")
 #: it, in order, each with its own hold.
 SCENES: list[tuple[str, list[Cue]]] = [
     ("intro", [
+        Cue("AOI：自動光學檢測，Automated Optical Inspection。", "AOI: Automated Optical Inspection.", "#f-aoi"),
         Cue("AOI 是產線上拍照找瑕疵的機器；設定上寧可誤報，也不漏檢。",
-            "An AOI is the camera that checks boards; it over-flags rather than miss a defect."),
+            "It is the camera that checks boards; it over-flags rather than miss a defect.", "#f-aoi"),
         Cue("AOI 標出的區域，六成是誤報，卻每一個都要人工複判。",
-            "Six in ten flagged regions are false calls, and every one goes to a person."),
-        Cue("本系統接在既有的 AOI 之後。", "It sits behind the AOI the line already has."),
-        Cue("視覺模型先判定；沒把握的，由 agent 接手。",
-            "A vision model decides first; what it is unsure of goes to an agent."),
-        Cue("兩者都無法判定的區域，才交給作業員。", "Only what neither can settle reaches an operator."),
+            "Six in ten flagged regions are false calls, and every one goes to a person.", "#f-lead"),
+        Cue("本系統接在既有的 AOI 之後。", "It sits behind the AOI the line already has.", "#f-system"),
+        Cue("視覺模型先判定。", "A vision model decides first.", "#f-model"),
+        Cue("沒把握的，由 agent 接手。", "What it is unsure of goes to an agent.", "#f-agent"),
+        Cue("兩者都無法判定的區域，才交給作業員。", "Only what neither can settle reaches an operator.", "#f-operator"),
         Cue("作業員的判定會記錄下來，作為下一輪訓練的標註資料。",
-            "The operator's verdict is recorded, as the label for the next training round."),
-        Cue("主管也可直接用中文，詢問產線的問題。", "A supervisor can ask the line a question in plain words."),
+            "The operator's verdict is recorded, as the label for the next training round.", "#f-label"),
+        Cue("主管也可直接用中文，詢問產線的問題。", "A supervisor can ask the line a question in plain words.", "#f-ask"),
     ]),
     ("cli", [
         Cue("這是工程師看的執行紀錄：一片 PCB，每個區域一行。",
@@ -233,9 +234,24 @@ def hold(cue: Cue, lang: str) -> float:
     """Seconds the silent cut keeps this cue up: long enough to say it at a
     dubbing pace, never shorter than a subtitle's minimum on screen."""
     t = text(cue, lang)
-    units = len(t) if lang == "zh-TW" else len(t.split())
+    # A Latin word in a Chinese line is said in about half its letters'
+    # worth of characters; a digit is a syllable and counts whole -- the
+    # subtitle guide's half-width rule (``width``) is for the band, not the
+    # voice, and applied to the hold it left 0.66% with less time than the
+    # voice took to say it.
+    units = sum(0.5 if ch.isascii() and ch.isalpha() else 1 for ch in t) if lang == "zh-TW" else len(t.split())
     pace = ZH_PACE if lang == "zh-TW" else EN_PACE
     return max(MIN_HOLD, round(units / pace + 0.6, 1))
+
+
+def width(t: str, lang: str) -> float:
+    """Characters as the guide counts them. Chinese counts a full-width
+    character as one and a half-width one (Latin, digits, ASCII marks) as a
+    half, which is how ``Automated Optical Inspection`` fits beside its
+    Chinese name; English counts every character."""
+    if lang != "zh-TW":
+        return float(len(t))
+    return sum(0.5 if ord(ch) < 0x2E80 else 1.0 for ch in t)
 
 
 def lines(cue: Cue, lang: str) -> list[str]:
@@ -245,11 +261,12 @@ def lines(cue: Cue, lang: str) -> list[str]:
     to rewrite, and the test says so."""
     t = text(cue, lang)
     if lang == "zh-TW":
-        if len(t) <= ZH_LINE:
+        w = lambda part: width(part, lang)  # noqa: E731 -- the guide's count, used four times below
+        if w(t) <= ZH_LINE:
             return [t]
         cuts = [m.end() for m in re.finditer(f"[{ZH_BREAKS}]", t) if 0 < m.end() < len(t)]
-        fits = [c for c in cuts if len(t[:c]) <= ZH_LINE and len(t[c:]) <= ZH_LINE]
-        cut = min(fits, key=lambda c: max(len(t[:c]), len(t[c:]))) if fits else ZH_LINE
+        fits = [c for c in cuts if w(t[:c]) <= ZH_LINE and w(t[c:]) <= ZH_LINE]
+        cut = min(fits, key=lambda c: max(w(t[:c]), w(t[c:]))) if fits else ZH_LINE
         return [t[:cut], t[cut:]]
     if len(t) <= EN_LINE:
         return [t]

@@ -209,8 +209,18 @@ body{margin:0;background:#0b0d12;color:#e6e8ee;font:18px/1.5 -apple-system,"Ping
 .card{box-sizing:border-box;width:1280px;height:800px;padding:40px 80px 32px;display:flex;flex-direction:column;gap:12px}
 h1{font-size:38px;font-weight:600;margin:0;letter-spacing:-.01em}
 p.lead{font-size:21px;color:#aeb4c2;margin:0;max-width:1000px}
-.diagram{flex:1;display:flex;align-items:center;justify-content:center;min-height:0}
-.diagram svg{width:100%;height:auto;max-height:100%}
+.body{flex:1;display:flex;flex-direction:column;justify-content:center;padding-bottom:40px}
+.flow{display:flex;align-items:stretch}
+.flow .box{box-sizing:border-box;width:176px;padding:16px 14px;border:2px solid #2f3748;border-radius:10px;background:#141926;display:flex;flex-direction:column;gap:7px}
+.flow .box b{font-size:27px;font-weight:600;line-height:1.15}
+.flow .box i{font-style:normal;font-size:17px;color:#d0d4dd;line-height:1.35}
+.flow .box small{font-size:14px;color:#8b93a5;line-height:1.3}
+.flow .arrow{align-self:center;width:40px;text-align:center;font-size:32px;color:#6f778a;flex:none}
+.flow .system{display:flex;align-items:stretch;padding:36px 12px 12px;border:2px dashed #4a5470;border-radius:14px;position:relative}
+.flow .system>span{position:absolute;top:9px;left:16px;font-size:15px;color:#f0b429;letter-spacing:.04em}
+.ask{display:flex;align-items:center;gap:18px;margin:22px 0 0 auto;padding:14px 22px;border:2px solid #2f3748;border-radius:10px;background:#141926;width:fit-content}
+.ask b{font-size:22px;font-weight:600}
+.ask i{font-style:normal;font-size:17px;color:#d0d4dd}
 .figures{display:flex;gap:56px;margin-top:22px}
 .figures div{display:flex;flex-direction:column;gap:6px}
 .figures b{font-size:64px;font-weight:600;line-height:1;font-variant-numeric:tabular-nums}
@@ -219,11 +229,9 @@ p.lead{font-size:21px;color:#aeb4c2;margin:0;max-width:1000px}
 """
 
 
-def card_page(name: str, title: str, lead: str, svg: Path | None = None,
+def card_page(name: str, title: str, lead: str, html: str = "",
               figures: list[tuple[str, str]] | None = None, foot: str = "") -> Path:
-    body = f"<h1>{title}</h1><p class='lead'>{lead}</p>"
-    if svg is not None:
-        body += f"<div class='diagram'>{svg.read_text()}</div>"
+    body = f"<h1>{title}</h1><p class='lead' id='f-lead'>{lead}</p>{html}"
     if figures:
         body += "<div class='figures'>" + "".join(f"<div><b>{n}</b><span>{label}</span></div>" for n, label in figures) + "</div>"
     if foot:
@@ -235,12 +243,36 @@ def card_page(name: str, title: str, lead: str, svg: Path | None = None,
 
 
 def intro_page() -> Path:
-    title = {"zh-TW": "AOI 複判站", "en": "AOI re-verification station"}[LANG]
-    lead = {"zh-TW": "AOI 標出的區域，六成是誤報，卻每一個都要人工複判。視覺模型與 agent 先行判定，兩者都無法判定的才交給作業員。",
-            "en": "Six in ten regions an AOI flags are false calls, and every one goes to a person. "
-                  "A vision model, then an agent; only what neither settles reaches a person."}[LANG]
-    svg = ROOT / "docs" / "diagrams" / ("disposition-flow-dark.zh-TW.svg" if LANG == "zh-TW" else "disposition-flow-dark.svg")
-    return card_page("intro", title, lead, svg=svg, foot=REPO)
+    """The flow as five boxes a viewer can read from across a room, each with
+    an id the intro's cues frame in turn. It replaced the README's flow
+    diagram scaled into the card, which forty seconds of narration pointed
+    at nothing on and which the screencast could not keep sharp."""
+    zh = LANG == "zh-TW"
+    title = "AOI 複判站" if zh else "AOI re-verification station"
+    lead = ("AOI 標出的區域，六成是誤報，卻每一個都要人工複判。" if zh else
+            "Six in ten regions an AOI flags are false calls, and every one goes to a person.")
+
+    def box(id_: str, name: str, what: str, note: str) -> str:
+        return f"<div class='box' id='{id_}'><b>{name}</b><i>{what}</i><small>{note}</small></div>"
+    arrow = "<div class='arrow'>&rarr;</div>"
+    if zh:
+        boxes = [box("f-aoi", "AOI", "自動光學檢測", "Automated Optical Inspection<br>拍照找瑕疵；寧可誤報，不漏檢"),
+                 box("f-model", "視覺模型", "先判定", "多數區域幾毫秒內處置"),
+                 box("f-agent", "agent", "沒把握的，由它接手", "解釋給人看"),
+                 box("f-operator", "作業員", "兩者都無法判定的，才交給人", "在複判站作答"),
+                 box("f-label", "訓練標註", "作業員的判定記錄下來", "下一輪訓練的資料")]
+        system, ask = "本系統 · 接在既有的 AOI 之後", "<b>主管</b><i>直接用中文問產線的問題 &rarr; 產線查詢</i>"
+    else:
+        boxes = [box("f-aoi", "AOI", "Automated Optical Inspection", "the camera that checks boards;<br>over-flags rather than miss"),
+                 box("f-model", "vision model", "decides first", "most regions in milliseconds"),
+                 box("f-agent", "agent", "takes what it is unsure of", "explains, for a person"),
+                 box("f-operator", "operator", "only what neither can settle", "answers at the station"),
+                 box("f-label", "training label", "the verdict is recorded", "for the next round")]
+        system, ask = "this system · behind the AOI the line already has", "<b>supervisor</b><i>asks the line a question in plain words &rarr; line analytics</i>"
+    flow = (f"<div class='body'><div class='flow'>{boxes[0]}{arrow}<div class='system' id='f-system'><span>{system}</span>"
+            f"{boxes[1]}{arrow}{boxes[2]}{arrow}{boxes[3]}</div>{arrow}{boxes[4]}</div>"
+            f"<div class='ask' id='f-ask'>{ask}</div></div>")
+    return card_page("intro", title, lead, html=flow, foot=REPO)
 
 
 def outro_page() -> Path:
