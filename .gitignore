@@ -24,3 +24,7 @@ docs/demo/
 
 # deck slide rasters, a local layout check (scripts/deck_preview.py)
 docs/deck/preview/
+
+# the interview deck is a personal file that happens to live here; not the project's
+docs/deck/interview-12.*
+scripts/build_interview_deck.py
