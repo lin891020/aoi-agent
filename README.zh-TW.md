@@ -29,13 +29,13 @@ PCB AOI 複判系統：視覺模型在複判佇列前面，agent 在後面，每
 
 ## Demo
 
-[![六分鐘走一遍複判站與 /ask](docs/screenshots/demo-poster.png)](https://github.com/lin891020/aoi-agent/releases/download/demo-2026-09-07/aoi-agent-demo-zh.mp4)
+https://github.com/user-attachments/assets/36cb4982-3504-4fc2-ace5-9be595d755b9
 
 六分鐘的示範，由 `scripts/demo_record.py` 照 [docs/demo-script.md](docs/demo-script.md)
 的分鏡錄製：AOI 是什麼 → CLI 跑一片板 → 登入 → 主畫面 → 佇列 → 區域頁 → `0`（無法判斷）
 → 資深複判 → `/boards` → `/ask` 查機台事件 → 對照機台 → 語言切換 → 數字。
-[繁體中文（6:10）](https://github.com/lin891020/aoi-agent/releases/download/demo-2026-09-07/aoi-agent-demo-zh.mp4)・[English（5:48）](https://github.com/lin891020/aoi-agent/releases/download/demo-2026-09-07/aoi-agent-demo-en.mp4)
-・無聲版（字幕燒在畫面上）在 [release 頁](https://github.com/lin891020/aoi-agent/releases/tag/demo-2026-09-07)。
+[繁體中文（6:10）](https://github.com/user-attachments/assets/36cb4982-3504-4fc2-ace5-9be595d755b9)・[English（5:48）](https://github.com/user-attachments/assets/62797dbf-f9d6-4bc8-974c-c7ef0217d0ae)
+・下載與無聲版（字幕燒在畫面上）在 [release 頁](https://github.com/lin891020/aoi-agent/releases/tag/demo-2026-09-07)。
 旁白是合成的（Kokoro-82M 與 Qwen3-TTS，走 video_transfer 的 TTS）；示範資料是公開的
 DeepPCB、AOI 是模擬器、產線紀錄是種下去的，影片裡有說。
 

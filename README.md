@@ -30,15 +30,15 @@ agent behind it, and a benchmark for every claim.
 
 ## Demo
 
-[![Six-minute walkthrough of the review station and /ask](docs/screenshots/demo-poster.png)](https://github.com/lin891020/aoi-agent/releases/download/demo-2026-09-07/aoi-agent-demo-en.mp4)
+https://github.com/user-attachments/assets/62797dbf-f9d6-4bc8-974c-c7ef0217d0ae
 
 Six-minute walkthrough, recorded by `scripts/demo_record.py` from the shot list in
 [docs/demo-script.md](docs/demo-script.md): what an AOI is → the CLI run → sign-in →
 the front page → the queue → a region → `0` ("cannot tell") → senior review →
 `/boards` → `/ask` on a machine event → its control machine → the language switch →
-the numbers. [English (5:48)](https://github.com/lin891020/aoi-agent/releases/download/demo-2026-09-07/aoi-agent-demo-en.mp4) ·
-[繁體中文 (6:10)](https://github.com/lin891020/aoi-agent/releases/download/demo-2026-09-07/aoi-agent-demo-zh.mp4) · silent cuts with burned-in subtitles on
-the [release page](https://github.com/lin891020/aoi-agent/releases/tag/demo-2026-09-07). The narration is synthesised (Kokoro-82M
+the numbers. [English (5:48)](https://github.com/user-attachments/assets/62797dbf-f9d6-4bc8-974c-c7ef0217d0ae) ·
+[繁體中文 (6:10)](https://github.com/user-attachments/assets/36cb4982-3504-4fc2-ace5-9be595d755b9) · downloads and silent cuts with burned-in
+subtitles on the [release page](https://github.com/lin891020/aoi-agent/releases/tag/demo-2026-09-07). The narration is synthesised (Kokoro-82M
 and Qwen3-TTS through video_transfer's TTS backend); the demo runs on the public DeepPCB
 set, the AOI is the simulator and the line records are seeded, and the video says so.
 
