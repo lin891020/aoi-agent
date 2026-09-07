@@ -52,7 +52,7 @@ AUTHORED = {
 }
 PREDICTIONS = ROOT / "models" / "test_predictions.npz"
 VIDEO = ROOT / "docs" / "demo" / "aoi-agent-demo-zh.mp4"
-VIDEO_LINK = "https://github.com/lin891020/aoi-agent/releases/tag/demo-2026-08-28"
+VIDEO_LINK = "https://github.com/lin891020/aoi-agent/releases/tag/demo-2026-09-07"
 EMBEDDED_OUT = ROOT / "docs" / "demo" / "build" / "aoi-agent-journey.zh-TW.embedded.pptx"
 
 # One palette, both outputs. Dark ground, one accent, a warm mark for mistakes.

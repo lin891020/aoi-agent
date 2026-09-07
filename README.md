@@ -30,12 +30,17 @@ agent behind it, and a benchmark for every claim.
 
 ## Demo
 
-<!-- VIDEO PLACEHOLDER — replace this paragraph with the link once recorded.
-     Shot list: docs/demo-script.md -->
+[![Six-minute walkthrough of the review station and /ask](docs/screenshots/demo-poster.png)](https://github.com/lin891020/aoi-agent/releases/download/demo-2026-09-07/aoi-agent-demo-en.mp4)
 
-Demo video: in preparation. Walkthrough — run a board → queue → region page →
-`0` ("cannot tell") → senior review → `/boards` → `/ask` on a machine event →
-its control machine → language switch.
+Six-minute walkthrough, recorded by `scripts/demo_record.py` from the shot list in
+[docs/demo-script.md](docs/demo-script.md): what an AOI is → the CLI run → sign-in →
+the front page → the queue → a region → `0` ("cannot tell") → senior review →
+`/boards` → `/ask` on a machine event → its control machine → the language switch →
+the numbers. [English (5:48)](https://github.com/lin891020/aoi-agent/releases/download/demo-2026-09-07/aoi-agent-demo-en.mp4) ·
+[繁體中文 (6:10)](https://github.com/lin891020/aoi-agent/releases/download/demo-2026-09-07/aoi-agent-demo-zh.mp4) · silent cuts with burned-in subtitles on
+the [release page](https://github.com/lin891020/aoi-agent/releases/tag/demo-2026-09-07). The narration is synthesised (Kokoro-82M
+and Qwen3-TTS through video_transfer's TTS backend); the demo runs on the public DeepPCB
+set, the AOI is the simulator and the line records are seeded, and the video says so.
 
 Station screenshots (every page is also available in 繁體中文):
 

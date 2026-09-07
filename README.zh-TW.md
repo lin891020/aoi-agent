@@ -29,10 +29,15 @@ PCB AOI 複判系統：視覺模型在複判佇列前面，agent 在後面，每
 
 ## Demo
 
-<!-- 影片佔位：錄好後把這一段換成連結。分鏡：docs/demo-script.md -->
+[![六分鐘走一遍複判站與 /ask](docs/screenshots/demo-poster.png)](https://github.com/lin891020/aoi-agent/releases/download/demo-2026-09-07/aoi-agent-demo-zh.mp4)
 
-示範影片：製作中。流程——跑一片板 → 佇列 → 區域頁 → `0`（無法判斷）→ 資深複判
-→ `/boards` → `/ask` 查機台事件 → 對照機台 → 語言切換。
+六分鐘的示範，由 `scripts/demo_record.py` 照 [docs/demo-script.md](docs/demo-script.md)
+的分鏡錄製：AOI 是什麼 → CLI 跑一片板 → 登入 → 主畫面 → 佇列 → 區域頁 → `0`（無法判斷）
+→ 資深複判 → `/boards` → `/ask` 查機台事件 → 對照機台 → 語言切換 → 數字。
+[繁體中文（6:10）](https://github.com/lin891020/aoi-agent/releases/download/demo-2026-09-07/aoi-agent-demo-zh.mp4)・[English（5:48）](https://github.com/lin891020/aoi-agent/releases/download/demo-2026-09-07/aoi-agent-demo-en.mp4)
+・無聲版（字幕燒在畫面上）在 [release 頁](https://github.com/lin891020/aoi-agent/releases/tag/demo-2026-09-07)。
+旁白是合成的（Kokoro-82M 與 Qwen3-TTS，走 video_transfer 的 TTS）；示範資料是公開的
+DeepPCB、AOI 是模擬器、產線紀錄是種下去的，影片裡有說。
 
 站台畫面（每一頁皆有 English 版）：
 
