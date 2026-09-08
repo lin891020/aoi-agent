@@ -1,6 +1,12 @@
 # AOI-Agent
 
-PCB AOI 複判系統：視覺模型在複判佇列前面，agent 在後面，每一個主張都有對應的量測。
+**AOI（自動光學檢測）為了不漏檢而寧可誤報：它標出的區域，六成是誤報，而今天每一個
+都要人看過。** 本系統把視覺模型放在這條佇列前面、agent 放在後面，兩者都判不了的才
+交給作業員。
+
+**人工複判減少 55.6%**，該門檻下的漏檢率是 0.66%，對照 0.5% 的預算——這份 README
+會告訴你這個預算**沒有達標**，以及為什麼。每個門檻都引用挑出它的腳本，每個數字都
+指名它來自哪一次量測。
 
 [![tests](https://github.com/lin891020/aoi-agent/actions/workflows/tests.yml/badge.svg)](https://github.com/lin891020/aoi-agent/actions/workflows/tests.yml)
 ![python 3.12](https://img.shields.io/badge/python-3.12-3776AB)
@@ -8,12 +14,38 @@ PCB AOI 複判系統：視覺模型在複判佇列前面，agent 在後面，每
 ![licence MIT](https://img.shields.io/badge/licence-MIT-0B6455)
 &nbsp; **[English version →](README.md)**
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/disposition-flow-dark.zh-TW.svg">
-  <img alt="單一標記區域的處置流程：複判模型先分類；高信心的 false call 直接排除、高信心的缺陷直接確認，不經過語言模型；其餘取得生產脈絡與允收標準、由 LLM 產生說明，再依分類器信心決定，或透過可持久化的 interrupt 升級給作業員。" src="docs/diagrams/disposition-flow-light.zh-TW.svg" width="100%">
-</picture>
+## Demo
 
-<sub>處置流程。由 `scripts/render_diagrams.py` 讀取 `graph/flow.py` 的 node 名稱與門檻產生。`/ask` 的流程圖見[問產線問題](#問產線問題--ask)。</sub>
+https://github.com/user-attachments/assets/36cb4982-3504-4fc2-ace5-9be595d755b9
+
+六分鐘走完全程：AOI 是什麼 → CLI 跑一片板 → 複判佇列 → 一個區域與 agent 的交付理由
+→ `0`（無法判斷）與資深複判 → `/ask` 查機台事件與對照機台 → 語言切換 → 數字。
+
+[繁體中文（6:10）](https://github.com/user-attachments/assets/36cb4982-3504-4fc2-ace5-9be595d755b9)・[English（5:48）](https://github.com/user-attachments/assets/62797dbf-f9d6-4bc8-974c-c7ef0217d0ae)・[無聲版與下載](https://github.com/lin891020/aoi-agent/releases/tag/demo-2026-09-07)・[分鏡](docs/demo-script.md)
+
+<sub>旁白是合成的（Kokoro-82M 與 Qwen3-TTS）。示範資料是公開的 DeepPCB：AOI 是相減
+模擬器、產線紀錄是種下去的——影片裡有說。</sub>
+
+**一個區域，作業員看到的樣子**——golden image、待測 PCB、差異圖；模型的判讀與它實際
+看的 64 px 小圖；只屬於該類別的允收標準；以及刻意不顯示的標準答案。
+
+![區域頁：三張影像與標記框、agent 交付人工複判的理由、模型的判讀、生產脈絡、檢索到的允收標準，以及七個判定按鈕](docs/screenshots/region-zh.png)
+
+**`/ask`**——主管的問題轉成經過驗證的型別化查詢計畫，展開執行，圖表由結果的形狀推得，
+文字裡的每個數字都對回它旁邊的結果。
+
+![/ask 頁面：問題、查詢計畫、事件前後兩根帶信賴區間的長條，以及寫在旁邊的回答](docs/screenshots/ask-zh.png)
+
+<details>
+<summary>佇列與板子索引</summary>
+
+![複判佇列：agent 收不掉的區域一列一個，等候最久者在前，附模型的類別、信心值、誤判機率與說明](docs/screenshots/queue-zh.png)
+
+![板子索引：每片有現行處置的板子，扣留、放行或待判，統計是對整張表數的而非對這一頁](docs/screenshots/boards-zh.png)
+
+</details>
+
+每一頁皆有 English 版。
 
 ## 概要
 
@@ -26,26 +58,6 @@ PCB AOI 複判系統：視覺模型在複判佇列前面，agent 在後面，每
 | **技術** | Python 3.12 · PyTorch（MPS / CPU）· LangGraph · MCP · FastAPI + Jinja · SQLite · Ollama（`gpt-oss:20b`） |
 | **驗證** | 1,462 個測試，不需模型或 GPU。每個門檻皆引用出處；每個數字皆註明產生它的腳本。 |
 | **限制** | 照片板材上，相減前端無法通過第一道閘門；錫膏影像上，YOLO26n 偵測器可定位 92% 的缺陷，但排序只能省 1.2%。見[遷移](#遷移兩份新資料集)。 |
-
-## Demo
-
-https://github.com/user-attachments/assets/36cb4982-3504-4fc2-ace5-9be595d755b9
-
-六分鐘的示範，由 `scripts/demo_record.py` 照 [docs/demo-script.md](docs/demo-script.md)
-的分鏡錄製：AOI 是什麼 → CLI 跑一片板 → 登入 → 主畫面 → 佇列 → 區域頁 → `0`（無法判斷）
-→ 資深複判 → `/boards` → `/ask` 查機台事件 → 對照機台 → 語言切換 → 數字。
-[繁體中文（6:10）](https://github.com/user-attachments/assets/36cb4982-3504-4fc2-ace5-9be595d755b9)・[English（5:48）](https://github.com/user-attachments/assets/62797dbf-f9d6-4bc8-974c-c7ef0217d0ae)
-・下載與無聲版（字幕燒在畫面上）在 [release 頁](https://github.com/lin891020/aoi-agent/releases/tag/demo-2026-09-07)。
-旁白是合成的（Kokoro-82M 與 Qwen3-TTS，走 video_transfer 的 TTS）；示範資料是公開的
-DeepPCB、AOI 是模擬器、產線紀錄是種下去的，影片裡有說。
-
-站台畫面（每一頁皆有 English 版）：
-
-| 佇列——agent 收不掉的區域，等候最久者在前 | 區域——golden image、待測 PCB、差異圖與交付說明 |
-|---|---|
-| ![佇列](docs/screenshots/queue-zh.png) | ![區域](docs/screenshots/region-zh.png) |
-| **`/boards`——扣留、放行、待判，以整表計數** | **`/ask`——經驗證的計畫、平行展開、依結果形狀產生的圖表與說明** |
-| ![板](docs/screenshots/boards-zh.png) | ![提問](docs/screenshots/ask-zh.png) |
 
 ## 快速開始
 
@@ -61,6 +73,17 @@ uv run python -m aoi_agent station                       # http://127.0.0.1:8110
 ```
 
 `uv run pytest` 執行全部測試，不需模型、GPU 或資料集。量測腳本、容器與 CLI 子命令：[怎麼跑](#怎麼跑)。
+
+<details>
+<summary><b>目錄</b></summary>
+
+**量測** — [結果](#結果) · [量測改變了什麼](#量測改變了什麼) · [遷移：兩份新資料集](#遷移兩份新資料集) · [一個 candidate 要多少錢](#一個-candidate-要多少錢)
+
+**系統** — [怎麼運作的](#怎麼運作的) · [複判站](#複判站) · [問產線問題](#問產線問題--ask) · [Tools](#tools) · [怎麼跑](#怎麼跑)
+
+**誠實的那部分** — [已知限制](#已知限制) · [還沒做的](#還沒做的)
+
+</details>
 
 ## 結果
 
@@ -187,8 +210,17 @@ threshold、六十張測試圖和很寬的區間、一次訓練一個種子。`s
 
 ## 怎麼運作的
 
-處置流程就是這一頁最上面那張圖。底下是同一條 flow 的文字版，然後是圖上看不出來
-的那幾件事。
+一個標記區域，從頭到尾。圖由 `scripts/render_diagrams.py` 讀取 `graph/flow.py` 的
+node 名稱與門檻產生，所以不會跟程式碼脫節。
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/disposition-flow-dark.zh-TW.svg">
+  <img alt="單一標記區域的處置流程：複判模型先分類；高信心的 false call 直接排除、高信心的缺陷直接確認，不經過語言模型；其餘取得生產脈絡與允收標準、由 LLM 產生說明，再依分類器信心決定，或透過可持久化的 interrupt 升級給作業員。" src="docs/diagrams/disposition-flow-light.zh-TW.svg" width="100%">
+</picture>
+
+<sub>處置流程。由 `scripts/render_diagrams.py` 讀取 `graph/flow.py` 的 node 名稱與門檻產生。`/ask` 的流程圖見[問產線問題](#問產線問題--ask)。</sub>
+
+底下是同一條 flow 的文字版，然後是圖上看不出來的那幾件事。
 
 <details>
 <summary>同一條 flow 的文字版</summary>
@@ -442,51 +474,47 @@ uv run python scripts/check_mcp_servers.py
 ## 一個 candidate 要多少錢
 
 Re-verifier 是一個吃 3×64×64（template、test、difference 疊起來）的 ResNet-18：
-硬碟上 **42.7 MB、11.2 M 參數**，CPU 上每個 candidate p50 **2.50 ms**（p90 2.53 ms，
-300 次，4 個 torch thread）。計時涵蓋的是 pipeline 真正跑的那條路 —— uint8 轉 float、
-搬上 device、forward、softmax、搬回 host —— 因為只計 forward 會把搬移藏起來，而那在
-MPS 上不是免費的。
+硬碟上 **42.7 MB、11.2 M 參數，CPU 上每個 candidate p50 2.50 ms**（p90 2.53 ms，
+300 次）。計時涵蓋 pipeline 真正跑的那條路，含搬移，因為只計 forward 會把搬移藏
+起來，而那在 MPS 上不是免費的。
 
-**Batch 1 的時候 GPU 是比較慢的那個**：MPS p50 7.34 ms，慢 2.9 倍。model 這麼小的時
-候，把 forward 派下去的成本比跑它還高。MPS 要到 batch 8 才追上來。一次判一個區域的
-複判站不該用 GPU；一次判整片板子的 seeding 那支才該用。
+三個違反直覺、很容易被不小心改掉的結果：
 
-兩個違反直覺、很容易被不小心改掉的結果：這台無風扇機器上持續 CPU 推論過了第一分鐘
-會掉約 20%；而 CPU 的每 candidate 成本在 batch 8 之後會**變差**好幾倍 —— 換過 thread
-數確認過，那是 model 在 CPU 上 convolution 路徑的性質，不是這台筆電核心數的問題。
-CPU 就 batch 8。
+- **Batch 1 的時候 GPU 是比較慢的那個** —— MPS p50 7.34 ms，慢 2.9 倍，因為 model
+  這麼小的時候派下 forward 的成本比跑它還高。MPS 要到 batch 8 才追上來。一次判一個
+  區域的複判站不該用 GPU；一次判整片板子的 seeding 那支才該用。
+- **持續 CPU 推論過了第一分鐘會掉約 20%**，這台是無風扇機器。第一分鐘和穩態要分開報。
+- **CPU 的每 candidate 成本在 batch 8 之後會變差**好幾倍 —— 換過 thread 數確認過，
+  那是 model 在 CPU 上 convolution 路徑的性質，不是核心數的問題。CPU 就 batch 8。
 
 這一節先前寫「數十毫秒」，沒有量測依據；實測低了一個數量級。
 → [這次的 run](docs/benchmarks.md#re-verifier-latency--what-one-candidate-costs-and-on-what-hardware)
 
 ### 量化它，並且用 escape budget 的價格來算
 
-Model 匯出成 ONNX 之後量化成 INT8，兩種做法：dynamic，以及用 **training** split
-抽出來的 512 個 patch 做校正的 static。兩個都在完整的官方 test split 上重跑，然後用
-這個專案唯一的讀法來讀：**在某個 escape budget 下，砍掉多少人工複判**。
+INT8 兩種做法：dynamic，以及用 **training** split 抽出來的 512 個 patch 做校正的
+static，兩個都在完整的官方 test split 上重跑，然後用這個專案唯一的讀法來讀。每個
+引擎各拿*這份切分*在預算下能到的最好門檻——這讓引擎之間的比較公平，也讓這裡沒有一
+個數字是部署數字；部署的設定在[結果](#結果)。
 
 | ≤0.5% escape budget | 砍掉的複判 | 硬碟 | 常駐記憶體 | p50 |
 |---|---|---|---|---|
-| FP32 torch | 52.8% | 42.7 MB | 389 MB | 2.53 ms |
+| FP32 torch | **52.8%** | 42.7 MB | 389 MB | 2.53 ms |
 | INT8 dynamic | 52.5% | 10.7 MB | 74 MB | 1.93 ms |
 | INT8 static | **53.0%** | 10.8 MB | 81 MB | 0.65 ms |
 
-**在這個 checkpoint 上，兩種 INT8 都守住了曲線**，都在報表當初寫死的 1 個百分點
-容忍度之內，於是規則挑硬碟省最多的那個：INT8 dynamic，贏 0.1 MB。差距在雜訊範圍內：兩個引擎在部署預算上差 0.5 個百分點，換算是 7,322 個
-candidate 裡 15 對 12 個判定不同。活下來的發現不是「哪一種 INT8」，是 INT8 守得住
-operating point 這件事本身。
+**兩種 INT8 都守住了曲線**，兩個引擎差 0.5 個百分點，換算是 7,322 個 candidate 裡
+15 對 12 個判定不同。活下來的發現不是「哪一種 INT8」，是 INT8 守得住 operating
+point 這件事本身。它買到的是**記憶體，常駐從 389 MB 降到 74–81 MB**，因為 float32
+那個 process 大部分是 torch runtime 而不是權重。不是延遲：平均一片板子 16.1 個
+candidate，FP32 複判是一片板子 41 ms，而週期有十秒。
 
-**判決在兩個 checkpoint 之間改變了。** 2026-08-26 之前這一節拒收 INT8 dynamic：在前一個
-checkpoint 上它丟了 1.3 個百分點，大約一個班別裡八十個區域回到作業員面前，檔案變小
-買不回這件事。那個損失沒有活過 2026-08-24 的重訓 —— 它是某一組權重的量化誤差，不是
-dynamic 量化的性質 —— 所以 `scripts/quantisation_report.py` 現在進了重訓的鏈：量化的
-判決是對一組權重的判決，下一組要重新定價。
-
-INT8 買到的不是延遲：平均一片板子 16.1 個 candidate，FP32 複判是一片板子 41 ms，
-推論從來就不是瓶頸。它買到的是**記憶體** —— 常駐從 389 MB 降到 74–81 MB，約 5 倍 ——
-因為 float32 那個 process 大部分是 torch runtime 而不是權重，而 edge 機器是照它要裝下
-多少東西去挑的。這是量出來的，不是上線的：這台站台是一台沒有記憶體問題的筆電，而已
-部署的 threshold 留在當初掃它出來的那個 float32 model 上。
+**判決在兩個 checkpoint 之間改變了。** 2026-08-26 之前這一節拒收 INT8 dynamic：在
+前一個 checkpoint 上它丟了 1.3 個百分點，大約一個班別裡八十個區域回到作業員面前。
+那個損失沒有活過 2026-08-24 的重訓，所以它是某一組權重的量化誤差，不是 dynamic 量
+化的性質——這就是 `scripts/quantisation_report.py` 現在進了重訓鏈的原因：量化的判決
+是對一組權重的判決。是量出來的，不是上線的：這台站台是一台沒有記憶體問題的筆電，
+而已部署的 threshold 留在當初掃它出來的那個 model 上。
 
 → [這次的 run](docs/benchmarks.md#quantisation--what-int8-costs-at-the-escape-budget)
 
@@ -559,11 +587,12 @@ wheel。什麼都不 mount 直接跑，會得到一個對著空 queue 起來的 
   以及為什麼大了九倍，[在 docs/findings.zh-TW.md](docs/findings.zh-TW.md#全線-escape-rate-被高估了將近一個數量級)。
   這個數字在 2026-08-31 之前寫的是 0.61%（0.22% + 0.38%）：那一次量測早於對位階段，
   而對位讓其中兩個原本「碰不到」的缺陷被標了出來。
-- **Escape budget 平均有達標，但有一類超標。** 在出貨的 threshold 下 `short` 的
-  escape 是 1.55%，整體的 3.1 倍；超標的是哪一類會跟著 checkpoint 移動——2026-08-24
-  重訓之前是 `open` 的 1.35%。它們是有把握的錯，模型自己的輸出切不開；flow 仍然不
-  管 confidence 多高都把每個 `open` 送去 investigation，因為導通是二元的，WI-201 不
-  允許任何一個 open。
+- **Escape budget 連平均都超標了，自 2026-08-31 起。** 在出貨的 threshold 下
+  `short` 的 escape 是 1.77%、`open` 是 1.16%，對照 0.66% 的整體值；超標的是哪一類
+  會跟著 checkpoint 移動——2026-08-24 重訓之前是 `open` 的 1.35%。整體值在門檻不再
+  於它自己回報的那份切分上挑選之前是有達標的。它們是有把握的錯，模型自己的輸出切
+  不開；flow 仍然不管 confidence 多高都把每個 `open` 送去 investigation，因為導通是
+  二元的，WI-201 不允許任何一個 open。
 - **DeepPCB 是已經對位、已經二值化的**，等於把現實世界兩個最大的 false call 來源拿掉
   了。它的 defect 也有一部分是資料集作者疊上去的，不是自然發生的。
 - **3×3 的 opening kernel 就是那 0.22% 的去處，而它還是留著。** 它清掉的是對位誤差在
@@ -639,4 +668,3 @@ wheel。什麼都不 mount 直接跑，會得到一個對著空 queue 起來的 
 - **登入刻意沒做的那些。** TLS（cookie 是 bearer token，process 講的是明文 HTTP），
   以及登入端點的速率限制或鎖定。兩件都寫在 `station/auth.py` 裡，不會在沒有寫下理由
   的情況下加上去。
-- **示範影片**，格子在這份文件最上面。

@@ -1,7 +1,14 @@
 # AOI-Agent
 
-PCB AOI re-verification: a vision model in front of the operator queue, an
-agent behind it, and a benchmark for every claim.
+**Automated optical inspection (AOI) on a PCB line is tuned to over-flag: six in
+ten regions it marks are false alarms, and today a person reviews every one.**
+AOI-Agent puts a vision model in front of that queue and an agent behind it, so
+only what neither can settle reaches an operator.
+
+**55.6% of the manual review removed**, at a 0.66% escape rate against a 0.5%
+budget — a budget this README shows is *not* met on the deployed reading, and
+says why. Every threshold cites the script that chose it; every figure names
+the run it came from.
 
 [![tests](https://github.com/lin891020/aoi-agent/actions/workflows/tests.yml/badge.svg)](https://github.com/lin891020/aoi-agent/actions/workflows/tests.yml)
 ![python 3.12](https://img.shields.io/badge/python-3.12-3776AB)
@@ -9,12 +16,44 @@ agent behind it, and a benchmark for every claim.
 ![licence MIT](https://img.shields.io/badge/licence-MIT-0B6455)
 &nbsp; **[繁體中文版 →](README.zh-TW.md)**
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/disposition-flow-dark.svg">
-  <img alt="Disposition flow for one flagged region: the re-verifier classifies it; a confident false call is dismissed and a confident defect confirmed without a language model; the rest gather production context and criteria, receive an LLM rationale, and are decided on the classifier's confidence or escalated to an operator through a durable interrupt." src="docs/diagrams/disposition-flow-light.svg" width="100%">
-</picture>
+## Demo
 
-<sub>Disposition flow. Rendered from the node names and thresholds in `graph/flow.py` by `scripts/render_diagrams.py`. The `/ask` flow is drawn under [Asking the line a question](#asking-the-line-a-question--ask).</sub>
+https://github.com/user-attachments/assets/62797dbf-f9d6-4bc8-974c-c7ef0217d0ae
+
+Six minutes, end to end: what an AOI is → one board through the CLI → the review
+queue → a region and the agent's rationale → "cannot tell" and senior review →
+`/ask` on a machine event and its control machine → the language switch → the
+numbers.
+
+[English (5:48)](https://github.com/user-attachments/assets/62797dbf-f9d6-4bc8-974c-c7ef0217d0ae) · [繁體中文 (6:10)](https://github.com/user-attachments/assets/36cb4982-3504-4fc2-ace5-9be595d755b9) ·
+[silent cuts and downloads](https://github.com/lin891020/aoi-agent/releases/tag/demo-2026-09-07) · [shot list](docs/demo-script.md)
+
+<sub>Narration is synthesised (Kokoro-82M and Qwen3-TTS). The demo runs on the
+public DeepPCB set: the AOI is the differencing simulator and the line records
+are seeded — the video says so on screen.</sub>
+
+**A region, as an operator sees it** — golden image, board under test, difference;
+the model's reading and the 64 px window it saw; the criteria for that class only;
+and the answer key deliberately withheld.
+
+![The region page: three images with the flagged box, the agent's hand-over rationale, what the model read, production context, retrieved acceptance criteria, and seven verdict buttons](docs/screenshots/region-en.png)
+
+**`/ask`** — a supervisor's question becomes a validated plan of typed lookups,
+fanned out, with the chart derived from the result shape and the prose checked
+against the figures beside it.
+
+![The /ask page: the question, the plan, two bars with confidence intervals before and after a machine event, and the written answer beside them](docs/screenshots/ask-en.png)
+
+<details>
+<summary>The queue and the board index</summary>
+
+![The review queue: one row per region the agent could not settle, oldest first, with the model's class, confidence, false-call probability and the rationale](docs/screenshots/queue-en.png)
+
+![The board index: every board with a standing disposition, held, released or waiting, counted over the table rather than over the page](docs/screenshots/boards-en.png)
+
+</details>
+
+Every page is also available in 繁體中文.
 
 ## Overview
 
@@ -27,28 +66,6 @@ agent behind it, and a benchmark for every claim.
 | **Stack** | Python 3.12 · PyTorch (MPS / CPU) · LangGraph · MCP · FastAPI + Jinja · SQLite · Ollama (`gpt-oss:20b`) |
 | **Verification** | 1,462 tests, no model or GPU required. Every threshold cites its source; every figure names the script that produced it. |
 | **Limits** | On photographed boards the differencing front end fails the first gate; on solder-paste images a YOLO26n detector localises 92% of defects but orders 1.2%. See [Transfer](#transfer-two-further-datasets). |
-
-## Demo
-
-https://github.com/user-attachments/assets/62797dbf-f9d6-4bc8-974c-c7ef0217d0ae
-
-Six-minute walkthrough, recorded by `scripts/demo_record.py` from the shot list in
-[docs/demo-script.md](docs/demo-script.md): what an AOI is → the CLI run → sign-in →
-the front page → the queue → a region → `0` ("cannot tell") → senior review →
-`/boards` → `/ask` on a machine event → its control machine → the language switch →
-the numbers. [English (5:48)](https://github.com/user-attachments/assets/62797dbf-f9d6-4bc8-974c-c7ef0217d0ae) ·
-[繁體中文 (6:10)](https://github.com/user-attachments/assets/36cb4982-3504-4fc2-ace5-9be595d755b9) · downloads and silent cuts with burned-in
-subtitles on the [release page](https://github.com/lin891020/aoi-agent/releases/tag/demo-2026-09-07). The narration is synthesised (Kokoro-82M
-and Qwen3-TTS through video_transfer's TTS backend); the demo runs on the public DeepPCB
-set, the AOI is the simulator and the line records are seeded, and the video says so.
-
-Station screenshots (every page is also available in 繁體中文):
-
-| Queue — regions the agent could not settle, oldest first | Region — template, board, difference, and the hand-over rationale |
-|---|---|
-| ![queue](docs/screenshots/queue-en.png) | ![region](docs/screenshots/region-en.png) |
-| **`/boards` — held, released and waiting, counted over the table** | **`/ask` — validated plan, fan-out, chart from the result shape, prose beside it** |
-| ![boards](docs/screenshots/boards-en.png) | ![ask](docs/screenshots/ask-en.png) |
 
 ## Quickstart
 
@@ -65,6 +82,17 @@ uv run python -m aoi_agent station                       # http://127.0.0.1:8110
 
 `uv run pytest` runs the test suite without a model, a GPU or the dataset.
 Measurement scripts, the container and CLI subcommands: [Running it](#running-it).
+
+<details>
+<summary><b>Contents</b></summary>
+
+**The measurements** — [Results](#results) · [What measurement changed](#what-measurement-changed) · [Transfer: two further datasets](#transfer-two-further-datasets) · [What one candidate costs](#what-one-candidate-costs)
+
+**The system** — [How it works](#how-it-works) · [The review station](#the-review-station) · [Asking the line a question](#asking-the-line-a-question--ask) · [The tools](#the-tools) · [Running it](#running-it)
+
+**The honest part** — [Known limits](#known-limits) · [Not yet done](#not-yet-done)
+
+</details>
 
 ## Results
 
@@ -223,9 +251,18 @@ rebuild every number.
 
 ## How it works
 
-The disposition flow is the diagram at the top of this page. What follows is
-the same flow as text, and then the parts of it that are not obvious from a
-picture.
+One flagged region, end to end. The picture is rendered from the node names
+and thresholds in `graph/flow.py`, so it cannot drift from the code.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/disposition-flow-dark.svg">
+  <img alt="Disposition flow for one flagged region: the re-verifier classifies it; a confident false call is dismissed and a confident defect confirmed without a language model; the rest gather production context and criteria, receive an LLM rationale, and are decided on the classifier's confidence or escalated to an operator through a durable interrupt." src="docs/diagrams/disposition-flow-light.svg" width="100%">
+</picture>
+
+<sub>Disposition flow. Rendered from the node names and thresholds in `graph/flow.py` by `scripts/render_diagrams.py`. The `/ask` flow is drawn in [its own section](#asking-the-line-a-question--ask).</sub>
+
+What follows is the same flow as text, and then the parts of it that are not
+obvious from a picture.
 
 <details>
 <summary>The same flow as text</summary>
@@ -533,39 +570,34 @@ To use them from Claude Desktop, add to `claude_desktop_config.json`:
 ## What one candidate costs
 
 The re-verifier is a ResNet-18 over a 3×64×64 stack (template, test,
-difference): **42.7 MB on disk, 11.2 M parameters**, and 2.50 ms per candidate
-at p50 on CPU (p90 2.53 ms, 300 calls, 4 torch threads). The timed path is the
-one the pipeline runs — uint8 to float, to the device, forward, softmax, back to
-the host — because timing the bare forward hides a transfer that on MPS is not
-free.
+difference): **42.7 MB on disk, 11.2 M parameters, 2.50 ms per candidate at p50
+on CPU** (p90 2.53 ms, 300 calls). The timed path is the one the pipeline runs,
+transfer included, because timing the bare forward hides a cost that on MPS is
+not free.
 
-**At a batch of one the GPU is the slower device**: MPS p50 is 7.34 ms, 2.9×
-slower, because on a model this small dispatching the forward costs more than
-running it. MPS only overtakes at batch 8. A station judging one region at a
-time should not use one; the seeding pass, which classifies a whole board at
-once, should.
+Three results that are easy to undo by accident:
 
-Two results that are easy to undo by accident: sustained CPU inference throttles
-about 20% past the first minute on this fanless chassis, and CPU per-candidate
-cost gets *worse* past batch 8 by several-fold — a property of the model's CPU
-convolution path, not of this machine's core count, checked across thread
-counts. Batch at 8 on CPU.
+- **At a batch of one the GPU is the slower device** — MPS p50 7.34 ms, 2.9×
+  slower, because dispatching this forward costs more than running it. MPS
+  overtakes at batch 8. A station judging one region at a time should not use
+  one; the seeding pass, which takes a whole board, should.
+- **Sustained CPU inference throttles about 20%** past the first minute on this
+  fanless chassis. Report the first minute and the steady state separately.
+- **CPU per-candidate cost gets *worse* past batch 8**, by several-fold —
+  a property of the model's CPU convolution path, not of this machine's core
+  count, checked across thread counts. Batch at 8 on CPU.
 
-An earlier version of this section stated "tens of milliseconds" without a
-measurement; the measured figure is an order of magnitude lower.
+An earlier version of this section said "tens of milliseconds" with no
+measurement behind it; the measured figure is an order of magnitude lower.
 → [the run](docs/benchmarks.md#re-verifier-latency--what-one-candidate-costs-and-on-what-hardware)
 
 ### Quantising it, priced at the escape budget
 
-The model was exported to ONNX and quantised to INT8 two ways — dynamic, and
-static calibrated on 512 patches drawn from the **training** split. Both were
-then scored on the whole official test split and read the only way this project
-reads a model: **manual review removed at an escape budget**.
-
-Each engine gets the best threshold *this split* reaches at the budget — an
-oracle each, which is what makes the comparison between them fair and what
-makes none of these a deployment number. The deployed configuration is in
-[Results](#results).
+INT8, both ways — dynamic, and static calibrated on 512 patches from the
+**training** split — then scored on the whole test split the only way this
+project reads a model. Each engine gets the best threshold *this split* reaches
+at the budget, which is what makes the comparison fair and none of these a
+deployment number; the deployed configuration is in [Results](#results).
 
 | at the ≤0.5% escape budget, oracle per engine | review removed | on disk | resident | p50 |
 |---|---|---|---|---|
@@ -573,28 +605,21 @@ makes none of these a deployment number. The deployed configuration is in
 | INT8 dynamic | 52.5% | 10.7 MB | 74 MB | 1.93 ms |
 | INT8 static | **53.0%** | 10.8 MB | 81 MB | 0.65 ms |
 
-**Both INT8 engines hold the curve on this checkpoint**, within the 1-point
-tolerance the report was written with, and the rule then picks the one that
-saves the most disk: INT8 dynamic, by 0.1 MB. The difference is within noise: the two engines are 0.5 points apart at the deployed budget,
-which is 15 against 12 disagreements out of 7,322 candidates. The finding that
-survives is not *which* INT8, it is that INT8 holds the operating point at all.
+**Both INT8 engines hold the curve**, and the two are 0.5 points apart — 15
+against 12 disagreements out of 7,322. The finding is not *which* INT8; it is
+that INT8 holds the operating point at all. What it buys is **memory, 389 MB
+resident down to 74–81 MB**, because most of the float32 process is the torch
+runtime rather than the weights. Not latency: at 16.1 candidates a board, FP32
+re-verification is 41 ms of a cycle that has ten seconds.
 
-**The verdict changed between checkpoints.** Until
-2026-08-26 this section refused INT8 dynamic: on the previous checkpoint it
-gave up 1.3 points, roughly eighty regions a shift back in front of an
-operator, and a smaller file did not buy that back. That loss did not survive
-the 2026-08-24 retrain -- it was one checkpoint's quantisation error, not a
-property of dynamic quantisation -- which is why `scripts/quantisation_report.py`
-is now in the retraining chain: a quantisation verdict is a verdict about one
-set of weights, and the next set has to be priced again.
-
-What INT8 buys is not latency: at 16.1 candidates on the average board, FP32
-re-verification is 41 ms of a board's cycle, so inference was never the
-constraint. What it buys is **memory** -- 389 MB resident down to 74-81 MB,
-around 5x -- because most of the float32 process is the torch runtime rather
-than the weights, and an edge box is sized on what it has to hold. It is
-measured, not deployed: this station is a laptop with no memory problem, and
-the deployed threshold stays with the float32 model it was swept for.
+**The verdict changed between checkpoints.** Until 2026-08-26 this section
+refused INT8 dynamic — on the previous checkpoint it gave up 1.3 points, about
+eighty regions a shift back in front of an operator. That loss did not survive
+the 2026-08-24 retrain, so it was one checkpoint's quantisation error rather
+than a property of the method, which is why `scripts/quantisation_report.py` is
+now in the retraining chain: a quantisation verdict is a verdict about one set
+of weights. Measured, not deployed — this station is a laptop with no memory
+problem, and the threshold stays with the model it was swept for.
 
 → [the run](docs/benchmarks.md#quantisation--what-int8-costs-at-the-escape-budget)
 
@@ -791,4 +816,3 @@ explanation step needs the container to be able to reach it.
   a bearer token and the process speaks plain HTTP) and any rate limit or
   lockout on the login route. Both are stated in `station/auth.py` rather than
   added without a reason that is written down.
-- **The demo video**, whose slot is at the top of this file.

@@ -346,10 +346,12 @@ board is back under the unscoped reading.
   wrong. Held by `tests/test_registration_stage.py`.
 - **The escape budget is one number over six classes the work instructions do
   not treat alike.** WI-201 and WI-202 admit no acceptable open or short; the
-  other four are conditional on a measurement. At the shipped threshold the
-  aggregate meets QP-110 at 0.50% and **`short` escapes at 1.55%, 3.1x that** --
-  the class that may never ship is the one exceeding the budget it is averaged
-  into. Which class it is moves with the checkpoint (it was `open` at 1.35%
+  other four are conditional on a measurement. At the shipped threshold
+  (0.912, since 2026-08-31) **`short` escapes at 1.77% and `open` at 1.16%
+  against an aggregate of 0.66%** -- the classes that may never ship are the
+  ones furthest over the budget they are averaged into. It read "the aggregate
+  meets QP-110 at 0.50% and `short` escapes at 1.55%, 3.1x that" until
+  2026-09-08, which was the 0.961 oracle's reading, not the deployed one. Which class it is moves with the checkpoint (it was `open` at 1.35%
   before the 2026-08-24 retrain), which is why the guard reads `GOVERNS` rather
   than naming a class. A class-aware veto is the obvious fix and **it does not
   exist**: on the opens this model dismisses, `P(open)` is 0.00007-0.00589, and
