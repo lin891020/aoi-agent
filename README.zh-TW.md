@@ -1,8 +1,8 @@
 # AOI-Agent
 
-**AOI（自動光學檢測）為了不漏檢而寧可誤報：它標出的區域，六成是誤報，而今天每一個
-都要人看過。** 本系統把視覺模型放在這條佇列前面、agent 放在後面，兩者都判不了的才
-交給作業員。
+**AOI（自動光學檢測）是產線上拍照找電路板瑕疵的機器，設定上為了不漏檢而寧可誤報：
+它標出的區域，六成是誤報，而今天每一個都要人看過。**
+本系統把視覺模型放在這條佇列前面、agent 放在後面，兩者都判不了的才交給作業員。
 
 **人工複判減少 55.6%**，該門檻下的漏檢率是 0.66%，對照 0.5% 的預算——這份 README
 會告訴你這個預算**沒有達標**，以及為什麼。每個門檻都引用挑出它的腳本，每個數字都
@@ -61,18 +61,41 @@ https://github.com/user-attachments/assets/36cb4982-3504-4fc2-ace5-9be595d755b9
 
 ## 快速開始
 
+**需要** Python 3.12、[uv](https://docs.astral.sh/uv/)，以及
+[Ollama](https://ollama.com) 加一個會 tool calling 的 model（預設
+`gpt-oss:20b`）來寫說明。macOS Apple silicon（torch 走 MPS）或 Linux/CPU 皆可，
+不需要 GPU。抓十分鐘，大部分花在訓練。
+
 ```bash
 git clone --depth 1 https://github.com/tangsanli5201/DeepPCB.git data/DeepPCB
-uv sync                                                  # Python 3.12；torch 使用 MPS 或 CPU
+uv sync
 uv run python scripts/build_patches.py --split trainval && uv run python scripts/build_patches.py --split test
 uv run python scripts/train.py                           # M5 Air 約 4 分鐘 -> models/reverifier.pt
 uv run python scripts/seed_store.py --split test --limit 500
-uv run python scripts/add_operator.py mike --role senior # 互動輸入 passphrase
-uv run python -m aoi_agent board 20085294 --queue        # 一片板走完整 flow；需要 Ollama + gpt-oss:20b
+uv run python scripts/add_operator.py mike --role senior # 會問通行碼
+uv run python -m aoi_agent board 00041208 --queue        # 一片板子走完整條 flow
 uv run python -m aoi_agent station                       # http://127.0.0.1:8110
 ```
 
-`uv run pytest` 執行全部測試，不需模型、GPU 或資料集。量測腳本、容器與 CLI 子命令：[怎麼跑](#怎麼跑)。
+`board` 每個標記區域印一行，而最後兩行就是這整個專案的重點：
+
+```text
+board 00041208: 30 AOI candidates
+  00041208#0       DISMISSED  false_call   by model
+      path: classify -> dismiss
+      classify 44ms
+  ... 另外 27 個區域由 model 或 agent 判完，各幾毫秒 ...
+  escalated: 00041208#8
+      reason: 模型把這個區域判為 false_call，機率 0.892，低於站台設定的 0.912
+      解除閾值，亦低於 0.947 的高信度閾值，故不會自動放行 ...
+  00041208#8       QUEUED     already waiting on an operator
+  00041208#15      QUEUED     already waiting on an operator
+
+  board 00041208: not dispositioned -- regions are still waiting on a person
+```
+
+`uv run pytest` 不需要 model、GPU 或資料集就能跑完。所有量測腳本、容器與完整 CLI：
+[怎麼跑](#怎麼跑)。
 
 <details>
 <summary><b>目錄</b></summary>
@@ -126,26 +149,18 @@ out-of-fold 選出——依影像五折、6,569 個缺陷支撐這個選擇，�
 | ≤0.50% | 0.50% | 52.8% |
 | ≤1.00% | 0.99% | 58.3% |
 
-- **指標。** 漏判（escape）讓缺陷板出貨；false call 只多花作業員幾秒。因此模型以
-  escape budget 下的 operating-point 曲線報告，而非 accuracy（參考值 96.5%）。
+- **為什麼是曲線不是準確率。** 漏判讓缺陷板出貨；false call 只多花作業員幾秒。準確率
+  把兩者等重看待，對這條線是錯的。（準確率 96.5%，供參考。）
 - **兩個 rate，兩個都印。** 0.66% 計的是被 dismiss 掉、帶缺陷標籤的 *candidate*
-  （3,018 中的 20 個）。改計 *缺陷*——一個缺陷要覆蓋它的 candidate 全部被 dismiss
-  才算漏判，這是 QP-110 的寫法——複判模型漏判 0.35%（進到它手上的 3,135 中的 11
-  個），整線 0.51%，其中 0.16% 是任何門檻都救不回來的。兩個讀法都不是可以單獨拿
-  出來的那個。
-- **選門檻的那份資料，預測不了出貨的那份。** 選出 0.912 的程序在 out-of-fold 上
-  估的是 0.32%，這份切分上量到 0.66%，約兩倍，而且每一個試過的門檻都是同一個倍率。
-  兩邊的類別組成相同，超出的部分集中在 `open` 和 `short`。所以預算不是被調參調壞
-  的——是 trainval 的板子比官方測試板容易。那是一個量測到的泛化差距，而這個模型上
-  沒有任何門檻能補上它。
-- **分類別。** 出貨門檻下 `short` 的 escape 為 1.77%，為整體的 2.7 倍，且該類別無任何
-  作業指導書允收。漏判的 open 其 `P(open)` < 0.009，屬高信心錯誤，模型自身輸出無法
-  切分；電性測試可以。超標類別隨 checkpoint 移動（2026-08-24 重訓前為 `open`，1.35%）。
-- **盛行率。** 前一版頭條 56.2%（8,143 個 candidate）量測於對位階段之前，2026-08-26
-  作廢。對位移除 842 個易判 false call 並多找到 21 個缺陷；複判減量在當時的門檻下降為 52.8%，
-  但送達作業員的區域由 3,568 降為 3,457。複判減量一律附註其假設的盛行率。
-- **分流。** 85.9% 的 candidate 由複判模型單獨處置，CPU 上每個 2.5 ms（p50）；
-  LLM 僅處理其餘 14.1%。
+  （3,018 中的 20 個）；改計*缺陷*，也就是 QP-110 的原文寫法，複判模型漏 0.35%、
+  整線 0.51%。兩種讀法都不是拿來單獨引用的那個好看數字。
+- **挑門檻的那份資料預測不了部署的那份。** 挑出 0.912 的流程在 out-of-fold 上估
+  0.32%，這份切分量到 0.66%，約兩倍，每一個試過的門檻都是同一個倍率，兩邊的類別組成
+  也一樣。預算沒達標不是調參失誤——是 trainval 的板子比官方測試板容易，而這個模型上
+  沒有任何門檻補得上。
+- **路由與盛行率。** 85.9% 的 candidate 只由複判模型處置，每個 2.5 ms；LLM 只被叫用
+  在剩下的 14.1%。前一版頭條 56.2%（8,143 個 candidate）量測於對位階段之前，
+  2026-08-26 作廢——複判減量的數字要連同它假設的盛行率一起報。
 
 完整報告：[docs/benchmarks.md](docs/benchmarks.md)，只增不改、新的在後。區間與分類別細節：
 [prevalence](docs/benchmarks.md#prevalence--what-survives-a-line-that-is-not-this-dataset-1)
@@ -168,45 +183,34 @@ out-of-fold 選出——依影像五折、6,569 個缺陷支撐這個選擇，�
 
 ## 遷移：兩份新資料集
 
-DeepPCB 是二值化、已對位的，等於拿掉了真實產線兩個最大的 false call 來源。所以
-2026-08-26 把出貨的 pipeline 原封不動跑在兩份它從來沒被掃過的資料集上，答案比問題
-預期的早一層出現。
+DeepPCB 已對位、已二值化，等於把現實產線兩個最大的 false call 來源拿掉了。所以出貨
+的 pipeline 原封不動地跑上兩份從沒為它掃過門檻的資料集。**兩個答案都出現在比問題更
+前面一層。**
 
-**HRIPCB —— 照片。** 十片真的板子、每片一張範本、693 張把 defect 畫到範本上的影
-像，以及同樣 693 張旋轉 ±10° 以內的版本。在出貨的灰階 threshold 下，相減這一階段
-只標到 **16.9%** 的 defect，而且 S0 gate 在*任何*設定下都過不了：recall 最高 92%，
-代價是每張 1.8 個 false call，gate 自己的擾動更產生 860 個。DeepPCB 會過，是因為
-二值化讓一個 defect 和一條沒對準的邊變成同樣的 255 級差異；在照片上 defect 只差
-36 級，而每一條邊都是漸層。把 threshold 設在 recall 最高的地方，複判模型在當時（2026-08-26）出貨的 0.961
-下把 **2,953 個真 defect 判掉 1,387 個——escape rate 47%**，而那條佇列九成是真
-defect：一個訓練在 255 級差異上的模型，看到一個很淡的差異就有把握地說它是 false
-call。對位那一步拒絕了 693 對旋轉影像裡的 563 對，如設計：它只還原平移，還不了的
-時候會說。**相減這個前端的工作範圍是二值化影像**，而這個專案在量出來之前沒有任何
-地方這樣寫。
+| | 是什麼 | 發生了什麼 |
+|---|---|---|
+| **HRIPCB** — 照片 | 10 片真實板、693 張影像，外加同樣 693 張旋轉 ±10° | 相減前端在出貨門檻下只標出 **16.9%** 的缺陷，S0 gate 在*任何*設定下都過不了。把門檻設在 recall 最高處，複判模型 dismiss 掉 **2,953 個真缺陷裡的 1,387 個**。 |
+| **PCB-AoI** — 錫膏，無樣板 | 真實 SMT 影像；元件放置本來就有公差，沒有東西可以相減 | YOLO26n 涵蓋 **91.6%** 的缺陷，但在 ≤0.5% 預算下只排得掉 **1.2%** 的佇列。它的 crop 再接一個複判模型（2026-08-28）只到 **2.8%**，天花板是 22.3%。 |
+
+三個發現，沒有一個是這個實驗原本要測的：
+
+- **相減前端的適用範圍是二值化影像**，而這個專案在量到之前沒有任何地方講過這件事。
+  DeepPCB 會過，是因為二值化讓「缺陷」和「沒對準的邊」變成同一個 255 階的差異；在
+  照片上缺陷是 36 階的差異，而每一條邊都是漸層。
+- **偵測器的 confidence 是一個附了類別頭的定位分數**，不是校正過的 P(false call)
+  ——所以那條前端沒有複判階段。兩條線、兩種盛行率，所以這些數字不是排名，形狀才是發現。
+- **在這份資料上，光看外觀分不開 false call 和缺陷**，兩條前端都一樣。這就是相減
+  pipeline 帶樣板通道的原因：它從來不是為了方便。
+- **對位階段拒絕了 693 對旋轉配對裡的 563 對**，如設計所然。它只修平移，而且修不了
+  的時候會說。
+
+這些都還沒證明的事：一顆從沒在照片上訓練過的 checkpoint、一個看過結果才挑的灰階
+門檻、六十張測試影像帶來的寬區間、單一 seed。`scripts/transfer_report.py`、
+`scripts/gate_check.py --dataset hripcb` 與 `scripts/detector_report.py` 重建每一個數字。
 → [gate](docs/benchmarks.md#s0-gate-on-hripcb--does-template-differencing-produce-a-reviewable-queue-on-photographs)
-· [transfer](docs/benchmarks.md#transfer--the-shipped-pipeline-on-hripcb-a-dataset-it-was-never-swept-on)
-
-**PCB-AoI —— 錫膏，沒有範本。** 真實 SMT 檢測影像，元件擺上去本來就有公差，沒有東
-西可以相減，所以偵測器是唯一做得出來的前端。一個在筆電上訓了 56 分鐘的 YOLO26n
-框得到東西——**覆蓋 91.6% 的 defect**，驗證集 mAP50 0.658，目標中位數 17 px——但排
-不了序：把 `P(false call) = 1 − confidence` 拿到 ≤0.5% 的 escape budget 下讀，它只
-省得掉 **1.2%** 的佇列，DeepPCB 上相減加複判是 55.6%。兩條線、兩種盛行率，所以不是
-排名；形狀才是發現。偵測器的信心是一個掛著分類頭的定位分數，不是校正過的 false
-call 機率，所以這個前端目前沒有複判階段。兩份資料集從相反的方向指向同一個下一步：
-**在偵測器的框上接一個複判器**——已經有的架構，拿掉範本那個通道。
-→ [偵測器](docs/benchmarks.md#detector-front-end--yolo26n-on-pcb-aoi-read-at-the-escape-budget)
-
-**2026-08-28：那個複判器做出來了，它也排不了序。** 同一個 ResNet-18 訓練在偵測器框的
-64 px RGB 裁切上（11,928 個訓練 patch，CPU 一次訓練，seed 0），在 ≤0.5% 預算下對同
-樣 578 個測試 candidate 省掉 **2.8%**，同一基準上偵測器是 0.3%——而這條佇列 77.7% 是
-真 defect，任何排序最多只能省 22.3%。兩種前端現在從相反的方向同意一件事：在這份資料
-上，false call 和 defect 光看外觀分不開，這就是為什麼相減前端的範本通道從來不是為了
-方便。訓練用的 candidate 來自一個看過訓練影像的偵測器，六十張圖讓每個區間都很寬；兩
-點都寫在那一節上。→ [裁切複判器](docs/benchmarks.md#crop-re-verifier--the-resnet-18-over-the-detectors-boxes-against-the-detectors-own-ordering)
-
-兩者都不能證明的：一個從沒訓練過照片的 checkpoint、一個看過結果才選的灰階
-threshold、六十張測試圖和很寬的區間、一次訓練一個種子。`scripts/transfer_report.py`、
-`scripts/gate_check.py --dataset hripcb` 和 `scripts/detector_report.py` 重建每一個數字。
+· [遷移](docs/benchmarks.md#transfer--the-shipped-pipeline-on-hripcb-a-dataset-it-was-never-swept-on)
+· [偵測器](docs/benchmarks.md#detector-front-end--yolo26n-on-pcb-aoi-read-at-the-escape-budget)
+· [crop 複判器](docs/benchmarks.md#crop-re-verifier--the-resnet-18-over-the-detectors-boxes-against-the-detectors-own-ordering)
 
 ## 怎麼運作的
 
@@ -289,143 +293,89 @@ model 夠強。把 escalate 這條邊拿掉，同樣的 budget 就得用複判�
 
 ## 複判站
 
-Escalation 進入 queue，作業員有空時處理；產線不會為了一個 prompt 停下來。
+Escalation 進佇列，作業員有空的時候回答。產線不會為了一個 prompt 停下來。
 
 ```bash
-uv run python -m aoi_agent board 20085294 --queue   # 跑一片板子，收不掉的丟進 queue
-uv run python -m aoi_agent station                  # http://aoi.test
+uv run python -m aoi_agent board 20085294 --queue   # 跑一片板，收不掉的進佇列
+uv run python -m aoi_agent station                  # http://127.0.0.1:8110
 ```
 
-`aoi.test` 由本機的 Caddy 代理（設定在 `~/Projects/Caddyfile`），
-`http://127.0.0.1:8110` 一樣可以用。站沒開的時候打 `aoi.test`
-會看到啟動指令，而不是一片空白的錯誤頁。
+站台給作業員看的是 **agent 手上有的證據**：golden image、待測 PCB 與差異圖並排，
+標記框畫出來；模型的類別、信心值與 P(false call)，外加它實際分類的那張 64 px 小圖
+——這樣意見不合可以被讀成裁切的問題而不是分類器的問題；只屬於該類別的生產脈絡與允收
+標準；以及 agent 為什麼不判。
 
-站台顯示 agent 當時看到的證據：
+四個值得爭論的決定：
 
-- **golden image、待測 PCB、以及兩者的 difference**，並排、放到看得清楚的比例，被標
-  的區域框起來。只看 difference 就是 AOI 看到的東西，而只憑 difference 判斷正是
-  false call 的來源。
-- model 的 class、confidence、P(false call)，以及它實際吃進去的那個 64 px 視窗 ——
-  如果視窗歪掉了，那意見不合是 crop 的 bug，不是 classifier 的。
-- agent 撈到的生產履歷跟允收標準（現在已經 scope 在對應的 class 上）。
-- agent 為什麼不敢判。
+- **它永遠不顯示 ground truth。** 作業員的答案是下一輪訓練的標註，而照著答案抄的
+  標註一文不值。這條擋在 dict 邊界上，不是靠 grep 樣板。
+- **它永遠不為了畫一頁而重跑 flow。** 暫停的狀態就在 checkpointer 裡，讀它只要一次
+  磁碟定位，而不是再一次 20B 推論、還可能跟畫面上已有的說明打架。
+- **前門不是佇列**（2026-09-05 起）。`/` 是六個 `COUNT(*)` 數字與三道門，佇列在一個
+  click 之後。一道開在「agent 收不掉的區域」上的門，會讓讀者先看到失敗，然後把失敗
+  當成整個系統。
+- **`0` 是「我判不出來」。** 它不寫任何判定——那張表是下一輪的標註，而「不確定」是唯一
+  絕對不能當標註的東西——並把區域移到只有 `senior` 能回答的清單，因為交給下一個一般
+  作業員就是交給已經失敗過的那個判斷。這是站台唯一的權限，而且角色是每次 request 都
+  從憑證檔重讀，所以撤銷立刻生效。
 
-有兩件事在設計上不做。它**絕對不顯示 ground truth**：作業員的答案就是下一輪訓練的
-label，照答案抄出來的 label 沒有價值。它也**絕對不為了 render 一個頁面去重跑
-flow** —— 暫停的狀態就在 checkpointer 裡，讀它只是一次磁碟 seek，而重跑要再燒一次
-20B model，還可能吐出跟螢幕上不一樣的理由。
+作業員登入，而**他登入的那個名字就是標註上的名字**；store 會拒絕一筆講不出是誰做的
+human 判定，而且那一列會記下名字是怎麼建立的（`signed_in`，或 CLI 的
+`host_account`），讓重訓那一輪可以據此篩選。作業員全部住在一個檔案裡
+（`scripts/add_operator.py`），這就是全部的使用者管理，刻意如此。這套機制擋不住什麼
+是寫下來的，不是含糊帶過——見[已知限制](#已知限制)。
 
-判定是用一般的 form POST 加 redirect，所以關掉 JavaScript 也能用；數字鍵直接選判定，
-給整班都在用它的人。
+判定用一般的 form 送出再導向，所以關掉 JavaScript 也能用。每一頁都有繁中與英文，而
+切換只換 chrome、永遠不改寫紀錄。時間戳存 UTC、顯示 UTC，而且頁面上有寫。
 
-2026-09-05 起，大門不再是佇列。`/` 是一句話、六個數字、三個入口：幾片 PCB
-已處置、扣留、放行、待判，幾個區域在等人、幾個被退回，每個數字都是對整張表
-的 `COUNT(*)`，也都是連到它所數的那份清單的連結。佇列往裡搬一下，在 `/queue`。
-理由跟 `/boards` 當初被做出來的理由是同一個：一扇打開就是 agent 收不掉的區域的
-門，讓看的人先看到失敗，然後把失敗當成系統。大門上不畫任何區域層級的東西，所以
-也沒有東西能從那裡漏出去。
-
-佇列周圍，2026-08-25 起：`/boards` 是索引——扣留、放行、*待判*三個數字是對整張表
-算的，不是對頁面算的，因為佇列只顯示 agent 收不掉的東西，只看得到失敗的人會把失
-敗當成系統。按鍵 `0` 是**「我不確定」**：它不寫任何判定（那張表是下一輪訓練的
-label，而「不確定」是唯一絕不能成為 label 的答案），把區域移到一份按「幾個人退回」
-排序的 `deferred` 清單，而且只有 `senior` 能回答——交給下一個一般作業員等於交回已
-經失敗的那個判斷。這是這個站唯一的權限，角色每次請求都從憑證檔讀、不從 session
-讀，所以撤掉一個角色是立刻生效。每一頁都能用繁體中文或 English 讀；切換只換介面，
-不改紀錄——問題、理由、規劃段保留當時的語言並標示出來。時間戳存 UTC、顯示 UTC，
-而且標明是 UTC。
-
-**作業員要先登入，而登入用的那個名字就是最後寫在 label 上的名字。** 這不是因為 queue
-是什麼機密 —— 是因為那個答案就是下一輪訓練的 label，而一個作者是文字框的 label，沒有
-人有辦法衡量它。判定表單上已經沒有 `reviewer` 欄位：名字從簽章過的 session 來，store
-會拒絕寫入一筆說不出是誰做的人工判定，而且那一列還會記下這個名字是**怎麼**建立的
-（站上是 `signed_in`，CLI 是 `host_account`），這樣下一輪 retrain 可以照它挑資料。
-作業員就是一個檔案：
-
-```bash
-uv run python scripts/add_operator.py mike               # 會問 passphrase
-uv run python scripts/add_operator.py --list
-```
-
-使用者管理僅此而已，這是設計上的選擇： 一條線上的人是固定的那幾個，加上一個會跑 script 的主管。
-這套機制**擋不住**什麼，寫在 `src/aoi_agent/station/auth.py` 跟
-[benchmarks](docs/benchmarks.md#the-scheme-and-what-it-does-not-protect-against)
-裡，因為一套講清楚自己界線的機制，比一套更強但不講的值錢。
-
-### Escalation 在兩邊之間住在哪
-
-`interrupt()` 把 run checkpoint 到 SQLite，另外一張小的 `escalations` table 記著
-「還有人欠這件事一個答案」。兩個 store，各回答一個問題：checkpointer 知道這次 run
-的狀態，table 知道還有沒有人在等。判定會在關掉 queue entry **之前**先寫進
-`review_decisions` —— 中間掛掉的話這個區域會被再看一次，反過來寫的話會默默吃掉作業
-員的答案。
-
-這是交接能否持久的關鍵。用 in-memory checkpointer 的話，在單一 CLI run 裡
-看起來一切正常，process 一結束 queue 就沒了；撐不過 process 的 interrupt 只是 prompt，不是交接。`tests/test_checkpoint_durability.py` 會在一個直譯器裡發出 escalation、
-讓它結束，再用第二個直譯器把它做完。
+→ [Escalation 的兩個 store、持久性測試，以及一筆判定要指名什麼](docs/architecture.md#where-an-escalation-waits)
 
 ## 問產線問題 —— `/ask`
 
-第二個入口，給另一種使用者。Queue 回答「這個區域怎麼處理」；`/ask` 回答主管的問題
-——「M22 是不是在飄、要不要緊」。它讀取與 disposition path 相同的 MCP tool，且不做
-任何 disposition。
+第二個入口，給不同的人。佇列回答「這個區域我該怎麼辦」；`/ask` 回答輪班主管的問題
+——「M22 是不是在漂，這重不重要」。它讀的是處置路徑同一批 MCP 工具，而且不處置任何
+東西。
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/diagrams/analysis-flow-dark.zh-TW.svg">
   <img alt="/ask 怎麼回答一個問題：一次 LLM 呼叫產生型別化的計畫；計畫對照真實的工具簽名和 store 的值域驗證，不過就連同每一條錯誤拒答；通過的呼叫平行展開，結果收集後從形狀推出圖表，第二次 LLM 呼叫在數字旁邊寫文字，整次執行存下來，圖是從資料重畫、不是重新規劃。" src="docs/diagrams/analysis-flow-light.zh-TW.svg" width="100%">
 </picture>
 
-一次 LLM call 產生一份 typed 的 plan。`validate_plan` 在任何東西跑起來之前分三層檢
-查：tool 名字、參數名字對照真的 signature、以及參數**值**對照 store 真的有的 domain。
-檢查沒過的 plan 會連同每一條錯誤原封不動秀給人看，不會 retry。通過之後 tool 用
-`Send` 展開平行跑，某一支失敗會變成資料而不是例外，chart 是從結果的**形狀**推出來的
-而不是 model 挑的，最後第二次 LLM call 把文字寫在那些數字旁邊。
+一次 LLM 呼叫產生一份型別化的查詢計畫。`validate_plan` 在任何東西執行之前檢查三層
+——工具名、參數名對照真實 signature、以及參數*值*對照 store 實際持有的值域——沒過的
+計畫連同每一個錯誤攤給人看，不重試。通過的呼叫用 `Send` 展開，失敗的分支回傳資料而
+不是拋例外，**圖表由結果的形狀推得而不是由模型挑**，第二次呼叫把文字寫在印在旁邊的
+數字上。
 
-那個 fan-out 是工作本身的形狀（這些查詢彼此獨立），不是效能優化。兩次 model call 在
-時間上壓倒性地大，所以這裡沒有任何地方把它講成加速。
+展開是工作本身的形狀，不是為了加速：兩次模型呼叫在時間上以數量級輾壓其他部分，所以
+這裡沒有任何地方把它說成加速。
 
-Planner 做得好不好看上面那份[盲測](docs/findings.zh-TW.md#planner-是用它作者沒看過的題目打分的)；最後那段
-文字有沒有照著資料寫，是它後面那一節。2026-08-26 起 store 有了時間軸：`machine_events`
-記機台被動了什麼、什麼時候，`query_defect_history` 吃 `relative_to` 和 `side`，所以
-「M32 參數變更有沒有動到 open 的比例」是切開該機台所有板子的前後兩個視窗，各帶一個
-Wilson 區間。種子種了一個有效果的事件和三個沒效果的，讓工具有機會錯——它在對照組上
-回答「沒差」。
+規劃器做得多好，是一份 [70 題、出題者沒看過 prompt 的盲測](docs/findings.md#the-planner-was-graded-on-questions-its-author-never-saw)；
+它寫的文字是不是忠於資料，是後面那一節。
 
 ### 唯讀的 text-to-SQL，當作實驗
 
-這一節在 2026-08-29 之前叫「為什麼沒有 text-to-SQL」，而那個理由沒有變：
-一句語法正確但語意錯的 query 會回一個看起來很合理的數字，而且不會報錯；在判定
-的情境下，一個貌似合理的錯數字比 crash 還糟 —— 因為它會被拿去用。typed 工具
-仍然是主要規則，`/ask` 也還是驗參數**值**：`line_id="L4"` 不會噴錯也不會回東西，
-所以圖上少一條線，那個缺口讀起來是一個 finding。
+這一節在 2026-08-29 之前的標題是*為什麼沒有 text-to-SQL*，而它給的理由到現在還成立：
+一句語法正確但語意錯誤的查詢會回一個看起來合理的數字、不報任何錯，而看起來合理的錯
+數字會被拿去做事。型別化工具仍然是規則。
 
-改變的是獨立題庫照出來的事。七十題主管問題裡有六題落在沒有任何 typed 工具能
-組合的維度上 —— 某台機的某個班別、某個批號跑過哪些機台、標了幾個區域 ——
-每一題都被拒答。`run_sql` 就是為這些題目收一句 SELECT。它是一個有對照組的實驗：
-`AOI_SQL_TOOL=0` 把它從登錄表拿掉，同一套七十題兩種設定各跑一次，才決定它留不留。
-2026-08-29 兩組都跑了：裁定後的拒答有工具 22/28、沒工具 25/28，該答的 24/42 對 26/42。
-五題以前沒有任何路可走的問題答出來了（某台機的某個班別、今天標了幾區、還有幾片等人看）；
-丟掉一題組合——M32 參數變更前後，事件工具本來答得出來，它改寫成 SELECT——另外三題
-問題裡沒指名任何實體，它也寫了 SELECT。針對這四個失敗的兩句規則當天下午放進 prompt、
-兩組重跑：有工具 28/42 答對、裁定後拒答 23/28；對照組 25/42 與 25/28——事件組合回來了、
-沒指名實體的題拒答了、五題新路都還在。重跑也照出舊規則當初要防的事：兩句 SELECT 合法、
-唯讀、有上限、但意思是錯的，各回了一個數字（一個不存在的狀態值；一個被當成位置的欄位）。
-守門層現在會拒絕「等號右邊的值一列都沒有」的查詢並列出真正存在的值。第三次重跑（prompt
-沒改，計畫幾乎一字不差）把每句 SELECT 離線過一遍：不存在的狀態值、用整數主鍵比板號的
-那兩句都被擋下；把序號當位置的那句擋不到——值存在、意思錯——那一類只能靠 prompt 規則
-和印在結果上方的 SQL。
+改變的是那份獨立題組揭露的事：七十題裡有六題落在沒有任何型別化工具組合得出來的維度
+上，而且每一題都被拒絕。`run_sql` 為那些題目收一句 SELECT，而且它**帶著對照組**上線：
+`AOI_SQL_TOOL=0` 把它移出 registry，同一份七十題兩邊各跑一次，用來決定它留不留。
+2026-08-29 兩邊：有工具答 28/42、裁定後拒對 23/28；沒工具 25/42 與 25/28——五題拿到
+了原本沒有的路徑，一題組合被弄丟、再用一句 prompt 補回來。重跑也生出了舊規則預言的
+那種失敗：兩句合法、唯讀、有上限而且**錯**的 SELECT，各回一個數字。
 
-讓它可以被接受的是結構，不是一句要模型小心的提示：
+讓它可被接受的是結構，不是一句叫模型小心的 prompt：SQL 跑在一份只含列出欄位的記憶體
+副本上，所以 `ground_truth` 不是被濾掉、是根本沒被複製進去；連線是 `PRAGMA
+query_only`；單一句、由 `sqlglot` 解析、資料表走白名單、任何碰得到檔案系統的函式一律
+拒絕；200 列與兩秒；對一個沒有任何列持有的值做等值比較會被拒絕並列出實際存在的值；
+跑出去的 SQL 印在它的結果上面；而在 registry 這一層，任何宣告查詢語言參數的工具必須
+把它交給 `sql_guard.guarded_select` 而且只能交給它——這是在 import 時讀工具本體讀出來
+的。守門層守不住的是*語意*，所以規劃器被告知它是最後手段。
 
-- SQL 跑在一份記憶體內的 store 副本上，副本只含工具說明裡列出的欄位。
-  `ground_truth` 不是被過濾掉，而是從來沒被複製進去。
-- 連線是 `PRAGMA query_only`；store 檔案只在複製時以唯讀掛載，query 跑之前就已卸載。
-- 一次一句，由 `sqlglot` 解析：只能是 SELECT（含 CTE 與集合運算），資料表限白名單，
-  不接受帶 schema 的名稱，也不接受會碰檔案系統的函式。
-- 200 列與兩秒的上限是強制的；被截斷的結果會說自己被截斷。
-- 寫出來的 SQL 和實際執行的 SQL 都存在 run 上、印在結果上方。
-- 在登錄表，宣告帶 query language 參數的工具必須把它交給 `sql_guard.guarded_select`
-  而且不能交給任何別的東西 —— 在 import 時讀工具本體檢查，跟之前檢查 `text()` 一樣。
+→ [完整的分析路徑](docs/architecture.md#the-analysis-path) ·
+[兩次裁定](docs/benchmarks.md)
 
 ## Tools
 
@@ -474,18 +424,17 @@ uv run python scripts/check_mcp_servers.py
 ## 一個 candidate 要多少錢
 
 Re-verifier 是一個吃 3×64×64（template、test、difference 疊起來）的 ResNet-18：
-硬碟上 **42.7 MB、11.2 M 參數，CPU 上每個 candidate p50 2.50 ms**（p90 2.53 ms，
-300 次）。計時涵蓋 pipeline 真正跑的那條路，含搬移，因為只計 forward 會把搬移藏
-起來，而那在 MPS 上不是免費的。
+硬碟上 **42.7 MB、11.2 M 參數，CPU 上每個 candidate p50 2.50 ms**。計時涵蓋 pipeline
+真正跑的那條路，含搬移，因為只計 forward 會把搬移藏起來，而那在 MPS 上不是免費的。
 
-三個違反直覺、很容易被不小心改掉的結果：
+三個很容易被不小心改掉的結果：
 
 - **Batch 1 的時候 GPU 是比較慢的那個** —— MPS p50 7.34 ms，慢 2.9 倍，因為 model
-  這麼小的時候派下 forward 的成本比跑它還高。MPS 要到 batch 8 才追上來。一次判一個
-  區域的複判站不該用 GPU；一次判整片板子的 seeding 那支才該用。
+  這麼小的時候派下 forward 的成本比跑它還高。它要到 batch 8 才追上，所以複判站不該
+  用 GPU，而一次判整片板子的 seeding 那支才該用。
 - **持續 CPU 推論過了第一分鐘會掉約 20%**，這台是無風扇機器。第一分鐘和穩態要分開報。
-- **CPU 的每 candidate 成本在 batch 8 之後會變差**好幾倍 —— 換過 thread 數確認過，
-  那是 model 在 CPU 上 convolution 路徑的性質，不是核心數的問題。CPU 就 batch 8。
+- **CPU 的每 candidate 成本在 batch 8 之後會變差**好幾倍——那是 model 在 CPU 上
+  convolution 路徑的性質，不是核心數的問題，換過 thread 數確認過。CPU 就 batch 8。
 
 這一節先前寫「數十毫秒」，沒有量測依據；實測低了一個數量級。
 → [這次的 run](docs/benchmarks.md#re-verifier-latency--what-one-candidate-costs-and-on-what-hardware)
@@ -520,134 +469,86 @@ candidate，FP32 複判是一片板子 41 ms，而週期有十秒。
 
 ## 怎麼跑
 
+這份 README 裡的每一個量測都是一支腳本，而每一支都往 `docs/benchmarks.md` 追加
+——新的在後面，永遠不就地修改。
+
 ```bash
-git clone --depth 1 https://github.com/tangsanli5201/DeepPCB.git data/DeepPCB
-uv sync
-
-uv run python scripts/gate_check.py                      # differencing 真的產得出 false call 嗎？
-uv run python scripts/build_patches.py --split trainval
-uv run python scripts/build_patches.py --split test
-uv run python scripts/train.py                           # M5 Air 上約 4 分鐘
-uv run python scripts/report.py                          # operating-point 表
-
-uv run python scripts/seed_store.py --split test --limit 500
-uv run python scripts/add_operator.py mike               # 誰可以回 queue
-uv run python -m aoi_agent board 20085294                # 跑一片板子過整條 flow
-uv run python -m aoi_agent corrections                   # 作業員推翻 model 的紀錄
+uv run python scripts/gate_check.py          # S0：相減找得到瑕疵嗎？
+uv run python scripts/report.py              # operating-point 表
+uv run python scripts/threshold_sweep.py     # 每個門檻買到什麼、付出什麼
+uv run python scripts/seed_variance.py       # 整套流程重跑會落在哪
+uv run python scripts/agent_eval.py          # agent 那一層贏得過分類器嗎？
+uv run python scripts/analysis_eval.py       # 規劃器規劃得出正確的查詢嗎？
+uv run python scripts/invariant_audit.py     # 這個專案自己的規則哪幾條沒人守
 ```
 
-既有的 store 是原地加欄位的 —— `uv run python scripts/seed_store.py --migrate-only`
-—— 因為裡面那些更正就是下一輪訓練的 label，不可以為了加一個欄位就重建掉。
+`uv run python -m aoi_agent --help` 列出 CLI：`board`、`queue`、`corrections`、
+`explanations`、`provenance`、`station`。既有的 store 就地加欄位
+（`scripts/seed_store.py --migrate-only`），因為裡面的更正是下一輪訓練的標註，不該
+為了升級而重建掉。
 
-上面講的那些量測都是 script，不是截圖 —— `threshold_sweep.py`、
-`retrieval_report.py`、`escape_accounting.py`、`opening_kernel_sweep.py`、
-`reverifier_latency.py`、`agent_eval.py`、`analysis_eval.py`、
-`synthesis_eval.py`。每一支都往
-`docs/benchmarks.md` 後面接，新的在最後面，舊的不改。
-
-需要 [Ollama](https://ollama.com) 跟一個會 tool calling 的 model（預設
-`gpt-oss:20b`）。全部在本機跑，沒有任何東西離開這台機器 —— 在產線上這是要求，不是
-偏好。
-
-**1,462 個測試。** 其中 1,437 個在乾淨 checkout 上就能在 CI 跑完 —— 它們自己在
-tmpdir 裡建 store、建 Chroma collection、建板子，model 是 stub 掉的。另外 25 個要磁碟
-上有資料集，帶 `dataset` marker；CI job 每次跑完都會把它們列出來，因為「測試
-數量默默變少但綠燈照亮」正是那個 job 要防的事。
+**1,462 個測試。** 其中 1,437 個在乾淨 checkout 上就能在 CI 跑完——它們自己在 tmpdir
+裡建 store、Chroma collection 與板子，並且把 model 換成 stub 而不是真的呼叫。另外 25
+個需要磁碟上有資料集，帶 `dataset` marker；CI 每次跑完會把它們逐一列名，因為一個綠勾
+蓋著一個悄悄縮小的測試集，正是那個 job 存在的理由。
 
 ### 用容器跑
 
 ```bash
 docker build -t aoi-agent .
 docker run --rm -p 8110:8110 \
-  -v "$PWD/data:/app/data" -v "$PWD/models:/app/models" \
-  aoi-agent                                              # station 在 :8110
-docker run --rm -v "$PWD/data:/app/data" -v "$PWD/models:/app/models" \
-  aoi-agent python -m aoi_agent queue                    # 或任何一個 CLI subcommand
+  -v "$PWD/data:/app/data" -v "$PWD/models:/app/models" aoi-agent
 ```
 
-image 裡沒有重的東西。資料集、patch、權重、SQLite store 跟 Chroma index 全都是上面那
-些 script 建出來的，也全都 gitignore；它們從那兩個 mount 進來，image 只裝 code 跟
-wheel。什麼都不 mount 直接跑，會得到一個對著空 queue 起來的 station，那比 import 就
-炸掉清楚。
-
-作業員檔案跟 station 讀的其他東西一樣放在 `data` mount 上，所以容器拿作業員的方式跟
-拿 store 的方式一樣。想讓 session 撐過重啟就設 `AOI_AGENT_SESSION_SECRET`；不設的話
-每個 process 自己生一把，重啟之後大家重新登入。
-
-有兩件事這個容器不是。它沒有 GPU：Linux image 拿的是 torch 的 CPU build，這是刻意的
-—— CUDA 的 wheel 會為了這個專案從來沒有過的硬體拉進好幾 GB 的 runtime，所以
-`pyproject.toml` 在 linux 上解到 PyTorch 的 CPU index，macOS 留在 PyPI，MPS 照樣能用。
-它也沒有 model server：Ollama 留在 host，所以 flow 的解釋那一步需要容器連得到它。
+資料集、patch、權重、store 與索引全部由腳本建立、全部 gitignore；它們從兩個 mount
+進來，image 裡只有程式碼與 wheel。它不是的兩件事：**沒有 GPU**（Linux image 刻意拿
+torch 的 CPU build——CUDA wheel 會為了這個專案從來沒有過的硬體拖進好幾 GB 的 runtime），
+以及**沒有 model server**——Ollama 留在 host，所以容器要連得到它。
 
 ## 已知限制
 
-- **全線 escape rate 是 0.51%，而且它是兩個數字不是一個。** 0.16% 的 defect（test
-  split 上 3,140 個裡的 5 個）身上完全沒有 candidate —— 那些救不回來。另外 0.35% 是
-  有標出來但被 re-verifier 判掉的，那才是 dismiss threshold 管的。這個數字以前寫什麼、
-  以及為什麼大了九倍，[在 docs/findings.zh-TW.md](docs/findings.zh-TW.md#全線-escape-rate-被高估了將近一個數量級)。
-  這個數字在 2026-08-31 之前寫的是 0.61%（0.22% + 0.38%）：那一次量測早於對位階段，
-  而對位讓其中兩個原本「碰不到」的缺陷被標了出來。
-- **Escape budget 連平均都超標了，自 2026-08-31 起。** 在出貨的 threshold 下
-  `short` 的 escape 是 1.77%、`open` 是 1.16%，對照 0.66% 的整體值；超標的是哪一類
-  會跟著 checkpoint 移動——2026-08-24 重訓之前是 `open` 的 1.35%。整體值在門檻不再
-  於它自己回報的那份切分上挑選之前是有達標的。它們是有把握的錯，模型自己的輸出切
-  不開；flow 仍然不管 confidence 多高都把每個 `open` 送去 investigation，因為導通是
-  二元的，WI-201 不允許任何一個 open。
-- **DeepPCB 是已經對位、已經二值化的**，等於把現實世界兩個最大的 false call 來源拿掉
-  了。它的 defect 也有一部分是資料集作者疊上去的，不是自然發生的。
-- **3×3 的 opening kernel 就是那 0.22% 的去處，而它還是留著。** 它清掉的是對位誤差在
-  trace 邊緣留下的細絲 —— 量過，合成板上 2 px 的 template 位移會動到 456 個 pixel，
-  在預設參數下產生零個 candidate —— 但它同時也清掉了那 7 個沒被標出來的 defect。它們
-  是**細**不是小：difference blob 有 24–133 個 pixel，最厚的地方離自己邊緣最多
-  1.37 px，而 3×3 方形要活下來需要 1.5 px。Sweep 過，把它們救回來的代價是每救回一個
-  「re-verifier 之後還會留著」的 defect 要多付 918（3×3 十字，救回 7 個中的 5 個）到
-  2,888（2×2 方形，7 個全救）個 false call，而且每片板子的 candidate 變成 1.6–8.5 倍
-  —— 這還沒算對位誤差那一欄，那邊帳單還會再漲。這個常數沒有動，而且不重跑
-  [那份 sweep](docs/benchmarks.md#the-opening-kernel--what-the-seven-lost-defects-would-cost-to-recover)
-  就不會動。真的 AOI 比這個吵多了。
-- **標準回答的還是作業員沒在問的問題。** Scope 修好的是「段落來自哪份文件」，不是
-  「那段話在說什麼」：`open` 拿到的規則還是「任何確認的 open 都是 critical」，那是怎麼
-  **處置**，不是怎麼**確認** —— 而站在影像前面的人正在做的是確認。這已經是文件的問題。
-- **一個數字同時做兩件事，代價是站台大部分的解釋都寫不出來。**
-  `RESPONSE_BUDGET_S` 既是 WI-300 對「判定」的 10 秒承諾，也是 httpx 的 client
-  timeout；而這個 model 量到的 service time 中位數是 12.5 秒，所以 24 次呼叫有 20 次
-  被砍掉 —— 而 LLM 從 decision path 上拿掉之後，寫給作業員看的那段解釋是它僅存的工作。
-  Queue 上曾經有一筆升級案，全部內容就是 `the model did not answer (ReadTimeout)`，
-  而且沒有任何東西在算這種情況發生過幾次。承諾不能跟著 model 走，資源上限必須跟著量測
-  走，所以現在是兩個常數：budget 維持 10 秒，管的是判定，而判定是 classifier 的
-  2.5 毫秒；`EXPLANATION_DEADLINE_S` 是 60 秒，管的是一段沒有人在等的等待。
-  用實際出貨的設定重量一次：中位數 8.6 秒、p90 11.1 秒、**24 次呼叫有 0 次沒寫出解釋**
-  —— 這是英文。2026-08-29 起說明改用產線語言（預設中文），同一個量測變成中位數
-  31.9 秒、p90 35.9 秒（2026-08-30 之前；差距大半來自 prompt 沒告訴它門檻）。
-  給了門檻、要求寫成一段之後：中文中位 16.7 秒、p90 19.7 秒，英文 11.8 秒、16.1 秒，
-  兩種語言 20 次都 0 次超過上限，全是生成時間，沒有人在等它。
-  「沒有解釋」現在是一個一級狀態，會以說明的形式顯示，並且由
-  `uv run python -m aoi_agent explanations` 計數 ——
-  [這次的 run](docs/benchmarks.md#agent-layer-latency--does-the-reason-node-fit-the-explanation-deadline)。
-- **生產履歷是模擬的，種了兩個訊號、三個對照。** 公開的缺陷資料集不會附批號或機台
-  id。種子從不寫 defect，它只決定哪片 DeepPCB 板去了哪台機器。M22 拿到 open 最多的
-  五分之一；M32 帶一個 `parameter_change`，之後它的 open 佔比下降；另外三台帶的事件
-  沒有效果，所以拿種子去考工具，考的是「有沒有影響」而不是「有沒有事件」；效果的
-  鏡像落在一台指名的機器上，不是抹在對照組裡。見 `src/aoi_agent/store/seed.py`。
-- 允收標準是為這個專案寫的原創文件。IPC-A-610 之類的有版權，刻意不放進來。
-- **登入讓一個名字可以被追溯，但沒有讓它變成真的。** 兩個人共用一組 passphrase，兩
-  個人的 label 上就會是同一個名字，這件事任何不用工號卡的機制都解不掉。Session
-  cookie 是 bearer token，安全性就是你把 station 擺在什麼傳輸層後面；登入沒有速率限
-  制也沒有鎖定；而任何有 host shell 的人都可以直接寫那個 SQLite —— 這正是 CLI 的判
-  定被記成 `host_account` 而不是跟站上登入同一個字的原因。它足夠用來衡量一個訓練
-  label，不足以在爭議裡拿來壓住誰 ——
-  [完整寫在這裡](docs/benchmarks.md#the-scheme-and-what-it-does-not-protect-against)。
-- **有 9,140 筆判定早於這個歸屬欄位，而且它們自己說了。** 它們是 `unrecorded`，由
-  migration 蓋上去的，不是留成 `NULL` —— 一筆從來沒記過 reviewer 的判定，不可以被讀
-  成一筆本來就沒有 reviewer 的判定。它們就維持這樣；第一輪 retrain 必須自己講清楚它
-  放掉了多少。
-- **這個專案的二十條不變式裡，有兩條只守住一半，還有一條根本守不住。**
-  `CLAUDE.md` 列了二十條不能被悄悄改掉的規則；`scripts/invariant_audit.py` 會報出
-  哪幾條真的會在被違反時讓測試失敗，而 `tests/test_invariant_audit.py` 會在某一條
-  失去守衛時掛掉。十六條有守。fan-out 那條和官方 split 那條各自只守住一部分，而且逐條寫明守住的是哪一部分；「說清楚哪些是
-  模擬的」是散文紀律，被明確宣告為無法測試，而不是算它通過。每一格都是真的去破壞
-  那條規則、跑完整套測試得出來的 ——
-  [稽核結果](docs/benchmarks.md#the-invariant-audit--which-of-this-projects-own-rules-are-unguarded)。
+都是量出來的，不是含糊的保留。每一條都是這個專案現在還是作品集、而不是明天就能上線
+的理由。
+
+**量測**
+
+- **整線 escape rate 是 0.51%，而且它是兩個數字**：0.16% 的缺陷根本沒被標出來，
+  0.35% 是被標出來之後又被 dismiss 掉。只有第二個才是門檻管得到的。
+  [它曾經寫 5.4%](docs/findings.zh-TW.md#全線-escape-rate-被高估了將近一個數量級)。
+- **不只分類別超標，連平均都超標了**，2026-08-31 起：`short` 1.77%、`open` 1.16%，
+  對照整體 0.66%。它們是*有把握*的錯，所以模型自己的輸出上沒有任何切法分得開——電性
+  測試可以，而 flow 不管 confidence 多高都把每個 `open` 送去 investigation，因為導通
+  是二元的。
+- **DeepPCB 是已對位、已二值化的**，等於把現實兩個最大的 false call 來源拿掉了，而它
+  的缺陷也有一部分是疊上去的、不是自然發生的。
+- **3×3 的 opening kernel 弄丟七個缺陷，而且它留下來**——要把它們找回來，每一個要付
+  918 到 2,888 個額外的 false call，以及每片板子 1.6–8.5 倍的 candidate。
+  [那次掃描](docs/benchmarks.md#the-opening-kernel--what-the-seven-lost-defects-would-cost-to-recover)。
+
+**系統**
+
+- **允收標準回答的是作業員問的另一個問題。** 加上 class scope 修好了段落來自哪份文件，
+  沒修好那段落說了什麼：`open` 檢索到的規則是「已確認的 open 一律 critical」，那是怎麼
+  *處置*，不是怎麼*確認*，而站在影像前面的人正在做的是確認。這變成文件的問題了。
+- **生產脈絡是模擬的，含兩個植入訊號與三個對照。** Seeder 從不寫入缺陷，它決定的是哪
+  片板子上了哪台機台。另外三台機台帶著*沒有*效果的事件，這樣工具被打的分數是「有沒有
+  影響」而不是「有沒有事件」。
+- **允收標準是為這個專案自撰的文件。** IPC-A-610 之類受著作權保護，刻意不放。
+
+**人**
+
+- **登入讓名字可歸屬，但沒有讓它為真。** 兩個人共用一組通行碼，兩個人的標註上會是同一
+  個名字；cookie 是 bearer token；沒有鎖定機制；有 shell 的人可以直接寫 store。它足以
+  用來衡量一個訓練標註，不足以在爭議裡用來要求誰負責——
+  [完整說明](docs/benchmarks.md#the-scheme-and-what-it-does-not-protect-against)。
+- **9,140 筆判定早於歸屬欄位，而且它們自己講了。** 它們寫 `unrecorded` 而不是 `NULL`，
+  因為「沒人記錄是誰」跟「本來就沒有人」不能是同一列。第一輪重訓必須說清楚它丟下了
+  store 的多少。
+- **二十條 invariant 裡有兩條只守住一半，一條根本守不住。**
+  `scripts/invariant_audit.py` 會說這個專案自己的哪些規則被破壞時真的會有測試變紅
+  ——十六條有守、兩條部分、而「說清楚什麼是模擬的」被宣告為無法強制執行，而不是算它
+  通過。每一條主張都是靠著真的去破壞它、看測試有沒有反應而確認的。
+  [稽核與它的變異](docs/benchmarks.md#the-invariant-audit--which-of-this-projects-own-rules-are-unguarded)。
 
 ## 還沒做的
 
@@ -668,3 +569,13 @@ wheel。什麼都不 mount 直接跑，會得到一個對著空 queue 起來的 
 - **登入刻意沒做的那些。** TLS（cookie 是 bearer token，process 講的是明文 HTTP），
   以及登入端點的速率限制或鎖定。兩件都寫在 `station/auth.py` 裡，不會在沒有寫下理由
   的情況下加上去。
+
+## 關於
+
+一個作品集專案，2026-08-22 到 2026-09-08 之間為智慧製造 AI 職缺而做，所以它是照
+「撐得住面試官追問」而不只是「跑得起來」寫的。不收 PR，但問題與更正歡迎開
+[issue](https://github.com/lin891020/aoi-agent/issues)——這裡有任何一個數字追不回產生
+它的腳本，那就是一個 bug。
+
+作者：[Mike Lin](https://github.com/lin891020)・MIT 授權，見 [LICENSE](LICENSE)・
+同一條路做成投影片、附面試官會問的問題：[docs/deck/](docs/deck/)
