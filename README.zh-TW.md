@@ -54,7 +54,7 @@ https://github.com/user-attachments/assets/36cb4982-3504-4fc2-ace5-9be595d755b9
 | **問題** | 產線 AOI 以 recall 為目標，過度標記。每個標記區域都由人複判，多數為 false call。 |
 | **方法** | ResNet-18 複判模型為每個 candidate 評分。LangGraph flow 對不確定者取得脈絡與 LLM 說明，判不了的透過可持久化的 `interrupt()` 升級給作業員。第二入口 `/ask` 將主管的問題轉成經驗證的型別化查詢計畫與圖表。 |
 | **資料** | [DeepPCB](https://github.com/tangsanli5201/DeepPCB) 官方切分：499 片測試板、7,322 個 candidate，41.2% 為真實缺陷。False call 由範本相減產生，非人工編造。 |
-| **結果** | **省去 55.6% 的人工複判**，門檻以 out-of-fold 選出，從未在報告它的那份切分上挑過。該門檻下 escape rate 為帶缺陷標籤 candidate 的 0.66%（95% 區間 0.43%–1.02%），對照 QP-110 的 0.5%：**在這個讀法下未達標**。若按缺陷計——QP-110 的原文寫法——複判模型漏判 0.35%，整線 0.51%。這是單一 seed：整套流程重跑五次，中位數為 0.50% 下省去 50.9%，範圍 49.0%–55.6%（[重跑會落在哪](#重跑會落在哪)）。 |
+| **結果** | **省去 55.6% 的人工複判**，門檻以 out-of-fold 選出，從未在報告它的那份切分上挑過。該門檻下 escape rate 為帶缺陷標籤 candidate 的 0.66%（95% 區間 0.43%–1.02%），對照 QP-110 的 0.5%——QP-110 是本專案自撰的工作指示，因為 IPC-A-610 受著作權保護——**在這個讀法下未達標**。若按缺陷計——QP-110 的原文寫法——複判模型漏判 0.35%，整線 0.51%。這是單一 seed：整套流程重跑五次，中位數為 0.50% 下省去 50.9%，範圍 49.0%–55.6%（[重跑會落在哪](#重跑會落在哪)）。 |
 | **技術** | Python 3.12 · PyTorch（MPS / CPU）· LangGraph · MCP · FastAPI + Jinja · SQLite · Ollama（`gpt-oss:20b`） |
 | **驗證** | 1,462 個測試，不需模型或 GPU。每個門檻皆引用出處；每個數字皆註明產生它的腳本。 |
 | **限制** | 照片板材上，相減前端無法通過第一道閘門；錫膏影像上，YOLO26n 偵測器可定位 92% 的缺陷，但排序只能省 1.2%。見[遷移](#遷移兩份新資料集)。 |
@@ -94,8 +94,15 @@ board 00041208: 30 AOI candidates
   board 00041208: not dispositioned -- regions are still waiting on a person
 ```
 
-`uv run pytest` 不需要 model、GPU 或資料集就能跑完。所有量測腳本、容器與完整 CLI：
-[怎麼跑](#怎麼跑)。
+**或者，什麼都不用裝就看得到。** 上面那支六分鐘影片就是整個系統；
+`docs/benchmarks.md` 是每一次量測，新的在後面；而
+
+```bash
+git clone https://github.com/lin891020/aoi-agent && cd aoi-agent && uv sync && uv run pytest
+```
+
+大約 40 秒跑完 1,437 個不需要資料集的測試——不用 model、不用 GPU、不用資料集，除了
+wheel 之外什麼都不下載。所有量測腳本、容器與完整 CLI：[怎麼跑](#怎麼跑)。
 
 <details>
 <summary><b>目錄</b></summary>
@@ -170,7 +177,7 @@ out-of-fold 選出——依影像五折、6,569 個缺陷支撐這個選擇，�
 
 六項量測推翻了先前的主張或設計決定，每一項都改了程式。下表每項一列；完整經過與
 改前改後的數字在 [docs/findings.zh-TW.md](docs/findings.zh-TW.md)。
-同一條路做成投影片：[docs/deck/](docs/deck/) —— 每個實驗的為什麼做／怎麼設計／量到什麼／錯在哪／規則，附面試官會問的題；從 `scripts/deck_content.py` 產生，投影片上的數字必須是文件裡發表過的。
+同一條路寫成可以直接讀的：[學習手冊](docs/deck/study-guide.zh-TW.md) —— 每個實驗的為什麼做／怎麼設計／量到什麼／錯在哪／規則，附面試官會問的題。它和[投影片](docs/deck/aoi-agent-journey.zh-TW.pptx)都從 `scripts/deck_content.py` 產生，投影片上的數字必須是文件裡發表過的。
 
 | 量了什麼 | 量到什麼 | 改了什麼 |
 |---|---|---|
@@ -578,4 +585,4 @@ torch 的 CPU build——CUDA wheel 會為了這個專案從來沒有過的硬�
 它的腳本，那就是一個 bug。
 
 作者：[Mike Lin](https://github.com/lin891020)・MIT 授權，見 [LICENSE](LICENSE)・
-同一條路做成投影片、附面試官會問的問題：[docs/deck/](docs/deck/)
+同一條路寫成學習手冊、附面試官會問的問題：[docs/deck/study-guide.zh-TW.md](docs/deck/study-guide.zh-TW.md)
