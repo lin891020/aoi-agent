@@ -2,11 +2,11 @@
 the subtitles in a band under the page, and the narration -- when there is
 one -- comes through ~/Projects/video_transfer's own TTS path.
 
-    uv run --with playwright python scripts/demo_record.py --lang zh-TW --stem 00041208 --index 15 --check
+    uv run --with playwright python scripts/demo_record.py --lang zh-TW --stem 00041208 --index 15 --check --base http://127.0.0.1:8111
                                         # walk the non-mutating pages and confirm every framed element exists
-    uv run --with playwright python scripts/demo_record.py --lang zh-TW --stem 00041208 --index 15 --silent
+    uv run --with playwright python scripts/demo_record.py --lang zh-TW --stem 00041208 --index 15 --silent --base http://127.0.0.1:8111
                                         # the take: video + subtitles, no audio; script.md beside it
-    uv run --with playwright python scripts/demo_record.py --lang zh-TW --stem 00041208 --index 15 --narrate-existing
+    uv run --with playwright python scripts/demo_record.py --lang zh-TW --stem 00041208 --index 15 --narrate-existing --base http://127.0.0.1:8111
                                         # dub that take: one wav per cue, listened back, mixed in
 
 The shot list is scripts/demo_script.py (docs/demo-script.md is generated
@@ -678,7 +678,7 @@ def main() -> None:
 
 def master(frames: list[tuple[float, Path]], end: float) -> Path:
     """The take as one constant-rate H.264 file at OUT_W wide: for every
-    fortieth of a second up to `end`, the latest screencast frame on screen
+    twenty-fifth of a second up to `end`, the latest screencast frame on screen
     at that instant, as a hard link, so the master's clock is the take's by
     construction and no demuxer's idea of a duration comes into it. The cut
     is made from this and `--narrate-existing` reads it again; the frames go

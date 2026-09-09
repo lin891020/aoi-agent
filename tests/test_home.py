@@ -17,6 +17,7 @@ Three properties.
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -38,9 +39,17 @@ PROVENANCE = DecisionProvenance(
     model_digest="sha256:" + "a" * 16, thresholds={"dismiss": 0.915}, code_version="test"
 )
 
-#: Two released, one held, one waiting on a person, and one region nobody
-#: could judge -- so every figure on the door is different from every other.
-STEMS = ["20085290", "20085291", "20085292", "20085293"]
+#: Three released, two held, and one waiting on a person with seven regions
+#: on the queue and four handed back. The door's first figure counts the
+#: boards with a standing disposition -- released and held; waiting sits
+#: beside them, not inside -- so the six figures are 5, 2, 3, 1, 7, 4, every
+#: one different from every other, and a figure rendered in the wrong slot
+#: cannot pass for the right one. The first fixture had four of the six at 1
+#: and its assertions could not tell held from waiting.
+STEMS = ["20085290", "20085291", "20085292", "20085293", "20085294", "20085295"]
+WAITING = STEMS[5]
+RELEASED, HELD = STEMS[:3], STEMS[3:5]
+PENDING_REGIONS, DEFERRED_REGIONS = 7, 4
 
 
 @pytest.fixture
@@ -61,7 +70,8 @@ def store(tmp_path, monkeypatch):
             session.add(board)
             session.flush()
             candidate_ids[stem] = []
-            for index in range(2):
+            regions = PENDING_REGIONS + DEFERRED_REGIONS if stem == WAITING else 2
+            for index in range(regions):
                 candidate = CandidateRecord(
                     board_id=board.id, index_on_board=index,
                     x1=100, y1=120, x2=140, y2=155, area=1400,
@@ -73,13 +83,13 @@ def store(tmp_path, monkeypatch):
                 session.add(candidate)
                 session.flush()
                 candidate_ids[stem].append(candidate.id)
-        # The fourth board waits on a person: one region on the queue and one
-        # handed back, so both counts on the door are non-zero and distinct
-        # from each other.
-        session.add(Escalation(candidate_id=candidate_ids[STEMS[3]][0],
-                               thread_id="t-waiting", reason="stub", status="pending"))
-        session.add(Escalation(candidate_id=candidate_ids[STEMS[3]][1],
-                               thread_id="t-deferred", reason="stub", status="deferred"))
+        # The waiting board: seven regions on the queue and four handed back,
+        # so both counts on the door are non-zero and distinct from each
+        # other and from every board count.
+        for n, candidate_id in enumerate(candidate_ids[WAITING]):
+            status = "pending" if n < PENDING_REGIONS else "deferred"
+            session.add(Escalation(candidate_id=candidate_id, thread_id=f"t-{status}-{n}",
+                                   reason="stub", status=status))
         session.commit()
 
     def decide(stem: str, verdicts: tuple[str, str]) -> None:
@@ -88,10 +98,11 @@ def store(tmp_path, monkeypatch):
                 f"{stem}#{index}", verdict, "agent", provenance=PROVENANCE
             )
 
-    for stem in STEMS[:2]:
+    for stem in RELEASED:
         decide(stem, ("false_call", "false_call"))
-    decide(STEMS[2], ("false_call", "open"))
-    for stem in STEMS[:3]:
+    for stem in HELD:
+        decide(stem, ("false_call", "open"))
+    for stem in RELEASED + HELD:
         dispositions.record(stem)
     return factory
 
@@ -101,17 +112,29 @@ def client(store, operators):
     return sign_in(TestClient(station_app.app))
 
 
+def _figure_in_slot(page: str, href: str, figure: int) -> bool:
+    """The figure rendered inside the door that links to ``href`` -- not
+    merely somewhere on the page."""
+    return re.search(rf'href="{re.escape(href)}"><b[^>]*>{figure}</b>', page) is not None
+
+
 def test_the_front_door_shows_the_denominator(client):
     counts = dispositions.board_counts()
-    assert (counts["released"], counts["held"], counts["waiting"]) == (2, 1, 1)
+    assert (counts["released"], counts["held"], counts["waiting"]) == (3, 2, 1)
+    figures = [counts["total"], counts["held"], counts["released"], counts["waiting"],
+               escalations.pending_count(), escalations.deferred_count()]
+    assert figures == [5, 2, 3, 1, PENDING_REGIONS, DEFERRED_REGIONS]
+    assert len(set(figures)) == 6, "the fixture's figures must all differ, or a slot swap passes"
 
     page = read_in(client, "en").get("/").text
 
     assert "The line right now" in page
-    for figure in (counts["total"], counts["held"], counts["released"], counts["waiting"]):
-        assert f"<b>{figure}</b>" in page or f'<b class="warn">{figure}</b>' in page
-    assert f"<b>{escalations.pending_count()}</b>" in page
-    assert f"<b>{escalations.deferred_count()}</b>" in page
+    for href, figure in [("/boards", counts["total"]), ("/boards?status=held", counts["held"]),
+                         ("/boards?status=released", counts["released"]),
+                         ("/boards?status=waiting", counts["waiting"]),
+                         ("/queue", escalations.pending_count()),
+                         ("/deferred", escalations.deferred_count())]:
+        assert _figure_in_slot(page, href, figure), f"{figure} is not in the {href} door"
     for door in ("/queue", "/boards", "/deferred", "/ask"):
         assert f'href="{door}"' in page, f"no door to {door}"
 
@@ -139,8 +162,8 @@ def test_the_queue_lives_one_click_behind_the_door(client):
     door = client.get("/").text
     queue = client.get("/queue").text
 
-    assert f"{STEMS[3]}#0" in queue
-    assert f"{STEMS[3]}#0" not in door
+    assert f"{WAITING}#0" in queue
+    assert f"{WAITING}#0" not in door
 
 
 def test_next_with_nothing_waiting_lands_on_the_queue_not_the_door(client, monkeypatch):

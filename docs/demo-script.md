@@ -23,7 +23,7 @@
 | cli.0 | 6.0 s | `#hdr` | 這是工程師看的執行紀錄：一片 PCB，每個區域一行。 | The engineer's log of the run: one PCB, one line per flagged region. |
 | cli.1 | 7.3 s | `#queued` | 多數區域模型幾毫秒內就判定完成；信心不足的兩個，交給作業員。 | Most the model settles in milliseconds; the two it is unsure of go to an operator. |
 | cli.2 | 4.7 s | `#board` | 整片 PCB 先扣留，待複判完成再處置。 | The whole board is held until they answer. |
-| login.0 | 5.0 s | `form.signin-form` | 作業員登入後，每一筆判定都記錄在其名下。 | An operator signs in. Every verdict from here on carries this name. |
+| login.0 | 5.0 s | `form.signin-form`（邊打字） | 作業員登入後，每一筆判定都記錄在其名下。 | An operator signs in. Every verdict from here on carries this name. |
 | home.0 | 5.0 s | `.home h1` | 登入後先看到主畫面：這條產線目前的狀態。 | The first screen is the line as it stands right now. |
 | home.1 | 5.8 s | `.home .stats:first-of-type` | 已檢驗的 PCB：已處置、扣留、放行、待判各幾片。 | The PCBs that ran: dispositioned, held, released, still waiting. |
 | home.2 | 5.9 s | `.home .stats:first-of-type` | 放行為 0 並非異常：示範資料每片都含真實瑕疵。 | Released 0 is not a fault: every demo board really carries a defect. |

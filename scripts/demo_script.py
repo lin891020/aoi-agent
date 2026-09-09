@@ -93,7 +93,7 @@ SCENES: list[tuple[str, list[Cue]]] = [
     ]),
     ("login", [
         Cue("作業員登入後，每一筆判定都記錄在其名下。",
-            "An operator signs in. Every verdict from here on carries this name.", "form.signin-form"),
+            "An operator signs in. Every verdict from here on carries this name.", "form.signin-form", phase="type"),
     ]),
     ("home", [
         Cue("登入後先看到主畫面：這條產線目前的狀態。",
