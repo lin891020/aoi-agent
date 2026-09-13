@@ -62,7 +62,7 @@ scripts/                    gate_check, build_patches, train, report, seed_store
                             (and demo_script, the shot list it drives),
                             build_detector_patches, crop_reverifier_report,
                             mark_unattributed_resolutions, ...
-tests/                      1,462 tests; dataset-dependent ones behind `-m dataset`
+tests/                      1,464 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/deck/                  the project-journey deck (pptx, html with a self-test
                             mode, study guide) -- built from scripts/deck_content.py,
@@ -82,7 +82,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 1,462 tests, no GPU needed, no model called
+uv run pytest                                    # 1,464 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/gate_check.py --dataset hripcb --split aligned --limit 693 --thresholds 10 15 20 30 45 60 \
     --out eval/results/gate_check_hripcb_aligned.json   # the same gate on photographs (~2 min)
@@ -785,6 +785,33 @@ On the station itself:
   the two being merged. An unknown `?status=` is refused rather than ignored:
   a filter that silently matches everything answers a typed URL with a
   plausible page. No `ground_truth` here either, at the same dict boundary.
+- **A region re-run on a fresh path carries nothing from its last run.**
+  2026-09-13, found by running the demo's CLI step before a presentation. The
+  checkpointer is keyed by region, and `start_review` reset only the two
+  channels that append (`trace`, `timings_ms`); the reason node's channels
+  replace, so a run that never entered the reason node handed back whatever
+  the last run wrote. The demo board's region 29 -- escalated at 0.961,
+  dismissed by the classifier at 0.912 -- had 31 `model` rows since 09-05,
+  each carrying the August rationale that quotes the 0.961 threshold, with
+  `explanation_status` `ok`, for a decision no model was asked to explain.
+  The CLI printed it under `classify -> dismiss`. Every reason-node channel is
+  reset on invoke now, and a `model` row stores `None` rather than `""` for
+  the status; `tests/test_rerun_state.py`. The 31 rows are a data fix on
+  the local store (`source='model' and explanation_status='ok'` is exactly
+  that set, since the code never writes a status on a `model` row).
+- **The criteria index opens under a lock, because `/ask` opens it from six
+  threads at once.** 2026-09-13, rehearsing the station's own example question
+  "比較三條線的缺陷組成，並說明驗收規定" on a freshly started station: the plan fans
+  out six `search_standards` branches, `lru_cache` does not serialise a miss,
+  and each thread built its own `PersistentClient` while Chroma's shared system
+  for the path was half-built -- "Could not connect to tenant default_tenant",
+  `KeyError: 'data/chroma'`. All six failed and the answer said the criteria
+  were unavailable. Eight concurrent first searches in a fresh interpreter
+  failed 8/8, 3/8 and 8/8 before `standards._OPENING`, and 8/8 succeeded on five
+  runs after it. Only the open is locked, never the query. Held by
+  `test_concurrent_first_searches_all_answer`, which runs
+  `tests/standards_race_in_another_process.py` because a process opens the
+  index once.
 - **Timestamps are stored UTC and displayed UTC**, and labelled `UTC` on the
   board record, the CLI, the corrections page, and -- closed 2026-08-25 -- the
   queue, which until then showed no clock at all: the ordering rule ("whoever

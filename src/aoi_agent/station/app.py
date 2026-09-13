@@ -850,12 +850,25 @@ def corrections_page(request: Request):
 #: write a query and has no other way to learn what is answerable. They are also
 #: the honest half of the dashboard argument in the spec: these are the common
 #: questions, and the free-form box is for the tail.
+#:
+#: Each one was run through the planner on 2026-09-13 before it went here, and
+#: each shows a different shape of plan: an event with a before/after pair
+#: (3 calls), a listed set fanned out with the criteria for every class
+#: (9 calls), a ranking beside the criteria for its class (2 calls, two
+#: tools -- the production store and the work instructions), the whole
+#: machine set with its events (12 calls), and the one dimension no typed tool
+#: combines, which is the read-only SQL tool's case (1 call, the SQL printed
+#: beside its rows). Questions that ranked a set and then needed the winner's
+#: id in a second call, or that wrote ``date('now')`` into a SELECT against a
+#: store whose newest board is weeks old, planned badly and were left out.
+#: So did "M22 跟 M21 的 open 比例": the planner filtered both calls to
+#: `defect_type="open"`, and a share of opens among opens is 100% on both.
 EXAMPLE_QUESTIONS = [
-    "L2-M22 的 open 是不是不尋常？該停機嗎？",
+    "M32 參數變更前後，open 的比例有沒有變？",
     "比較三條線的缺陷組成，並說明驗收規定",
-    "哪一台機器的缺陷率最高？",
-    "20085294 這片板子的脈絡是什麼？",
-    "short 的驗收標準是什麼？",
+    "open 佔比最高的是哪一台？open 的驗收標準是什麼？",
+    "每一台機台最近做過什麼事，各自的缺陷率是多少？",
+    "M22 在 A 班跟 C 班被駁回的誤判各有幾個？",
 ]
 
 
