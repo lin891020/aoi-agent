@@ -59,8 +59,21 @@ def start_review(graph, reference: str) -> dict[str, Any]:
     # hold a finished run for this region, and these two channels append rather
     # than replace -- without this a re-review shows the previous run's path
     # concatenated onto its own.
+    #
+    # The reason node's channels are reset too, since 2026-09-13. They replace
+    # rather than append, but a run that never enters the reason node writes
+    # none of them, and the thread then hands back whatever the last run wrote:
+    # a region that escalated at the old dismissal threshold and is dismissed by
+    # the classifier at the new one came back with the old rationale on the new
+    # state, and ``record_decision`` below stored it on a ``model`` row -- a
+    # paragraph quoting a threshold the current prompt does not contain, for a
+    # decision no model was asked to explain. ``tests/test_rerun_state.py``.
     state = graph.invoke(
-        {"candidate_ref": reference, "trace": [], "timings_ms": {}},
+        {
+            "candidate_ref": reference, "trace": [], "timings_ms": {},
+            "agent_rationale": "", "agent_verdict": "", "agent_confident": False,
+            "rationale_flags": [], "explanation_status": "",
+        },
         config=_config(reference),
     )
 
@@ -84,7 +97,7 @@ def start_review(graph, reference: str) -> dict[str, Any]:
             state["verdict"],
             state["decided_by"],
             rationale=state.get("agent_rationale") or None,
-            explanation_status=state.get("explanation_status"),
+            explanation_status=state.get("explanation_status") or None,
             # Only a row that carries a rationale carries its check.
             rationale_flags=(
                 state.get("rationale_flags")
