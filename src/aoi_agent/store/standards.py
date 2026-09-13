@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -195,6 +196,22 @@ def scope_of(defect_class: str) -> list[str]:
     return [defect_class, ANY]
 
 
+#: Held while the index is opened, never while it is queried. `/ask` fans a
+#: plan out into `Send` branches on threads, and a plan that looks up the
+#: criteria for six classes makes six first searches at the same instant.
+#: `lru_cache` does not serialise a miss, so each thread built its own
+#: `PersistentClient` over one path while Chroma's shared system for that path
+#: was half-constructed, and the branches came back "Could not connect to tenant
+#: default_tenant", `KeyError: 'data/chroma'` or "'RustBindingsAPI' object has
+#: no attribute 'bindings'". Found 2026-09-13 rehearsing the station's own
+#: example question "比較三條線的缺陷組成，並說明驗收規定": all six lookups failed
+#: on the first question after a restart, and the answer said the criteria were
+#: unavailable. `tests/standards_race_in_another_process.py` reproduced it on 2
+#: of 3 runs before this lock (8/8, 3/8 and 8/8 failed), and it has to run in a
+#: fresh process because a process opens the index once.
+_OPENING = threading.Lock()
+
+
 @lru_cache(maxsize=4)
 def _client_at(path: str) -> chromadb.ClientAPI:
     return chromadb.PersistentClient(
@@ -204,7 +221,13 @@ def _client_at(path: str) -> chromadb.ClientAPI:
 
 def _client() -> chromadb.ClientAPI:
     CHROMA_DIR.mkdir(parents=True, exist_ok=True)
-    return _client_at(str(CHROMA_DIR))
+    with _OPENING:
+        return _client_at(str(CHROMA_DIR))
+
+
+def _collection(path: str):
+    with _OPENING:
+        return _collection_at(path)
 
 
 @lru_cache(maxsize=4)
@@ -255,7 +278,8 @@ def build_index(standards_dir: Path = STANDARDS_DIR) -> int:
     ids, documents, metadatas = read_passages(standards_dir)
 
     client = _client()
-    _collection_at.cache_clear()
+    with _OPENING:
+        _collection_at.cache_clear()
     try:
         client.delete_collection(COLLECTION)
     except Exception:
@@ -289,7 +313,7 @@ def search(
 
     _client()  # so a missing directory is created before the collection is read
     try:
-        result = _collection_at(str(CHROMA_DIR)).query(
+        result = _collection(str(CHROMA_DIR)).query(
             query_texts=[query], n_results=top_k, where=where
         )
     except Exception:
@@ -298,8 +322,9 @@ def search(
         # long-running process that would otherwise answer nothing until it
         # was restarted. Re-open once; a second failure is a real one and is
         # raised, because the tool turns it into "build the index first".
-        _collection_at.cache_clear()
-        result = _collection_at(str(CHROMA_DIR)).query(
+        with _OPENING:
+            _collection_at.cache_clear()
+        result = _collection(str(CHROMA_DIR)).query(
             query_texts=[query], n_results=top_k, where=where
         )
 

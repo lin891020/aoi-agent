@@ -185,3 +185,23 @@ def test_a_rebuild_underneath_a_held_collection_is_survivable(index):
     standards.build_index()
 
     assert standards.search("open", top_k=1, defect_class="open")
+
+
+def test_concurrent_first_searches_all_answer(index):
+    """`/ask` asks for six classes' criteria at the same instant, and the first
+    question after the station starts is the one that opens the index. Before
+    the lock, eight concurrent first searches in a fresh interpreter failed on
+    two of three runs -- the station's example question about three lines'
+    acceptance rules answered that the criteria were unavailable. In another
+    process, because a process opens the index once and this one already has."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    script = Path(__file__).with_name("standards_race_in_another_process.py")
+    for _ in range(3):
+        run = subprocess.run(
+            [sys.executable, str(script), str(standards.CHROMA_DIR)],
+            capture_output=True, text=True, timeout=180, check=False,
+        )
+        assert run.returncode == 0, run.stdout + run.stderr[-2000:]
