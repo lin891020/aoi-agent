@@ -8695,3 +8695,63 @@ translation because 連續 carries both "continuous" and "continuity") or a
 fourth pattern flag, and neither is made or measured.
 
 **What this does not establish.** It asks whether the prose is true of the prompt, never whether the prompt was the right thing to show or whether the verdict beneath it was right -- `agent_eval.py` is the second and nothing is the first. A grounded figure used in a wrong comparison passes, which is `rationale_check.py`'s stated boundary and is inherited here. And the flags are patterns: their counts are a floor on what a pattern can raise, not a rate.
+
+## 2026-09-15 · commit c776f70
+
+### Stronger pretrained features: DINOv2 ViT-S/14, frozen, with a linear probe
+
+Testing stronger pretrained features on the same curve as the re-verifier. `dinov2_vits14` from `facebookresearch/dinov2` at `7764ea0f912e`, weights sha256 `b938bf1bc15cd2ec`, frozen; a 7-class logistic regression on standardised features reads `P(false_call)`. Same 12,634 trainval and 7,322 test candidates, threshold chosen out-of-fold over trainval by the Wilson upper bound (`threshold_cv.choose`), test read once. The probe's `C` is chosen on the by-image inner validation split. Patches upsampled 64 -> 224 bilinear. Seeds 0, 1, 2. 20 min. `scripts/dinov2_probe.py`.
+
+**Verdict, by the rule written before the run: Worse than the ResNet-18: median review removed 42.47% is below the lowest of its five seeds, 49.00%.**
+
+Eight configurations -- two inputs (`per_channel`: template, test and difference each as a grey image, features concatenated; `stacked`: the three as one RGB image, as the ResNet reads them) by four poolings (CLS, patch mean, both, centre 4x4 tokens). Which one is DINOv2's result was chosen per seed on out-of-fold review removed, never on test.
+
+| seed | chosen configuration | threshold | out-of-fold escape | test escape | 95% interval | test review removed | oracle on this split | short | open |
+|---|---|---|---|---|---|---|---|---|---|
+| 0 | per_channel/centre | 0.9248 | 0.320% | 0.861% (26/3018) | 0.59%–1.26% | **55.12%** | 42.04% | 1.77% | 1.83% |
+| 1 | per_channel/cls_mean | 0.9299 | 0.320% | 0.563% (17/3018) | 0.35%–0.90% | **42.24%** | 41.30% | 1.55% | 1.33% |
+| 2 | per_channel/cls_mean | 0.9338 | 0.320% | 0.530% (16/3018) | 0.33%–0.86% | **42.47%** | 39.89% | 1.33% | 1.33% |
+| **median** | — | — | — | **0.563%** | — | **42.47%** | 41.30% | — | — |
+| range | — | — | — | 0.530%–0.861% | — | 42.24%–55.12% | 39.89%–42.04% | — | — |
+| ResNet-18, five seeds (2026-08-31) | — | 0.9120–0.9778 | 0.320% | 0.331%–0.663% | — | 49.00%–55.59% (median 50.90%) | 49.73%–52.79% | 1.77% | 1.16% |
+| hand features + tree, three seeds (2026-09-01) | — | — | — | — | — | — | 16.70% (median, oracle read) | — | — |
+
+The ResNet's short and open figures are seed 0 at its shipped threshold (per-class escape entry); the probe's are each seed at its own threshold.
+
+**Every configuration, read on test** -- exploration, not the result. Choosing among these rows by their test column would be choosing on test.
+
+| configuration | dims | out-of-fold review removed, per seed | test review removed at its threshold, per seed | test escape, per seed |
+|---|---|---|---|---|
+| per_channel/cls | 1152 | 36.30% / 35.34% / 36.31% | 53.61% / 33.42% / 38.12% | 1.060% / 0.364% / 0.431% |
+| per_channel/mean | 1152 | 37.80% / 30.44% / 27.82% | 38.73% / 35.55% / 26.74% | 0.431% / 0.298% / 0.265% |
+| per_channel/cls_mean | 2304 | 38.25% / 38.43% / 37.59% | 55.11% / 42.24% / 42.47% | 1.226% / 0.563% / 0.530% |
+| per_channel/centre | 1152 | 43.32% / 38.22% / 34.74% | 55.12% / 52.53% / 46.69% | 0.861% / 0.828% / 0.630% |
+| stacked/cls | 384 | 23.40% / 25.16% / 27.12% | 20.92% / 17.58% / 12.56% | 0.298% / 0.265% / 0.066% |
+| stacked/mean | 384 | 24.43% / 22.53% / 20.10% | 25.84% / 27.90% / 6.34% | 0.530% / 0.729% / 0.033% |
+| stacked/cls_mean | 768 | 25.27% / 29.94% / 16.84% | 36.40% / 26.18% / 0.78% | 0.961% / 0.398% / 0.000% |
+| stacked/centre | 384 | 33.84% / 30.49% / 27.27% | 53.09% / 27.63% / 22.03% | 1.856% / 0.364% / 0.265% |
+
+**The seed moves less here than it does for the ResNet.** Frozen features are deterministic and the probe is convex, so a seed moves only the folds and the final split. The range above over 3 seeds and the ResNet's over five are not the same kind of interval.
+
+**Cost of the experiment.** Feature extraction 16.8 min on `cpu` (per_channel trainval 7.7, per_channel test 4.7, stacked trainval 2.8, stacked test 1.6; 0 means cached). What one candidate costs at inference is a separate entry, `scripts/dinov2_latency.py`, because it has to be measured on a quiet machine.
+
+**What this does not establish.** One model size, the smallest. Frozen, not fine-tuned: a fine-tuned DINOv2 is a different question. One upsampling, bilinear, fixed before the run -- binarised 64 px patches upsampled 3.5x are not images this backbone was trained on, and no other interpolation was tried because trying them would add an axis chosen after looking. One linear head, and no augmentation, where the ResNet trained with flips and quarter turns. The same 64 px window, so nothing outside it. And DeepPCB only.
+
+## 2026-09-15 · commit c776f70
+
+### Stronger pretrained features: what a DINOv2 probe costs per candidate
+
+The DINOv2 ViT-S/14 probe against the re-verifier, same machine, same session, each engine in its own process. The timed path is `ReVerifier.classify_batch`'s plus what DINOv2 needs: upsample 64 -> 224, normalise, forward, pool (`centre`), linear head, softmax, back to the host. `per_channel` is three forwards per candidate. `scripts/dinov2_latency.py`.
+
+| engine | device | batch 1 p50 | p90 | p99 | per candidate at batch 8 | cold first call | weights | peak RSS | × ResNet-18 (batch 1) |
+|---|---|---|---|---|---|---|---|---|---|
+| resnet18 | cpu | 2.50 ms | 2.52 ms | 2.57 ms | 1.02 ms | 11 ms | 45 MB | 552 MB | 1.0× |
+| dinov2_per_channel | cpu | 41.44 ms | 41.76 ms | 43.99 ms | 39.40 ms | 41 ms | 88 MB | 809 MB | 16.6× |
+| dinov2_stacked | cpu | 16.32 ms | 16.56 ms | 17.78 ms | 12.58 ms | 16 ms | 88 MB | 691 MB | 6.5× |
+| resnet18 | mps | 7.12 ms | 7.55 ms | 8.65 ms | 0.32 ms | 199 ms | 45 MB | 675 MB | 1.0× |
+| dinov2_per_channel | mps | 20.27 ms | 21.32 ms | 24.56 ms | 19.00 ms | 531 ms | 88 MB | 779 MB | 2.8× |
+| dinov2_stacked | mps | 8.71 ms | 9.00 ms | 9.24 ms | 6.05 ms | 317 ms | 88 MB | 752 MB | 1.2× |
+
+The ResNet-18 measured here on CPU is 2.50 ms at batch 1; the published figure is 2.5 ms (2026-08-24). The ratios above use this session's ResNet, not the published one.
+
+Contention before: Ollama none, processes 0; after: Ollama none, processes 0.
