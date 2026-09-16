@@ -690,6 +690,25 @@ that had seen the training images -- all stated in the entry. What it
 establishes is that on this data appearance alone does not separate a false
 call from a defect at the budget, from either front end; the template channel
 was never a convenience. Held by `tests/test_detector_patches.py`.
+Re-run on 2026-09-16 over three seeds, same recipe and candidates, trained on
+MPS: **0.3%, 1.2%, 2.8%, median 1.2%** -- the published 2.8% is the top of its
+own range, not its level. Every seed's validation-chosen threshold also missed
+the budget on test (worst 0.67%), because the training crops are the
+detector's in-sample boxes and the test crops are not.
+
+**Stronger pretrained features were measured twice and did not help.**
+2026-09-15/16, frozen DINOv2 ViT-S/14 with a linear probe, each verdict
+committed before its run. On DeepPCB (`scripts/dinov2_probe.py`) it is
+**worse**: median 42.47% review removed against the ResNet-18's five-seed
+49.00%-55.59%, the oracle column agreeing (39.89%-42.04% against
+49.73%-52.79%), at 41 ms a candidate on CPU against 2.5 ms. On the detector's
+RGB crops (`scripts/dinov2_crops_report.py`), where the binarised-texture
+excuse is gone, it is **indistinguishable**: paired bootstrap over the sixty
+test images puts the difference at -0.2 points, 95% interval -1.7 to +1.5, and
+its validation-chosen threshold escapes 12.25% on test, 24x the budget. What
+neither run tests is adapting the backbone -- a linear probe is the weakest
+way to use these features, and prompt tuning is the one the literature ranks
+ahead of it.
 
 **Every decision the store held before 2026-08-23 reads `unrecorded`** -- 9,140
 of them, in `model_digest` and now in `reviewer_auth` too, stamped by the
