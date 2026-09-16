@@ -62,7 +62,7 @@ scripts/                    gate_check, build_patches, train, report, seed_store
                             (and demo_script, the shot list it drives),
                             build_detector_patches, crop_reverifier_report,
                             mark_unattributed_resolutions, ...
-tests/                      1,489 tests; dataset-dependent ones behind `-m dataset`
+tests/                      1,517 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/deck/                  the project-journey deck (pptx, html with a self-test
                             mode, study guide) -- built from scripts/deck_content.py,
@@ -82,7 +82,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 1,489 tests, no GPU needed, no model called
+uv run pytest                                    # 1,517 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/gate_check.py --dataset hripcb --split aligned --limit 693 --thresholds 10 15 20 30 45 60 \
     --out eval/results/gate_check_hripcb_aligned.json   # the same gate on photographs (~2 min)
@@ -117,6 +117,9 @@ uv run python scripts/feature_baseline.py        # the floor with shape in it: h
 uv run python scripts/dinov2_probe.py            # stronger pretrained features: DINOv2 ViT-S/14, frozen,
                                                  # with a linear probe on the same curve; verdict written first
 uv run python scripts/dinov2_latency.py          # what that probe costs per candidate, beside a same-session ResNet-18
+uv run python scripts/dinov2_crops_report.py     # the same question where the RGB crops are photographs:
+                                                 # DINOv2 against the ResNet-18 on the detector's boxes,
+                                                 # verdict a paired bootstrap over the test images (~2.5 h)
 uv run python scripts/calibration_report.py      # does calibrating let a threshold survive a retrain? (~3 min)
 uv run python scripts/gap_decomposition.py       # why are the trainval boards easier? (~6 min)
 uv run python scripts/rationale_eval.py          # is the operator's rationale true of what the model was shown?
