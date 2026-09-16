@@ -66,11 +66,12 @@ Every page is also available in 繁體中文.
 | **Result** | **55.6% of manual review removed** at a 0.66% escape rate (95% interval 0.43%–1.02%), against the 0.5% in QP-110 — this project's own work instruction, written for it, since IPC-A-610 is copyrighted — so **on that reading the budget is not met**. The threshold was chosen out-of-fold, never on the split it is reported against, and this is one seed of five ([Results](#results)). |
 | **Stack** | Python 3.12 · PyTorch (MPS / CPU) · LangGraph · MCP · FastAPI + Jinja · SQLite · Ollama (`gpt-oss:20b`) |
 | **Verification** | 1,517 tests, no model or GPU required. Every threshold cites its source; every figure names the script that produced it. |
-| **Limits** | On photographed boards the differencing front end fails the first gate; on solder-paste images a YOLO26n detector localises 92% of defects but orders 1.2%. See [Transfer](#transfer-two-further-datasets). |
+| **Limits** | On photographed boards the differencing front end fails the first gate; on solder-paste images a YOLO26n detector localises 91.6% of defects but orders 1.2%. See [Transfer](#transfer-two-further-datasets). |
 
 ## Quickstart
 
-**Requires** Python 3.12, [uv](https://docs.astral.sh/uv/), and
+**Requires** Python 3.12 or newer (development and CI pin 3.12),
+[uv](https://docs.astral.sh/uv/), and
 [Ollama](https://ollama.com) with a tool-calling model (`gpt-oss:20b` by
 default) for the explanation step. macOS on Apple silicon (torch on MPS) or
 Linux/CPU; no GPU needed. Budget ten minutes, most of it training.
@@ -178,7 +179,7 @@ number, because the point was chosen looking at the split it is quoted on.
 
 - **Why a curve and not accuracy.** An escape ships a defective board; a false
   call costs an operator seconds. Accuracy weighs them the same, which is wrong
-  for this line. (It is 96.5%, for reference.)
+  for this line. (It is 98.6%, for reference.)
 - **Two escape rates, both printed.** 0.66% counts *candidates* carrying a
   defect label that were dismissed (20 of 3,018); counting *defects*, how QP-110
   is written, the re-verifier escapes 0.35% and the whole line 0.51%. Neither
@@ -224,9 +225,9 @@ than the question expected.**
 | | what it is | what happened |
 |---|---|---|
 | **HRIPCB** — photographs | 10 real boards, 693 images, plus the same 693 rotated ±10° | The differencing front end flags **16.9%** of defects at the shipped threshold and the S0 gate clears on *no* setting. With the threshold where recall peaks, the re-verifier dismisses **1,387 of 2,953 real defects**. |
-| **PCB-AoI** — solder paste, no template | Real SMT images, where a placed component has tolerance and there is nothing to difference against | YOLO26n covers **91.6% of defects** and orders **1.2%** of the queue at the ≤0.5% budget. A re-verifier over its crops (2026-08-28) manages **2.8%** against a 22.3% ceiling. |
+| **PCB-AoI** — solder paste, no template | Real SMT images, where a placed component has tolerance and there is nothing to difference against | YOLO26n covers **91.6% of defects** and orders **1.2%** of the queue at the ≤0.5% budget. A re-verifier over its crops manages **2.8%** on one seed (2026-08-28); re-run over three seeds on 2026-09-16 its median is **1.2%**, range 0.3%–2.8%, against a 22.3% ceiling. |
 
-Three findings, none of them the one the experiment was designed to test:
+Four findings, none of them the one the experiment was designed to test:
 
 - **The differencing front end's operating regime is binarised imagery**, and
   nothing in this project said so until it was measured. DeepPCB passes because
@@ -332,10 +333,10 @@ everything, and resume whenever an operator gets to it — possibly days later,
 without re-running any tools. That is what LangGraph's checkpointer and
 `interrupt` provide.
 
-It also matters for the headline number. The ≤0.5% escape budget is met by
-handing uncertain cases to a person, not by the model being good enough. Take
-away the escalation edge and the budget has to be bought with review volume
-instead.
+It also matters for the headline number. What holds the escape rate as low as
+0.66% is handing uncertain cases to a person, not the model being good enough —
+and even with that edge the ≤0.5% budget is missed on the deployed reading. Take
+the escalation away and the gap has to be bought with review volume instead.
 
 ## The review station
 
@@ -468,7 +469,9 @@ Verify they start and advertise their tools:
 uv run python scripts/check_mcp_servers.py
 ```
 
-To use them from Claude Desktop, add to `claude_desktop_config.json`:
+To use them from Claude Desktop, add to `claude_desktop_config.json` — the
+read-only SQL server is left out on purpose, because it is the gated experiment
+above and `AOI_SQL_TOOL=0` is its control arm:
 
 ```json
 {
@@ -562,9 +565,9 @@ uv run python scripts/analysis_eval.py       # does the planner plan the right l
 uv run python scripts/invariant_audit.py     # which of this project's own rules are unguarded
 ```
 
-`uv run python -m aoi_agent --help` lists the CLI: `board`, `queue`,
-`corrections`, `explanations`, `provenance`, `station`. An existing store gains
-new columns in place (`scripts/seed_store.py --migrate-only`), because the
+`uv run python -m aoi_agent --help` lists the CLI: `review`, `board`, `boards`,
+`queue`, `corrections`, `explanations`, `provenance`, `station`. An existing
+store gains new columns in place (`scripts/seed_store.py --migrate-only`), because the
 corrections in it are the next training round's labels and must not have to be
 rebuilt away.
 
@@ -639,7 +642,7 @@ something to put on a line tomorrow.
   much of the store it leaves behind.
 - **Two of twenty invariants are only partly guarded and one cannot be guarded
   at all.** `scripts/invariant_audit.py` says which of this project's own rules
-  would actually fail a test if broken — sixteen enforced, two partial, and "say
+  would actually fail a test if broken — seventeen enforced, two partial, and "say
   what is simulated" declared unenforceable rather than counted as passing.
   Every claim was checked by breaking the invariant and watching the suite.
   [The audit](docs/benchmarks.md#the-invariant-audit--which-of-this-projects-own-rules-are-unguarded).
@@ -648,11 +651,14 @@ something to put on a line tomorrow.
 
 - **An ordering for the detector front end.** The re-verifier over detector
   crops exists since 2026-08-28 and removes 2.8% at the budget on a queue
-  whose ceiling is 22.3% — not an ordering. What has not been tried: a
-  detector trained at `imgsz=1280`, which its small-target design is sized
-  for; crops from a detector that had *not* seen the training images (a
-  second detector on a held-out fold); and a second acquisition of the same
-  board, which is the only thing that would give this line a template.
+  whose ceiling is 22.3% — not an ordering, and a 2026-09-16 re-run over three
+  seeds puts its median at 1.2%. The obvious axis was tried and made it worse:
+  at `imgsz=1280` (2026-08-31) validation mAP50 rose to 0.712 while the figure
+  this project reads *halved*, 1.2% to 0.6%, because S0 is where sensitivity is
+  the whole job. What has not been tried: crops from a detector that had *not*
+  seen the training images (a second detector on a held-out fold); and a second
+  acquisition of the same board, which is the only thing that would give this
+  line a template.
 - **Retraining from operator corrections.** The decision history records them
   (`uv run python -m aoi_agent corrections`) and every row names who made it
   and how that name was established, so a round can take `signed_in` labels

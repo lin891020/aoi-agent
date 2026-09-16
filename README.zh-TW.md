@@ -57,11 +57,11 @@ https://github.com/user-attachments/assets/36cb4982-3504-4fc2-ace5-9be595d755b9
 | **結果** | **省去 55.6% 的人工複判**，門檻以 out-of-fold 選出，從未在報告它的那份切分上挑過。該門檻下 escape rate 為帶缺陷標籤 candidate 的 0.66%（95% 區間 0.43%–1.02%），對照 QP-110 的 0.5%——QP-110 是本專案自撰的工作指示，因為 IPC-A-610 受著作權保護——**在這個讀法下未達標**。若按缺陷計——QP-110 的原文寫法——複判模型漏判 0.35%，整線 0.51%。這是單一 seed：整套流程重跑五次，中位數為 0.50% 下省去 50.9%，範圍 49.0%–55.6%（[重跑會落在哪](#重跑會落在哪)）。 |
 | **技術** | Python 3.12 · PyTorch（MPS / CPU）· LangGraph · MCP · FastAPI + Jinja · SQLite · Ollama（`gpt-oss:20b`） |
 | **驗證** | 1,517 個測試，不需模型或 GPU。每個門檻皆引用出處；每個數字皆註明產生它的腳本。 |
-| **限制** | 照片板材上，相減前端無法通過第一道閘門；錫膏影像上，YOLO26n 偵測器可定位 92% 的缺陷，但排序只能省 1.2%。見[遷移](#遷移兩份新資料集)。 |
+| **限制** | 照片板材上，相減前端無法通過第一道閘門；錫膏影像上，YOLO26n 偵測器可定位 91.6% 的缺陷，但排序只能省 1.2%。見[遷移](#遷移兩份新資料集)。 |
 
 ## 快速開始
 
-**需要** Python 3.12、[uv](https://docs.astral.sh/uv/)，以及
+**需要** Python 3.12 以上（開發與 CI 固定用 3.12）、[uv](https://docs.astral.sh/uv/)，以及
 [Ollama](https://ollama.com) 加一個會 tool calling 的 model（預設
 `gpt-oss:20b`）來寫說明。macOS Apple silicon（torch 走 MPS）或 Linux/CPU 皆可，
 不需要 GPU。抓十分鐘，大部分花在訓練。
@@ -157,7 +157,7 @@ out-of-fold 選出——依影像五折、6,569 個缺陷支撐這個選擇，�
 | ≤1.00% | 0.99% | 58.3% |
 
 - **為什麼是曲線不是準確率。** 漏判讓缺陷板出貨；false call 只多花作業員幾秒。準確率
-  把兩者等重看待，對這條線是錯的。（準確率 96.5%，供參考。）
+  把兩者等重看待，對這條線是錯的。（準確率 98.6%，供參考。）
 - **兩個 rate，兩個都印。** 0.66% 計的是被 dismiss 掉、帶缺陷標籤的 *candidate*
   （3,018 中的 20 個）；改計*缺陷*，也就是 QP-110 的原文寫法，複判模型漏 0.35%、
   整線 0.51%。兩種讀法都不是拿來單獨引用的那個好看數字。
@@ -197,9 +197,9 @@ DeepPCB 已對位、已二值化，等於把現實產線兩個最大的 false ca
 | | 是什麼 | 發生了什麼 |
 |---|---|---|
 | **HRIPCB** — 照片 | 10 片真實板、693 張影像，外加同樣 693 張旋轉 ±10° | 相減前端在出貨門檻下只標出 **16.9%** 的缺陷，S0 gate 在*任何*設定下都過不了。把門檻設在 recall 最高處，複判模型 dismiss 掉 **2,953 個真缺陷裡的 1,387 個**。 |
-| **PCB-AoI** — 錫膏，無樣板 | 真實 SMT 影像；元件放置本來就有公差，沒有東西可以相減 | YOLO26n 涵蓋 **91.6%** 的缺陷，但在 ≤0.5% 預算下只排得掉 **1.2%** 的佇列。它的 crop 再接一個複判模型（2026-08-28）只到 **2.8%**，天花板是 22.3%。 |
+| **PCB-AoI** — 錫膏，無樣板 | 真實 SMT 影像；元件放置本來就有公差，沒有東西可以相減 | YOLO26n 涵蓋 **91.6%** 的缺陷，但在 ≤0.5% 預算下只排得掉 **1.2%** 的佇列。它的 crop 再接一個複判模型只到 **2.8%**（2026-08-28，單一 seed）；2026-09-16 重跑三個 seed，中位數是 **1.2%**、範圍 0.3%–2.8%，天花板是 22.3%。 |
 
-三個發現，沒有一個是這個實驗原本要測的：
+四個發現，沒有一個是這個實驗原本要測的：
 
 - **相減前端的適用範圍是二值化影像**，而這個專案在量到之前沒有任何地方講過這件事。
   DeepPCB 會過，是因為二值化讓「缺陷」和「沒對準的邊」變成同一個 255 階的差異；在
@@ -295,8 +295,9 @@ split 上，偵測器在 99.78% 的 defect 上都放了 candidate，只是有不
 candidate 要中途暫停、把狀態整包存下來，然後在作業員有空的時候恢復 —— 可能是幾天以
 後，而且不能重跑任何 tool。這就是 LangGraph 的 checkpointer 跟 `interrupt` 在做的事。
 
-它對頭條數字也有影響。≤0.5% 的 escape budget 是靠「不確定的送人」達成的，不是靠
-model 夠強。把 escalate 這條邊拿掉，同樣的 budget 就得用複判量去換。
+它對頭條數字也有影響。escape rate 能壓在 0.66%，靠的是把不確定的送給人，不是靠
+model 夠強——而且就算有這條邊，出貨的讀法下 ≤0.5% 的 budget 還是沒達標。把 escalate
+這條邊拿掉，那段差距就得用複判量去換。
 
 ## 複判站
 
@@ -357,7 +358,7 @@ human 判定，而且那一列會記下名字是怎麼建立的（`signed_in`，
 展開是工作本身的形狀，不是為了加速：兩次模型呼叫在時間上以數量級輾壓其他部分，所以
 這裡沒有任何地方把它說成加速。
 
-規劃器做得多好，是一份 [70 題、出題者沒看過 prompt 的盲測](docs/findings.md#the-planner-was-graded-on-questions-its-author-never-saw)；
+規劃器做得多好，是一份 [70 題、出題者沒看過 prompt 的盲測](docs/findings.zh-TW.md#planner-是用它作者沒看過的題目打分的)；
 它寫的文字是不是忠於資料，是後面那一節。
 
 ### 唯讀的 text-to-SQL，當作實驗
@@ -404,7 +405,8 @@ query_only`；單一句、由 `sqlglot` 解析、資料表走白名單、任何�
 uv run python scripts/check_mcp_servers.py
 ```
 
-要從 Claude Desktop 用，加進 `claude_desktop_config.json`：
+要從 Claude Desktop 用，加進 `claude_desktop_config.json`——唯讀 SQL 那台是刻意沒放的，
+它就是上面那個帶開關的實驗，`AOI_SQL_TOOL=0` 是它的對照組：
 
 ```json
 {
@@ -489,8 +491,8 @@ uv run python scripts/analysis_eval.py       # 規劃器規劃得出正確的查
 uv run python scripts/invariant_audit.py     # 這個專案自己的規則哪幾條沒人守
 ```
 
-`uv run python -m aoi_agent --help` 列出 CLI：`board`、`queue`、`corrections`、
-`explanations`、`provenance`、`station`。既有的 store 就地加欄位
+`uv run python -m aoi_agent --help` 列出 CLI：`review`、`board`、`boards`、`queue`、
+`corrections`、`explanations`、`provenance`、`station`。既有的 store 就地加欄位
 （`scripts/seed_store.py --migrate-only`），因為裡面的更正是下一輪訓練的標註，不該
 為了升級而重建掉。
 
@@ -553,16 +555,18 @@ torch 的 CPU build——CUDA wheel 會為了這個專案從來沒有過的硬�
   store 的多少。
 - **二十條 invariant 裡有兩條只守住一半，一條根本守不住。**
   `scripts/invariant_audit.py` 會說這個專案自己的哪些規則被破壞時真的會有測試變紅
-  ——十六條有守、兩條部分、而「說清楚什麼是模擬的」被宣告為無法強制執行，而不是算它
+  ——十七條有守、兩條部分、而「說清楚什麼是模擬的」被宣告為無法強制執行，而不是算它
   通過。每一條主張都是靠著真的去破壞它、看測試有沒有反應而確認的。
   [稽核與它的變異](docs/benchmarks.md#the-invariant-audit--which-of-this-projects-own-rules-are-unguarded)。
 
 ## 還沒做的
 
 - **給偵測器前端一個排序。** 框上的複判器 2026-08-28 做出來了，在預算下省 2.8%，
-  而那條佇列的上限是 22.3%——還不是排序。沒試過的：偵測器用 `imgsz=1280` 訓練（它的
-  小目標設計就是為這個尺寸）；用一個*沒看過*訓練影像的偵測器產生裁切（在留出的 fold
-  上訓第二個偵測器）；以及同一片板的第二次拍攝——那是唯一能給這條線一張範本的東西。
+  而那條佇列的上限是 22.3%——還不是排序；2026-09-16 重跑三個 seed，中位數是 1.2%。
+  最明顯的那個軸試過了，而且更差：`imgsz=1280`（2026-08-31）把 validation mAP50
+  拉到 0.712，但這個專案在看的那個數字*對半砍*，1.2% 掉到 0.6%——因為 S0 這一關要的
+  就是靈敏度。沒試過的：用一個*沒看過*訓練影像的偵測器產生裁切（在留出的 fold 上訓
+  第二個偵測器）；以及同一片板的第二次拍攝——那是唯一能給這條線一張範本的東西。
 - **從作業員更正回頭 retrain。** 判定歷史有記（`uv run python -m aoi_agent
   corrections`），每一列寫得出是誰做的、那個名字怎麼建立的，所以下一輪可以只吃
   `signed_in`，或把其他的權重壓低。還沒有東西去用它；改變的是這個選擇存在了。
