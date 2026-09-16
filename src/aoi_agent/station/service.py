@@ -50,10 +50,20 @@ def start_review(graph, reference: str) -> dict[str, Any]:
     A candidate already waiting on a person is returned as-is rather than
     re-run: it would cost a second LLM call and could hand back a different
     rationale than the one the operator is currently reading.
+
+    That holds for a region someone handed back as much as for one nobody has
+    reached, and until 2026-09-17 only the second was checked. A ``deferred``
+    region was re-run: a re-escalation rewrote the reason the declines were
+    about, a run that no longer escalated finished the thread and took the
+    senior's interrupt with it, and the CLI then prompted for a verdict at the
+    terminal -- past the senior-only rule, which lives in the station's route.
+    ``tests/test_deferred_rerun.py``.
     """
     queued = escalations.get(thread_for(reference))
-    if queued and queued["status"] == "pending":
+    if queued and queued["status"] == escalations.PENDING:
         return {"already_pending": queued}
+    if queued and queued["status"] == escalations.DEFERRED:
+        return {"already_deferred": queued}
 
     # ``trace`` and ``timings_ms`` are reset explicitly. The thread may already
     # hold a finished run for this region, and these two channels append rather

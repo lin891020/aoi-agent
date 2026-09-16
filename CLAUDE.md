@@ -62,7 +62,7 @@ scripts/                    gate_check, build_patches, train, report, seed_store
                             (and demo_script, the shot list it drives),
                             build_detector_patches, crop_reverifier_report,
                             mark_unattributed_resolutions, ...
-tests/                      1,517 tests; dataset-dependent ones behind `-m dataset`
+tests/                      1,520 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/deck/                  the project-journey deck (pptx, html with a self-test
                             mode, study guide) -- built from scripts/deck_content.py,
@@ -82,7 +82,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 1,517 tests, no GPU needed, no model called
+uv run pytest                                    # 1,520 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/gate_check.py --dataset hripcb --split aligned --limit 693 --thresholds 10 15 20 30 45 60 \
     --out eval/results/gate_check_hripcb_aligned.json   # the same gate on photographs (~2 min)
@@ -824,6 +824,22 @@ On the station itself:
   the status; `tests/test_rerun_state.py`. The 31 rows are a data fix on
   the local store (`source='model' and explanation_status='ok'` is exactly
   that set, since the code never writes a status on a `model` row).
+- **A region someone handed back is not re-run either.** 2026-09-17.
+  `start_review` skipped a region waiting on a person only when its status was
+  `pending`, so a board re-run re-invoked the graph on a `deferred` one. The
+  board was never released -- `assess` reads every open status first -- which
+  is why nothing at the board level saw it; the damage was to the record the
+  senior answers from. A re-escalation rewrote the reason the declines were
+  about; a run that no longer escalated finished the thread and took the
+  interrupt with it, so a later senior answer was recorded against the
+  re-run's state; and the CLI without `--queue` then prompted at the terminal
+  and answered the region as the host account, past the senior-only rule that
+  lives in the station's route. The CLI prints `HANDED BACK` with the decline
+  count now; `tests/test_deferred_rerun.py`, whose third test answered the
+  region at the terminal before the fix. Seen and not changed:
+  `pending_unexplained_count` and `explanation_counts` read `pending` only, so
+  the CLI's "waiting on a person" explanation count leaves out handed-back
+  regions.
 - **The criteria index opens under a lock, because `/ask` opens it from six
   threads at once.** 2026-09-13, rehearsing the station's own example question
   "比較三條線的缺陷組成，並說明驗收規定" on a freshly started station: the plan fans

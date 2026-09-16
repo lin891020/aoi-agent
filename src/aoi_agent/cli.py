@@ -44,6 +44,12 @@ def _print_result(reference: str, state: dict) -> None:
     if "already_pending" in state:
         print(f"  {reference:<16} {'QUEUED':<10} already waiting on an operator")
         return
+    if "already_deferred" in state:
+        declines = len(escalations.declines_for(service.thread_for(reference)))
+        plural = "decline" if declines == 1 else "declines"
+        print(f"  {reference:<16} {'HANDED BACK':<10} waiting on a senior "
+              f"({declines} {plural})")
+        return
 
     label = DISPOSITION_LABEL.get(state.get("disposition", ""), "?")
     print(f"  {reference:<16} {label:<10} {state.get('verdict', '?'):<12} "
@@ -62,7 +68,7 @@ def _print_result(reference: str, state: dict) -> None:
 def _run_one(graph, reference: str, auto_answer: str | None, to_queue: bool) -> dict:
     state = service.start_review(graph, reference)
 
-    if "already_pending" in state:
+    if "already_pending" in state or "already_deferred" in state:
         return state
 
     if "__interrupt__" not in state:
