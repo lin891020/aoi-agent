@@ -21,13 +21,13 @@ from torch.utils.data import DataLoader, Subset
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from aoi_agent.vision.dataset import CandidateDataset, class_weights  # noqa: E402
-from aoi_agent.vision.model import build_model, select_device  # noqa: E402
-from aoi_agent.vision.operating_point import (  # noqa: E402
+from aoi_agent.vision.dataset import CandidateDataset, class_weights
+from aoi_agent.vision.model import build_model, select_device
+from aoi_agent.vision.operating_point import (
     best_at_escape_budget,
     sweep,
 )
-from aoi_agent.vision.patches import PatchSet  # noqa: E402
+from aoi_agent.vision.patches import PatchSet
 
 
 def split_by_image(patch_set: PatchSet, val_fraction: float, seed: int):
@@ -73,13 +73,21 @@ def predict(model, loader, device) -> tuple[np.ndarray, np.ndarray]:
 
 
 def fit(train_data, val_data, weight_source, label_names, *, epochs, batch_size,
-        lr, seed, device, escape_budget, pretrained=True, checkpoint=None, log=print):
+        lr, seed, device, escape_budget, pretrained=True, checkpoint=None, log=print,
+        model=None):
     """Train one model; return its best state, its history, and the validation
     operating point that selected it.
 
     Lifted out of `main` so cross-validated threshold selection trains its folds
     with this recipe rather than a copy of it. A second copy is how a fold model
     quietly stops being the model the threshold is chosen for.
+
+    ``model`` is the ResNet-18 when not given. A caller may pass another module
+    that maps a patch batch to logits -- `scripts/dinov2_vpt.py` passes a frozen
+    backbone with prompts -- and it is then trained by this same loop, class
+    weights, augmentation and epoch selection included. Only parameters that
+    require a gradient reach the optimiser; every ResNet parameter does, so the
+    default path is unchanged.
     """
     torch.manual_seed(seed)
     np.random.seed(seed)
@@ -87,9 +95,11 @@ def fit(train_data, val_data, weight_source, label_names, *, epochs, batch_size,
     val_loader = DataLoader(val_data, batch_size=256)
     false_call_index = label_names.index("false_call")
 
-    model = build_model(len(label_names), pretrained=pretrained).to(device)
+    if model is None:
+        model = build_model(len(label_names), pretrained=pretrained)
+    model = model.to(device)
     criterion = nn.CrossEntropyLoss(weight=class_weights(weight_source).to(device))
-    optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
+    optimizer = torch.optim.AdamW([p for p in model.parameters() if p.requires_grad], lr=lr)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
 
     history: list[dict] = []
@@ -174,7 +184,9 @@ def main() -> int:
     train_set = PatchSet.load(args.patches / "trainval.npz")
     test_set = PatchSet.load(args.patches / "test.npz")
     label_names = train_set.label_names
-    false_call_index = label_names.index("false_call")
+    if "false_call" not in label_names:
+        # Before any training, not ten epochs in when `fit` first sweeps.
+        raise SystemExit(f"{args.patches} has no false_call class: {label_names}")
 
     train_idx, val_idx = split_by_image(train_set, args.val_fraction, args.seed)
     train_data = Subset(CandidateDataset(train_set, augment=True), train_idx)

@@ -56,7 +56,7 @@ https://github.com/user-attachments/assets/36cb4982-3504-4fc2-ace5-9be595d755b9
 | **資料** | [DeepPCB](https://github.com/tangsanli5201/DeepPCB) 官方切分：499 片測試板、7,322 個 candidate，41.2% 為真實缺陷。False call 由範本相減產生，非人工編造。 |
 | **結果** | **省去 55.6% 的人工複判**，門檻以 out-of-fold 選出，從未在報告它的那份切分上挑過。該門檻下 escape rate 為帶缺陷標籤 candidate 的 0.66%（95% 區間 0.43%–1.02%），對照 QP-110 的 0.5%——QP-110 是本專案自撰的工作指示，因為 IPC-A-610 受著作權保護——**在這個讀法下未達標**。若按缺陷計——QP-110 的原文寫法——複判模型漏判 0.35%，整線 0.51%。這是單一 seed：整套流程重跑五次，中位數為 0.50% 下省去 50.9%，範圍 49.0%–55.6%（[重跑會落在哪](#重跑會落在哪)）。 |
 | **技術** | Python 3.12 · PyTorch（MPS / CPU）· LangGraph · MCP · FastAPI + Jinja · SQLite · Ollama（`gpt-oss:20b`） |
-| **驗證** | 1,520 個測試，不需模型或 GPU。每個門檻皆引用出處；每個數字皆註明產生它的腳本。 |
+| **驗證** | 1,541 個測試，不需模型或 GPU。每個門檻皆引用出處；每個數字皆註明產生它的腳本。 |
 | **限制** | 照片板材上，相減前端無法通過第一道閘門；錫膏影像上，YOLO26n 偵測器可定位 91.6% 的缺陷，但排序只能省 1.2%。見[遷移](#遷移兩份新資料集)。 |
 
 ## 快速開始
@@ -101,7 +101,7 @@ board 00041208: 30 AOI candidates
 git clone https://github.com/lin891020/aoi-agent && cd aoi-agent && uv sync && uv run pytest
 ```
 
-大約 40 秒跑完 1,495 個不需要資料集的測試——不用 model、不用 GPU、不用資料集，除了
+大約 40 秒跑完 1,516 個不需要資料集的測試——不用 model、不用 GPU、不用資料集，除了
 wheel 之外什麼都不下載。所有量測腳本、容器與完整 CLI：[怎麼跑](#怎麼跑)。
 
 <details>
@@ -496,7 +496,7 @@ uv run python scripts/invariant_audit.py     # 這個專案自己的規則哪幾
 （`scripts/seed_store.py --migrate-only`），因為裡面的更正是下一輪訓練的標註，不該
 為了升級而重建掉。
 
-**1,520 個測試。** 其中 1,495 個在乾淨 checkout 上就能在 CI 跑完——它們自己在 tmpdir
+**1,541 個測試。** 其中 1,516 個在乾淨 checkout 上就能在 CI 跑完——它們自己在 tmpdir
 裡建 store、Chroma collection 與板子，並且把 model 換成 stub 而不是真的呼叫。另外 25
 個需要磁碟上有資料集，帶 `dataset` marker；CI 每次跑完會把它們逐一列名，因為一個綠勾
 蓋著一個悄悄縮小的測試集，正是那個 job 存在的理由。
