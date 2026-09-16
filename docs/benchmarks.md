@@ -8755,3 +8755,49 @@ The DINOv2 ViT-S/14 probe against the re-verifier, same machine, same session, e
 The ResNet-18 measured here on CPU is 2.50 ms at batch 1; the published figure is 2.5 ms (2026-08-24). The ratios above use this session's ResNet, not the published one.
 
 Contention before: Ollama none, processes 0; after: Ollama none, processes 0.
+
+## 2026-09-16 · commit f0e665c
+
+### Stronger pretrained features on the detector's crops: DINOv2 ViT-S/14 against the ResNet-18
+
+The question `scripts/dinov2_probe.py` asked on DeepPCB, asked again where the reason it lost there does not apply: these patches are 64 px RGB windows of photographed boards, which is the imagery this backbone was pretrained on. `dinov2_vits14` at `7764ea0f912e`, frozen, a 7-class logistic regression replaced by a 3-class one on standardised features. The candidate set is the 2026-08-28 entry's, unchanged: **60 test images, 332 annotated defects, 28 of them never boxed by the detector and outside every figure here**; 578 candidates (449 covering a defect, 129 false calls), **77.7% genuine defects**, so review removed cannot exceed 22.3% on any ordering. Three seeds for both models. 5 min. `scripts/dinov2_crops_report.py`.
+
+**Verdict, by the rule written before the run: Indistinguishable: the paired 95% interval on the difference is -1.7 to +1.5 points and contains zero, so sixty test images cannot separate these two orderings.**
+
+Two readings of every ordering, the same rule for both models. **oracle** is the best threshold at the ≤0.50% budget read on test -- how the published 2.8% was produced, so it is the like-for-like column and the verdict is read from it. **deployable** is chosen on each seed's own by-image validation split by the interval's upper bound (`threshold_cv.choose`), test read once.
+
+| model | seed | configuration | oracle review removed | oracle escape | deployable review removed | deployable escape |
+|---|---|---|---|---|---|---|
+| ResNet-18 | 0 | RGB crops | **0.3%** | 0.45% | 1.2% | 0.67% |
+| ResNet-18 | 1 | RGB crops | **1.2%** | 0.45% | 0.9% | 0.22% |
+| ResNet-18 | 2 | RGB crops | **2.8%** | 0.45% | 0.7% | 0.22% |
+| DINOv2 probe | 0 | stacked/centre | **0.7%** | 0.45% | 16.6% | 12.25% |
+| DINOv2 probe | 1 | stacked/centre | **1.0%** | 0.45% | 4.8% | 2.90% |
+| DINOv2 probe | 2 | stacked/centre | **1.0%** | 0.45% | 5.5% | 3.79% |
+| ResNet-18 | median | — | **1.2%** | — | 0.9% | — |
+| DINOv2 probe | median | — | **1.0%** | — | 5.5% | — |
+| ResNet-18, one seed (2026-08-28) | — | RGB crops | **2.8%** | 0.45% | — | — |
+| detector `1 − confidence`, one seed (2026-08-28) | — | — | **0.3%** | 0.45% | — | — |
+
+Ranges on the oracle column: ResNet-18 0.3%–2.8%, DINOv2 0.7%–1.0%.
+
+**Neither deployable threshold holds the budget on test, and the probe's misses by 24x.** A threshold chosen on the validation split escapes 0.67% on test for the ResNet-18 and 12.25% for the probe, against the 0.50% budget that chose both; the probe's deployable thresholds sit at 0.901–0.973 where the ResNet's sit at 0.997–1.000, so a cut that removes almost nothing on validation removes a sixth of the queue on test. The training crops are the detector's boxes on images it was trained on and the test crops are not, which is the shift `build_detector_patches.py` names; the probe reads it worse than the fine-tuned network does. On this queue the oracle column is the only one either model can be read from, which is a statement about the evidence and not a threshold anyone could ship.
+
+**The paired bootstrap.** 2000 resamples of the 60 test images with replacement, both orderings recomputed on the same resampled candidates, difference in review removed at the budget (DINOv2 − ResNet-18): median -0.2 points, 95% interval -1.7 to +1.5. Seed 0, fixed before the run; pairing is what removes board-to-board difficulty from the comparison.
+
+**Every DINOv2 configuration, read on test** -- exploration, not the result. The configuration that becomes DINOv2's result is chosen on out-of-fold trainval alone; choosing among these rows by their test column would be choosing on test. `per_channel` here means the three colour planes each read as a grey image, three forwards a candidate -- not the template/test/difference it means on DeepPCB.
+
+| configuration | dims | out-of-fold review removed, per seed | oracle review removed on test, per seed |
+|---|---|---|---|
+| per_channel/cls | 1152 | 1.1% / 0.8% / 0.9% | 0.2% / 0.3% / 0.3% |
+| per_channel/mean | 1152 | 0.8% / 0.5% / 0.8% | 0.3% / 0.3% / 0.3% |
+| per_channel/cls_mean | 2304 | 0.9% / 0.7% / 1.0% | 0.3% / 0.3% / 0.7% |
+| per_channel/centre | 1152 | 0.7% / 1.6% / 1.1% | 0.7% / 0.7% / 0.7% |
+| stacked/cls | 384 | 0.6% / 0.7% / 0.8% | 1.9% / 1.4% / 0.9% |
+| stacked/mean | 384 | 0.5% / 0.6% / 0.6% | 1.2% / 0.9% / 1.0% |
+| stacked/cls_mean | 768 | 0.8% / 1.1% / 0.7% | 1.9% / 2.4% / 1.2% |
+| stacked/centre | 384 | 1.2% / 1.6% / 1.7% | 0.7% / 1.0% / 1.0% |
+
+Per-class escapes at the deployable threshold, chosen seed: `Bad_podu` 55/353 / 13/353 / 17/353; `Bad_qiaojiao` 0/96 / 0/96 / 0/96.
+
+**What this does not establish.** One model size, the smallest, frozen rather than fine-tuned -- and the literature's own reading is that a linear probe is the weakest way to adapt these features, with prompt tuning well ahead of it, so this bounds frozen features and not the backbone. Sixty test images and about two escapes at the budget, which is why the verdict is an interval and not a difference of medians. The candidates come from the 600 px detector at its confidence floor and the training crops are its in-sample boxes, both as in the 2026-08-28 entry. The ResNet arm keeps that entry's recipe, including a checkpoint chosen on a single by-image validation split of 1,460 to 1,775 patches depending on the seed, where one patch is 0.06 to 0.07 points -- its seed spread here is partly that granularity. **None of these figures may be read against the DeepPCB curve**: different front end, different prevalence, and a 22.3% ceiling against that curve's 100%.
