@@ -8801,3 +8801,28 @@ Ranges on the oracle column: ResNet-18 0.3%–2.8%, DINOv2 0.7%–1.0%.
 Per-class escapes at the deployable threshold, chosen seed: `Bad_podu` 55/353 / 13/353 / 17/353; `Bad_qiaojiao` 0/96 / 0/96 / 0/96.
 
 **What this does not establish.** One model size, the smallest, frozen rather than fine-tuned -- and the literature's own reading is that a linear probe is the weakest way to adapt these features, with prompt tuning well ahead of it, so this bounds frozen features and not the backbone. Sixty test images and about two escapes at the budget, which is why the verdict is an interval and not a difference of medians. The candidates come from the 600 px detector at its confidence floor and the training crops are its in-sample boxes, both as in the 2026-08-28 entry. The ResNet arm keeps that entry's recipe, including a checkpoint chosen on a single by-image validation split of 1,460 to 1,775 patches depending on the seed, where one patch is 0.06 to 0.07 points -- its seed spread here is partly that granularity. **None of these figures may be read against the DeepPCB curve**: different front end, different prevalence, and a 22.3% ceiling against that curve's 100%.
+
+## 2026-09-17 · commit f0c153f
+
+### Pre-registered: which local model could replace `gpt-oss:20b`?
+
+Written and committed before any of the runs it governs; the adjudication entry that follows them reads its verdict from this rule and nothing added afterwards. The question is the README's "not yet done" model comparison: `gpt-oss:20b` is the model because it was the one that fit and could plan, not because anything was compared.
+
+**Arms**, run one model at a time and never interleaved, everything else unloaded between them: `gpt-oss:20b` as the control, **re-run the same night** rather than read from August's entries, because the planning prompt has changed since the last one; `qwen3:14b`; and `nemotron-3-nano:30b-a3b-q4_K_M` (text-only, 24 GB). `qwen2.5:14b` is not an arm: it is not a reasoning model and does not take `think`, so it cannot run the call contract the station makes.
+
+**Gate 0, per arm, before any eval.** One explanation call with `VERDICT_SCHEMA` and one planning call built by `build_planning_messages`, both at `think="low"`, and a second explanation to catch an eviction. Pass means both parse to the schema and the second call was not reloaded; resident size and swap growth are recorded. A model that fails is recorded as not runnable under the current contract and its evals are skipped -- nothing is adapted to it that night. The planning call uses the real prompt because a one-tool paraphrase, tried the same morning, made `gpt-oss:20b` return an empty body: a gate built on it would have skipped the control arm.
+
+**Evals, per arm:** `latency_report.py` in `zh-TW` and `en` (20 real reason-node calls each), `rationale_eval.py` in both languages (60 candidates each), and `analysis_eval.py --plan-only` on the independent seventy. Not run: `synthesis_eval.py` (50 min an arm) and `agent_eval.py` (the LLM decides nothing).
+
+**A candidate may replace `gpt-oss:20b` only if all four hold**, each against the same night's control:
+
+| | condition |
+|---|---|
+| a | gate 0 passed, and no steady-state call was served after an eviction (`Timing.was_reloaded`) |
+| b | **0 of 20** calls past the 60 s `EXPLANATION_DEADLINE_S` in each language; the deadline is not raised for the run |
+| c | `unsourced_figure` 0 of 120 and `no_explanation` 0 of 120, and in each language a clean count no lower than the control's minus 3 |
+| d | on the independent seventy, should-answer and should-refuse each no lower than the control's minus 3 -- the drift one model has shown against itself (refusals 22 → 21 on 2026-08-28, 15 → 17 on 2026-08-30) |
+
+All four and a lower median service time in both languages reads "better on this machine"; all four and slower reads "a viable alternative"; any one failing reads "not a replacement", naming which. Speed alone decides nothing.
+
+**Stated before the run:** the Nemotron 3 Nano model card lists English, German, Spanish, French, Italian and Japanese and no Chinese, and the station's line language defaults to `zh-TW`, so condition c's Chinese half is the expected failure for that arm. Gate 0 on the same morning also measured `qwen3:14b` at 24-40 s of service time a call against `gpt-oss:20b`'s 3-17 s on the same three calls; that is three calls, not a distribution, and it is why condition b is where that arm is expected to be decided.
