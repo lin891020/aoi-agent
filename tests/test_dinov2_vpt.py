@@ -111,6 +111,18 @@ def test_the_backbone_digest_sees_a_changed_tensor():
     assert vpt.backbone_digest(model.backbone) != before
 
 
+def test_the_starting_weights_come_from_the_seed_not_from_what_ran_before():
+    # A three-seed run draws seed 1's prompts after seed 0 has consumed the generator;
+    # the row must still be the one `--seeds 1` alone would start from.
+    first = vpt.seeded_model(_StubBackbone(), 7, K, seed=1)
+    torch.rand(1000)
+    second = vpt.seeded_model(_StubBackbone(), 7, K, seed=1)
+    other = vpt.seeded_model(_StubBackbone(), 7, K, seed=2)
+    assert torch.equal(first.prompts, second.prompts)
+    assert torch.equal(first.head.weight, second.head.weight)
+    assert not torch.equal(first.prompts, other.prompts)
+
+
 # ---- where the prompts go ------------------------------------------------------
 
 

@@ -62,7 +62,7 @@ scripts/                    gate_check, build_patches, train, report, seed_store
                             (and demo_script, the shot list it drives),
                             build_detector_patches, crop_reverifier_report,
                             mark_unattributed_resolutions, ...
-tests/                      1,541 tests; dataset-dependent ones behind `-m dataset`
+tests/                      1,542 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/deck/                  the project-journey deck (pptx, html with a self-test
                             mode, study guide) -- built from scripts/deck_content.py,
@@ -82,7 +82,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 1,541 tests, no GPU needed, no model called
+uv run pytest                                    # 1,542 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/gate_check.py --dataset hripcb --split aligned --limit 693 --thresholds 10 15 20 30 45 60 \
     --out eval/results/gate_check_hripcb_aligned.json   # the same gate on photographs (~2 min)
@@ -122,7 +122,7 @@ uv run python scripts/dinov2_crops_report.py     # the same question where the R
                                                  # verdict a paired bootstrap over the test images (~2.5 h)
 uv run python scripts/dinov2_vpt.py --max-steps 20  # time real deep-VPT steps and project the run first
 uv run python scripts/dinov2_vpt.py              # the probe's gap, adapted: deep prompts on frozen DINOv2,
-                                                 # trained by train.fit, three seeds (~3.8 h on MPS)
+                                                 # trained by train.fit, three seeds (~2.5 h on MPS)
 uv run python scripts/calibration_report.py      # does calibrating let a threshold survive a retrain? (~3 min)
 uv run python scripts/gap_decomposition.py       # why are the trainval boards easier? (~6 min)
 uv run python scripts/rationale_eval.py          # is the operator's rationale true of what the model was shown?
@@ -712,14 +712,19 @@ its validation-chosen threshold escapes 12.25% on test, 24x the budget. What
 neither run tests is adapting the backbone -- a linear probe is the weakest
 way to use these features, and prompt tuning is the one the literature ranks
 ahead of it.
-**Adapting it closes the gap.** 2026-09-17, `scripts/dinov2_vpt.py`: deep
+**Adapting it closes the gap at the median.** 2026-09-17, `scripts/dinov2_vpt.py`: deep
 visual prompt tuning, ten prompts before each of the twelve frozen blocks and a
 linear head, 48,775 trainable parameters, trained by `train.fit` on DeepPCB.
 Median oracle review removed **50.67%** over three seeds -- inside the
 ResNet-18's five-seed 49.73%-52.79%, so the pre-registered verdict is
-**matches**, and the probe's gap was the probe, not the backbone. Two things
-it does not buy: the seeds span **41.20%-52.20%**, wider than the ResNet's
-oracle range, with seed 2 selecting epoch 2; and the deployable column, chosen
+**matches** -- at the median, not on every run: seed 2 read **41.20%**, below
+the probe's best seed, so "the gap was the probe" is not established. The
+seeds span **41.20%-52.20%** with seed 2 selecting epoch 2, and that spread is
+not comparable to the ResNet's: until the fix that followed the run, the
+prompts and head were drawn before `train.fit` seeded the generator, so each
+row started from unseeded weights while the ResNet builds after the seed.
+Re-running the three seeds with seeded starts is what makes the spread a
+reading. Also not bought: the deployable column, chosen
 on one validation split by the interval's upper bound, removes only
 19.84%-32.85% at 0.07%-0.13% escape -- a selection far more conservative than
 the ResNet's five-fold one, so the two deployable figures are not comparable.
@@ -795,8 +800,9 @@ the reason node is entered. Re-measured at that deadline: median 8.6s, p90
 English; with the rationale written in Chinese (the default since 2026-08-29)
 the same measurement read median 31.9s, p90 35.9s, max 36.8s until
 2026-08-30, when the prompt was given the thresholds and asked for one
-paragraph: now Chinese median 16.7s / p90 19.7s and English 11.8s / 16.1s,
-0 of 20 past the deadline in either. A missing
+paragraph: Chinese median 16.7s / p90 19.7s and English 11.8s / 16.1s,
+0 of 20 past the deadline in either. The 2026-09-17 control run read Chinese
+9.0s / 10.8s and English 10.0s / 11.7s, again 0 of 20. A missing
 explanation is now `explanation_status`, shown to the operator as a notice
 rather than an exception name, and counted by `uv run python -m aoi_agent
 explanations`. Do not re-merge the two constants;

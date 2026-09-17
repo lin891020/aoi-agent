@@ -226,6 +226,17 @@ def speed_test(trainval: PatchSet, args, device, log=print) -> dict:
             "fits": projected_h <= TIMEBOX_HOURS}
 
 
+def seeded_model(backbone: nn.Module, n_classes: int, prompts: int, seed: int, **kwargs) -> VPTDinov2:
+    """The prompts and head drawn from ``seed``, before anything else draws.
+
+    `train.fit` seeds the generator, but only after it is handed a model; built
+    first, the starting weights came from whatever the process had drawn before,
+    so a seed's row was not the row that seed alone reproduces.
+    """
+    torch.manual_seed(seed)
+    return VPTDinov2(backbone, n_classes, prompts, **kwargs)
+
+
 def one_seed(trainval: PatchSet, test: PatchSet, seed: int, args, device, log=print) -> dict:
     from torch.utils.data import DataLoader
 
@@ -234,7 +245,7 @@ def one_seed(trainval: PatchSet, test: PatchSet, seed: int, args, device, log=pr
     train_data, val_data = _datasets(trainval, seed)
     backbone = probe.load_backbone(device)
     before = backbone_digest(backbone)
-    model = VPTDinov2(backbone, len(names), args.prompts, log_every=50, log=log)
+    model = seeded_model(backbone, len(names), args.prompts, seed, log_every=50, log=log)
     log(f"\n=== seed {seed}: {trainable_parameters(model):,} trainable parameters ===")
     began = time.perf_counter()
     model, history, _best = fit(
@@ -278,7 +289,8 @@ def render(record: dict) -> str:
         f"a linear head on the class token -- {rows[0]['trainable_parameters']:,} trainable "
         f"parameters against the ResNet-18's 11.2 million. Trained by `train.fit` with the "
         f"ResNet's split, augmentation, class weights, schedule and epoch rule; AdamW at "
-        f"{LR:g} and batch {BATCH}, both fixed before the run. Stacked input, 64 -> 224 "
+        f"{LR:g} and batch {BATCH}, both fixed before the run; prompts and head drawn from the "
+        f"seed, so a row restarts from the same weights (MPS kernels are not bit-exact). Stacked input, 64 -> 224 "
         f"bilinear. Same {DEEPPCB_TEST_CANDIDATES:,} test candidates, {DEEPPCB_TEST_DEFECTS:,} "
         f"defects. Seeds {', '.join(str(r['seed']) for r in rows)}, "
         f"{record['wall_minutes']:.0f} min on `{record['device']}`. `scripts/dinov2_vpt.py`.",
