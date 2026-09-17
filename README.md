@@ -670,9 +670,14 @@ something to put on a line tomorrow.
   problem and latency was never the constraint. Wiring one in means an ONNX
   path in `ReVerifier` and a threshold re-swept against the engine that will
   serve it.
-- **A model comparison** across `gpt-oss:20b`, `qwen3:14b` and `qwen2.5:14b`.
-  The reason node's latency is measured on one model; whether a smaller one
-  fits the explanation deadline and still writes a usable rationale is not.
+- **A model comparison past the deadline.** Measured on 2026-09-17 against a
+  rule committed first: `qwen3:14b` could not plan inside the 60 s explanation
+  deadline, and `nemotron-3-nano:30b-a3b` missed it on 17 of 20 Chinese calls
+  and all 20 English ones, so neither reached the quality checks and
+  `gpt-oss:20b` stays. Not measured: whether either writes a better rationale
+  when given the time, or runs inside it on a machine that holds a 24 GB model
+  beside everything else.
+  [The adjudication](docs/benchmarks.md#adjudication--which-local-model-could-replace-gpt-oss20b).
 - **What the sign-in deliberately leaves out.** TLS termination (the cookie is
   a bearer token and the process speaks plain HTTP) and any rate limit or
   lockout on the login route. Both are stated in `station/auth.py` rather than

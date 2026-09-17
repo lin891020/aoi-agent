@@ -574,9 +574,11 @@ torch 的 CPU build——CUDA wheel 會為了這個專案從來沒有過的硬�
   線、常駐記憶體少約 5 倍；沒接進站台是因為這台站台沒有記憶體問題，而延遲從來不是瓶
   頸。要接的話，需要在 `ReVerifier` 裡開一條 ONNX 路徑，並針對真正要服務的引擎重掃一
   次 threshold。
-- **跨 model 比較**：`gpt-oss:20b`、`qwen3:14b`、`qwen2.5:14b`。reason node 的延遲只
-  在一個 model 上量過；更小的 model 進不進得了 explanation deadline、還寫不寫得出堪用
-  的理由，沒有量。
+- **期限之外的跨 model 比較**：2026-09-17 照事先 commit 的規則量過。`qwen3:14b`
+  在 60 秒的 explanation deadline 內寫不出規劃；`nemotron-3-nano:30b-a3b` 中文 20 次
+  有 17 次超時、英文 20 次全部超時。兩個都沒走到品質檢查，所以繼續用 `gpt-oss:20b`。
+  沒量的：給它們足夠時間時說明會不會寫得比較好，以及在放得下 24 GB 模型的機器上能不能
+  在期限內跑完。[裁定](docs/benchmarks.md#adjudication--which-local-model-could-replace-gpt-oss20b)。
 - **登入刻意沒做的那些。** TLS（cookie 是 bearer token，process 講的是明文 HTTP），
   以及登入端點的速率限制或鎖定。兩件都寫在 `station/auth.py` 裡，不會在沒有寫下理由
   的情況下加上去。

@@ -712,6 +712,27 @@ its validation-chosen threshold escapes 12.25% on test, 24x the budget. What
 neither run tests is adapting the backbone -- a linear probe is the weakest
 way to use these features, and prompt tuning is the one the literature ranks
 ahead of it.
+**Adapting it closes the gap.** 2026-09-17, `scripts/dinov2_vpt.py`: deep
+visual prompt tuning, ten prompts before each of the twelve frozen blocks and a
+linear head, 48,775 trainable parameters, trained by `train.fit` on DeepPCB.
+Median oracle review removed **50.67%** over three seeds -- inside the
+ResNet-18's five-seed 49.73%-52.79%, so the pre-registered verdict is
+**matches**, and the probe's gap was the probe, not the backbone. Two things
+it does not buy: the seeds span **41.20%-52.20%**, wider than the ResNet's
+oracle range, with seed 2 selecting epoch 2; and the deployable column, chosen
+on one validation split by the interval's upper bound, removes only
+19.84%-32.85% at 0.07%-0.13% escape -- a selection far more conservative than
+the ResNet's five-fold one, so the two deployable figures are not comparable.
+Backbone hash unchanged on every seed.
+
+**The model is `gpt-oss:20b` because it is the one that fits the deadline, and
+that is now measured.** 2026-09-17, against a rule committed first (`77ac71a`):
+`qwen3:14b` could not plan inside the 60 s explanation deadline on the real
+planning prompt, and `nemotron-3-nano:30b-a3b-q4_K_M` missed it on 17 of 20
+Chinese calls and 20 of 20 English, with swap past 15 GB on this 32 GB machine,
+so neither reached condition c or d. The same-night control answered 23/42 on
+the independent seventy against 28/42 on 2026-08-30 -- named in the
+adjudication entry, not explained.
 
 **Every decision the store held before 2026-08-23 reads `unrecorded`** -- 9,140
 of them, in `model_digest` and now in `reviewer_auth` too, stamped by the
