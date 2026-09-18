@@ -9340,3 +9340,27 @@ The question the linear probe left open: is DINOv2 worse than the ResNet-18 on D
 The oracle column is each seed's best threshold at the ≤0.50% budget read on test: the column both comparators have at this cost, and not a deployment number. The deployable column is chosen on the seed's own validation split by the interval's upper bound and decides nothing. Three seeds here against the ResNet's five.
 
 **What this does not establish.** Deep prompts only, at one prompt length, one learning rate and one batch size, none searched; shallow prompts, LoRA and full fine-tuning are untested. Stacked input only -- the probe's better configuration on this data was per-channel, which is three backward passes a candidate. The smallest backbone. And DeepPCB only.
+
+## 2026-09-18 · commit c779272
+
+### The detector's crops, adapted: deep visual prompt tuning on DINOv2 ViT-S/14
+
+The sentence the 2026-09-16 crops entry closed on: a linear probe bounds frozen features and not the backbone. Same candidates, same ResNet-18 checkpoints, same two columns and the same paired bootstrap; what changes is that the backbone is adapted -- 10 prompt tokens before each of its 12 frozen blocks and a linear head on the class token, 47,235 trainable parameters, trained by `train.fit` at AdamW 0.001, batch 64, 10 epochs, all fixed before the run. **60 test images, 578 candidates (449 covering a defect, 129 false calls), 77.7% genuine defects**, so review removed cannot exceed 22.3% on any ordering. Seeds 0, 1, 2, 130 min on `mps`. `scripts/dinov2_vpt_crops.py`.
+
+**Verdict, by the rule written before the run: Indistinguishable: the paired 95% interval on the difference is -4.6 to +3.5 points and contains zero, so sixty test images cannot separate adapting this backbone from the ResNet-18.**
+
+| model | seed | best epoch | oracle review removed | oracle escape | deployable review removed | deployable escape | backbone unchanged |
+|---|---|---|---|---|---|---|---|
+| DINOv2 + deep prompts | 0 | 9 | **4.3%** | 0.4% | 4.5% | 0.7% | yes |
+| DINOv2 + deep prompts | 1 | 1 | **0.7%** | 0.2% | 4.7% | 3.6% | yes |
+| DINOv2 + deep prompts | 2 | 7 | **3.8%** | 0.4% | 0.0% | 0.0% | yes |
+| ResNet-18 (2026-09-16 checkpoints) | 0 | — | **0.3%** | 0.4% | 1.2% | 0.7% | — |
+| ResNet-18 (2026-09-16 checkpoints) | 1 | — | **1.2%** | 0.4% | 0.9% | 0.2% | — |
+| ResNet-18 (2026-09-16 checkpoints) | 2 | — | **2.8%** | 0.4% | 0.7% | 0.2% | — |
+| DINOv2 + deep prompts | median | — | **3.8%** | — | — | — | — |
+| ResNet-18 | median | — | **1.2%** | — | — | — | — |
+| DINOv2 linear probe, three seeds (2026-09-16) | — | — | **0.7%–1.0%** | — | — | — | — |
+
+**The paired bootstrap.** 2,000 resamples of the 60 test images with replacement, both orderings recomputed on the same resampled candidates, difference in review removed at the budget (deep prompts − ResNet-18): median +0.9 points, 95% interval -4.6 to +3.5. Read on seed 2, whose oracle is the median of the seeds, against that same seed's ResNet-18 -- the two arms share its by-image validation split.
+
+**What this does not establish.** Deep prompts only, at one prompt length, one learning rate and one batch size, none searched; shallow prompts, LoRA and full fine-tuning are untested. The smallest backbone. Three seeds. And the evidence itself is thin: sixty test images and about two escapes at the budget, which is why the verdict is an interval rather than a difference of medians, and why it can rule out a large effect and nothing smaller. The candidates come from the 600 px detector at its confidence floor and the training crops are its in-sample boxes, as in the 2026-08-28 entry. **None of these figures may be read against the DeepPCB curve**: different front end, different prevalence, and a ceiling of 22.3% against that curve's 100%.

@@ -733,6 +733,19 @@ chosen on one validation split by the interval's upper bound removes
 28.22%-40.90% at 0.13%-0.30% escape, a selection more conservative than the
 ResNet's five-fold one, so the two deployable columns are not comparable.
 Backbone hash unchanged on every seed, both runs.
+**On the detector's crops the same prompts settle nothing, because the queue
+cannot.** 2026-09-18, `scripts/dinov2_vpt_crops.py`: the same recipe on the
+2026-09-16 candidates, against that entry's own ResNet-18 checkpoints and read
+by its paired bootstrap. Oracle review removed 4.3%, 0.7%, 3.8% against the
+ResNet's 0.3%, 1.2%, 2.8% -- medians 3.8% and 1.2%, and both above the linear
+probe's 0.7%-1.0%, so adapting the backbone moves this ordering the way it moved
+DeepPCB's. The verdict is still **indistinguishable**: the paired 95% interval
+is -4.6 to +3.5 points, wider than the probe's -1.7 to +1.5 because these seeds
+spread further, and sixty test images with about two escapes at the budget
+resolve a large effect and nothing smaller. The seed that wins is not the seed
+the ResNet wins on either. What this rules out is the reading the crops entry
+left open -- that a linear probe was hiding what these features can do here --
+and what it cannot rule out is anything the size of the difference it measured.
 
 **The model is `gpt-oss:20b` because it is the one that fits the deadline, and
 that is now measured.** 2026-09-17, against a rule committed first (`77ac71a`):
