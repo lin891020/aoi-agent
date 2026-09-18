@@ -9320,3 +9320,23 @@ Read against the rule pre-registered in `77ac71a` ("Pre-registered: which local 
 
 **Correction — the deep-VPT rows are not reproducible by their seed.** `VPTDinov2` drew its prompts and head when it was built, and `one_seed` built it before `train.fit` called `torch.manual_seed`, so each seed started from weights the process had not seeded (two fresh processes draw different values from torch's default generator). The median and its verdict are what was measured; what does not hold is that `--seeds 2` restarts seed 2's 41.20% run, or that the 41.20%-52.20% spread compares with the ResNet-18's, which builds its model after seeding. The same entry's wall time is 147 min, and the command reference quoting ~3.8 h was the 20-step projection. Fixed by `seeded_model`, held by `test_the_starting_weights_come_from_the_seed_not_from_what_ran_before`; the three seeds are re-run with seeded starts and appended as their own entry, and this one stays as measured.
 
+## 2026-09-17 · commit 3592a4d
+
+### Stronger pretrained features, adapted: deep visual prompt tuning on DINOv2 ViT-S/14
+
+The question the linear probe left open: is DINOv2 worse than the ResNet-18 on DeepPCB because of the backbone, or because a linear probe is the weakest way to use it? `dinov2_vits14` at `7764ea0f912e`, frozen (every backbone tensor hashed before and after each seed), 10 prompt tokens before each of its 12 blocks and a linear head on the class token -- 48,775 trainable parameters against the ResNet-18's 11.2 million. Trained by `train.fit` with the ResNet's split, augmentation, class weights, schedule and epoch rule; AdamW at 0.001 and batch 64, both fixed before the run; prompts and head drawn from the seed, so a row restarts from the same weights (MPS kernels are not bit-exact). Stacked input, 64 -> 224 bilinear. Same 7,322 test candidates, 3,018 defects. Seeds 0, 1, 2, 122 min on `mps`. `scripts/dinov2_vpt.py`.
+
+**Verdict, by the rule written before the run: Matches the ResNet-18: median oracle review removed 51.39% is inside its five seeds' 49.73%-52.79%.**
+
+| seed | best epoch | oracle review removed | oracle escape | deployable review removed | deployable escape | backbone unchanged | minutes |
+|---|---|---|---|---|---|---|---|
+| 0 | 10 | **50.38%** | 0.50% | 28.22% | 0.13% | yes | 39 |
+| 1 | 10 | **51.39%** | 0.50% | 37.38% | 0.20% | yes | 40 |
+| 2 | 5 | **51.58%** | 0.50% | 40.90% | 0.30% | yes | 40 |
+| **median** | — | **51.39%** | — | — | — | — | — |
+| ResNet-18, five seeds (2026-08-31) | — | 49.73%–52.79% | — | — | — | — | — |
+| DINOv2 linear probe, three seeds (2026-09-15) | — | 39.89%–42.04% | — | — | — | — | — |
+
+The oracle column is each seed's best threshold at the ≤0.50% budget read on test: the column both comparators have at this cost, and not a deployment number. The deployable column is chosen on the seed's own validation split by the interval's upper bound and decides nothing. Three seeds here against the ResNet's five.
+
+**What this does not establish.** Deep prompts only, at one prompt length, one learning rate and one batch size, none searched; shallow prompts, LoRA and full fine-tuning are untested. Stacked input only -- the probe's better configuration on this data was per-channel, which is three backward passes a candidate. The smallest backbone. And DeepPCB only.

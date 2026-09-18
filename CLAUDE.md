@@ -720,18 +720,19 @@ visual prompt tuning, ten prompts before each of the twelve frozen blocks and a
 linear head, 48,775 trainable parameters, trained by `train.fit` on DeepPCB.
 Median oracle review removed **50.67%** over three seeds -- inside the
 ResNet-18's five-seed 49.73%-52.79%, so the pre-registered verdict is
-**matches** -- at the median, not on every run: seed 2 read **41.20%**, below
-the probe's best seed, so "the gap was the probe" is not established. The
-seeds span **41.20%-52.20%** with seed 2 selecting epoch 2, and that spread is
-not comparable to the ResNet's: until the fix that followed the run, the
-prompts and head were drawn before `train.fit` seeded the generator, so each
-row started from unseeded weights while the ResNet builds after the seed.
-Re-running the three seeds with seeded starts is what makes the spread a
-reading. Also not bought: the deployable column, chosen
-on one validation split by the interval's upper bound, removes only
-19.84%-32.85% at 0.07%-0.13% escape -- a selection far more conservative than
-the ResNet's five-fold one, so the two deployable figures are not comparable.
-Backbone hash unchanged on every seed.
+**matches**, and the probe's gap was the probe rather than the backbone. That
+reading is the 2026-09-18 re-run's, not the first one's: the prompts and head
+were drawn before `train.fit` seeded the generator, so the three rows published
+that morning started from unseeded weights and spanned 41.20%-52.20%, a spread
+that compared with nothing (the ResNet builds its model after the seed). With
+seeded starts the same recipe reads **50.38%, 51.39%, 51.58%** -- 1.2 points
+across three seeds against the ResNet's 3.1 -- so the spread was mostly the
+initialisation, and the 41.20% row that made "the gap was the probe" arguable
+was too. What it still does not buy is a deployable figure: the threshold
+chosen on one validation split by the interval's upper bound removes
+28.22%-40.90% at 0.13%-0.30% escape, a selection more conservative than the
+ResNet's five-fold one, so the two deployable columns are not comparable.
+Backbone hash unchanged on every seed, both runs.
 
 **The model is `gpt-oss:20b` because it is the one that fits the deadline, and
 that is now measured.** 2026-09-17, against a rule committed first (`77ac71a`):
