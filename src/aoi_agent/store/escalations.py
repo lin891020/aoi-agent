@@ -35,6 +35,16 @@ RESOLVED = "resolved"
 #: how often that happened.
 DEFERRED = "deferred"
 
+#: The states in which a region is still waiting on a person.
+#:
+#: ``dispositions.OPEN_STATUSES`` is the same set read from the board's side and
+#: says why a new queue state has to be checked against every rule that *reads*
+#: queue state. This is one of those rules arriving late: ``explanation_counts``
+#: reported under the heading "waiting on a person" and counted `pending` only,
+#: so a region an operator handed back -- still waiting, and now on a senior --
+#: left the figure at the moment somebody said they could not judge it.
+OPEN_STATUSES = (PENDING, DEFERRED)
+
 #: A queue entry closed as answered whose candidate carries no human decision.
 #:
 #: Not a state the station can reach: ``resume_review`` writes the decision
@@ -307,6 +317,11 @@ def pending_count() -> int:
 def pending_unexplained_count() -> int:
     """Of those, how many carry no written rationale.
 
+    `pending` only, and deliberately: this backs the queue page's "N of the M
+    waiting here", so a count including the handed-back regions listed on
+    another page would not match the list beside it. The figure that is about
+    every region waiting on a person is ``explanation_counts``.
+
     Counted over the whole queue for the same reason as above: the point of the
     figure is to make a shift in which the model wrote nothing visible, and a
     version of it computed over the first screenful cannot see one.
@@ -410,7 +425,7 @@ def explanation_counts() -> dict[str, int]:
     with session_factory()() as session:
         rows = session.execute(
             select(Escalation.explanation_status, func.count(Escalation.id))
-            .where(Escalation.status == PENDING)
+            .where(Escalation.status.in_(OPEN_STATUSES))
             .group_by(Escalation.explanation_status)
         ).all()
         return {status or "unknown": count for status, count in rows}

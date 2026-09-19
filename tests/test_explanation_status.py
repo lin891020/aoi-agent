@@ -295,6 +295,26 @@ def test_the_queue_count_is_scoped_to_what_is_still_waiting(store, stub_tools): 
     assert escalations.explanation_counts() == {}
 
 
+def test_a_handed_back_region_is_still_waiting_on_a_person(store, stub_tools):  # noqa: F811
+    """`deferred` is an open queue state, and the CLI's line says "waiting on a person".
+
+    The count read `pending` only, so a region an operator handed back -- one
+    that is by definition still waiting, and waiting on a *senior* -- left the
+    figure the moment it was declined. The queue page's own count stays scoped
+    to the rows it lists, which is what its sentence says.
+    """
+    graph = flow.build_graph(SlowClient(), InMemorySaver())
+    service.start_review(graph, REFERENCE)
+    assert escalations.explanation_counts() == {"timed_out": 1}
+
+    escalations.defer(service.thread_for(REFERENCE), "mike", "signed_in", "cannot read it")
+    assert escalations.explanation_counts() == {"timed_out": 1}
+    assert escalations.pending_unexplained_count() == 0
+
+    escalations.resolve_escalation(REFERENCE)
+    assert escalations.explanation_counts() == {}
+
+
 # ---- the column reaching a store that already has rows -------------------
 
 
