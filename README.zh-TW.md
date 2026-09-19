@@ -219,6 +219,37 @@ DeepPCB 已對位、已二值化，等於把現實產線兩個最大的 false ca
 · [偵測器](docs/benchmarks.md#detector-front-end--yolo26n-on-pcb-aoi-read-at-the-escape-budget)
 · [crop 複判器](docs/benchmarks.md#crop-re-verifier--the-resnet-18-over-the-detectors-boxes-against-the-detectors-own-ordering)
 
+## 更強的預訓練特徵，問了四次
+
+ResNet-18 從 ImageNet 初始化開始訓練，那是 2015 年的答案，所以該問的是：換一個
+現代的自監督 backbone 會不會比較好。**DINOv2 ViT-S/14 凍結不訓練，在兩份資料集上、
+用它可以被使用的兩種方式各量過一次**——每一次的判定都在跑之前先 commit。
+
+| backbone 怎麼用 | DeepPCB，二值化差異圖 | 偵測器的裁切，照片 |
+|---|---|---|
+| **凍結 + 線性探針** | **比較差**：中位數省 42.5%，ResNet-18 是 49.0%–55.6% | **分不出來**：中位數 1.0% 對 1.2%，配對區間 −1.7 到 +1.5 個百分點 |
+| **凍結 + 深層 prompt**（VPT：12 個 block 前各 10 個 token，48,775 個可訓練參數） | **追平**：中位數 51.4%，三個 seed 落在 50.4%–51.6%，在 ResNet 的 49.7%–52.8% 之內 | **分不出來**：中位數 3.8% 對 1.2%，配對區間 −4.6 到 +3.5 個百分點 |
+
+這確定了三件事，還有一件沒確定：
+
+- **弱的是線性探針，不是 backbone。** 換成 prompt tuning 之後，DeepPCB 從 42.5% 變
+  51.4%，裁切從 1.0% 變 3.8%，而 backbone 的 SHA-256 每個 seed 前後都沒變——所以第
+  一次的判定框住的是「這種用法」，不是這些特徵本身。
+- **調適之後它追平 ResNet-18，代價是 16 倍**：一個 candidate 41 ms 對 2.5 ms，換到
+  的曲線還在 ResNet 自己的 seed 範圍裡。沒有任何東西被換掉，站台繼續用 ResNet-18。
+- **60 張測試影像排不出裁切那條佇列上誰比較好**，不管中位數往哪邊倒。那裡的預算只容
+  得下大約兩次漏檢，所以判定是對影像做配對自助重抽，兩次的區間都包含 0。
+- 沒確定的：一種 backbone 大小、只做深層 prompt、一個 prompt 長度、一個 learning
+  rate、一個 batch size，全部沒有搜尋——LoRA 與完整微調沒試。第一次的深層 VPT 還讀到
+  41.2%–52.2% 的 seed 範圍，直到 prompt 改成在設定 seed *之後* 才抽；上表是重新跑的
+  那一次，而那個更正是被記下來，不是被覆蓋掉。
+
+→ [線性探針](docs/benchmarks.md#stronger-pretrained-features-dinov2-vit-s14-frozen-with-a-linear-probe)
+· [每個 candidate 的成本](docs/benchmarks.md#stronger-pretrained-features-what-a-dinov2-probe-costs-per-candidate)
+· [在裁切上](docs/benchmarks.md#stronger-pretrained-features-on-the-detectors-crops-dinov2-vit-s14-against-the-resnet-18)
+· [深層 prompt](docs/benchmarks.md#stronger-pretrained-features-adapted-deep-visual-prompt-tuning-on-dinov2-vit-s14-1)
+· [裁切上的深層 prompt](docs/benchmarks.md#the-detectors-crops-adapted-deep-visual-prompt-tuning-on-dinov2-vit-s14)
+
 ## 怎麼運作的
 
 一個標記區域，從頭到尾。圖由 `scripts/render_diagrams.py` 讀取 `graph/flow.py` 的
@@ -567,6 +598,11 @@ torch 的 CPU build——CUDA wheel 會為了這個專案從來沒有過的硬�
   拉到 0.712，但這個專案在看的那個數字*對半砍*，1.2% 掉到 0.6%——因為 S0 這一關要的
   就是靈敏度。沒試過的：用一個*沒看過*訓練影像的偵測器產生裁切（在留出的 fold 上訓
   第二個偵測器）；以及同一片板的第二次拍攝——那是唯一能給這條線一張範本的東西。
+- **再往下調預訓練 backbone。** 深層 prompt 在 DeepPCB 上追平 ResNet-18，代價是每個
+  candidate 貴 16 倍，這就是沒有換掉它的原因；沒測的是：更大的 backbone、LoRA、完整
+  微調，會不會從「追平」變成「贏過」，以及在訓練裁切來自偵測器自己看過的框時還撐不撐
+  得住。參數量真正會有差的場景——幾百片有標註的板子，而不是一萬兩千張 patch——正是這份
+  資料集問不出來的那一個。
 - **從作業員更正回頭 retrain。** 判定歷史有記（`uv run python -m aoi_agent
   corrections`），每一列寫得出是誰做的、那個名字怎麼建立的，所以下一輪可以只吃
   `signed_in`，或把其他的權重壓低。還沒有東西去用它；改變的是這個選擇存在了。

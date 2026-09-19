@@ -253,6 +253,44 @@ seed. `scripts/transfer_report.py`, `scripts/gate_check.py --dataset hripcb` and
 · [the detector](docs/benchmarks.md#detector-front-end--yolo26n-on-pcb-aoi-read-at-the-escape-budget)
 · [the crop re-verifier](docs/benchmarks.md#crop-re-verifier--the-resnet-18-over-the-detectors-boxes-against-the-detectors-own-ordering)
 
+## Stronger pretrained features, asked four ways
+
+A ResNet-18 trained from an ImageNet init is a 2015 answer, so the obvious
+question is whether a modern self-supervised backbone does better. **DINOv2
+ViT-S/14, frozen, was measured on both datasets and in both of the ways it can
+be used** — every verdict committed before its run.
+
+| how the backbone is used | DeepPCB, binarised differences | the detector's crops, photographs |
+|---|---|---|
+| **frozen + a linear probe** | **worse**: median 42.5% review removed against the ResNet-18's 49.0%–55.6% | **indistinguishable**: median 1.0% against 1.2%, paired interval −1.7 to +1.5 points |
+| **frozen + deep prompts** (VPT: 10 tokens before each of 12 blocks, 48,775 trainable parameters) | **matches**: median 51.4%, three seeds spanning 50.4%–51.6%, inside the ResNet's 49.7%–52.8% | **indistinguishable**: median 3.8% against 1.2%, paired interval −4.6 to +3.5 points |
+
+Three things this settles, and one it does not:
+
+- **A linear probe was the weak part, not the backbone.** Prompt tuning moved
+  DeepPCB from 42.5% to 51.4% and the crops from 1.0% to 3.8%, with the
+  backbone's SHA-256 unchanged on every seed — so the first verdict bounded a
+  way of using these features, not the features.
+- **Adapted, it matches the ResNet-18 and costs 16× more**: 41 ms a candidate
+  against 2.5 ms, for a curve inside the ResNet's own seed range. Nothing is
+  swapped; the station keeps the ResNet-18.
+- **Sixty test images cannot rank the two orderings on the crops**, whichever
+  way the medians fall. The budget admits about two escapes there, so the
+  verdict is a paired bootstrap over images and its interval contains zero both
+  times.
+- What it does not settle: one backbone size, deep prompts only at one prompt
+  length, one learning rate, one batch size, none searched — and LoRA and full
+  fine-tuning untested. The first deep-VPT run also read a seed spread of
+  41.2%–52.2% until its prompts were drawn *after* the seed rather than before;
+  the re-run above is the seeded one, and the correction is recorded rather
+  than overwritten.
+
+→ [the probe](docs/benchmarks.md#stronger-pretrained-features-dinov2-vit-s14-frozen-with-a-linear-probe)
+· [per-candidate cost](docs/benchmarks.md#stronger-pretrained-features-what-a-dinov2-probe-costs-per-candidate)
+· [on the crops](docs/benchmarks.md#stronger-pretrained-features-on-the-detectors-crops-dinov2-vit-s14-against-the-resnet-18)
+· [deep prompts](docs/benchmarks.md#stronger-pretrained-features-adapted-deep-visual-prompt-tuning-on-dinov2-vit-s14-1)
+· [deep prompts on the crops](docs/benchmarks.md#the-detectors-crops-adapted-deep-visual-prompt-tuning-on-dinov2-vit-s14)
+
 ## How it works
 
 One flagged region, end to end.
@@ -659,6 +697,14 @@ something to put on a line tomorrow.
   seen the training images (a second detector on a held-out fold); and a second
   acquisition of the same board, which is the only thing that would give this
   line a template.
+- **Adapting the pretrained backbone further.** Deep prompts match the
+  ResNet-18 on DeepPCB at 16x the per-candidate cost, which is the reason
+  nothing is swapped; what is untested is whether a larger backbone, LoRA or
+  full fine-tuning separates from the ResNet rather than matching it, and
+  whether any of them holds up where the training crops are a detector's
+  in-sample boxes. The case where the parameter count would matter — a few
+  hundred labelled boards rather than twelve thousand patches — is the one this
+  dataset cannot pose.
 - **Retraining from operator corrections.** The decision history records them
   (`uv run python -m aoi_agent corrections`) and every row names who made it
   and how that name was established, so a round can take `signed_in` labels
