@@ -19,7 +19,6 @@ from sqlalchemy import func, select
 from aoi_agent.store.boards import session_factory
 from aoi_agent.store.models import Board, CandidateRecord, Deferral, Escalation
 
-
 #: The queue's two ordinary states, and the one that is a mark on the record.
 PENDING = "pending"
 RESOLVED = "resolved"

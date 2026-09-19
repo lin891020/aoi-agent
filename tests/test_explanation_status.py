@@ -24,11 +24,13 @@ from datetime import datetime
 
 import httpx
 import pytest
+from conftest import IN_THE_EXPLANATION_BAND, read_in, sign_in
 from fastapi.testclient import TestClient
 from langgraph.checkpoint.memory import InMemorySaver
+from test_graph import STUB_DIGEST, StubClient, stub_tools  # noqa: F401  (fixture)
 
-from conftest import IN_THE_EXPLANATION_BAND, read_in, sign_in
 from aoi_agent.graph import flow
+from aoi_agent.provenance import DecisionProvenance, ReviewerIdentity
 from aoi_agent.station import app as station_app
 from aoi_agent.station import service
 from aoi_agent.store import boards, escalations
@@ -39,8 +41,6 @@ from aoi_agent.store.models import (
     create_all,
     make_session_factory,
 )
-from aoi_agent.provenance import DecisionProvenance, ReviewerIdentity
-from test_graph import STUB_DIGEST, StubClient, stub_tools  # noqa: F401  (fixture)
 
 #: An automated decision written straight into the store still has to say
 #: what produced it -- these tests are about the explanation column, not a
@@ -77,7 +77,11 @@ def store(tmp_path, monkeypatch):
     with factory() as session:
         board = Board(
             stem=STEM, split="test", lot_id="LOT-2201", line_id="L2",
-            machine_id="M22", shift="A", inspected_at=datetime(2026, 8, 20, 9, 0),
+            machine_id="M22", shift="A",
+            # Naive on purpose: the column stores UTC without an offset, which is the
+            # rule docs/architecture.md states, so an aware value here would not be
+            # what the station reads back.
+            inspected_at=datetime(2026, 8, 20, 9, 0),  # noqa: DTZ001
         )
         session.add(board)
         session.flush()
@@ -328,6 +332,7 @@ def test_the_column_is_added_to_a_store_that_predates_it(tmp_path):
     builds the old schema explicitly rather than trusting that it would.
     """
     from sqlalchemy import create_engine, inspect, text
+
     from aoi_agent.store.models import create_all
 
     url = f"sqlite:///{tmp_path / 'old.db'}"
@@ -355,6 +360,7 @@ def test_the_column_is_added_to_a_store_that_predates_it(tmp_path):
 def test_migrating_twice_changes_nothing(tmp_path):
     """`seed_store.py --migrate-only` is something a person runs when unsure."""
     from sqlalchemy import create_engine, inspect
+
     from aoi_agent.store.models import _add_missing_columns, create_all
 
     url = f"sqlite:///{tmp_path / 'fresh.db'}"
