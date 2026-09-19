@@ -9364,3 +9364,21 @@ The sentence the 2026-09-16 crops entry closed on: a linear probe bounds frozen 
 **The paired bootstrap.** 2,000 resamples of the 60 test images with replacement, both orderings recomputed on the same resampled candidates, difference in review removed at the budget (deep prompts − ResNet-18): median +0.9 points, 95% interval -4.6 to +3.5. Read on seed 2, whose oracle is the median of the seeds, against that same seed's ResNet-18 -- the two arms share its by-image validation split.
 
 **What this does not establish.** Deep prompts only, at one prompt length, one learning rate and one batch size, none searched; shallow prompts, LoRA and full fine-tuning are untested. The smallest backbone. Three seeds. And the evidence itself is thin: sixty test images and about two escapes at the budget, which is why the verdict is an interval rather than a difference of medians, and why it can rule out a large effect and nothing smaller. The candidates come from the 600 px detector at its confidence floor and the training crops are its in-sample boxes, as in the 2026-08-28 entry. **None of these figures may be read against the DeepPCB curve**: different front end, different prevalence, and a ceiling of 22.3% against that curve's 100%.
+
+## 2026-09-19 · commit e0eb966
+
+### A third reading of the independent seventy, to price the drift
+
+The 2026-09-17 control answered **23/42** against the 2026-08-30 run's **28/42** and the adjudication named the drop without explaining it. Nothing in this repository had moved between the two: the planner prompt was last changed on 2026-08-30 (`68c7e23`, before the first of the two runs), the registry is unchanged, the store still holds 9 days, `temperature` is 0, and `gpt-oss:20b`'s manifest on this machine is dated 2026-08-16. So the question is whether 23 was a regression or the low end of what one model re-run produces, and the only way to answer it is a third reading. Same fixture, same `--plan-only --repeats 3`, quiet machine, **read only -- this run appended nothing of its own and is reported here**.
+
+| run | should answer | should refuse | determinism |
+|---|---|---|---|
+| 2026-08-30 | 28/42 | 18/28 | 59/70 |
+| 2026-09-17 | 23/42 | 17/28 | 64/70 |
+| **2026-09-19** | **26/42** | **17/28** | **64/70** |
+
+**The five questions the 09-17 run lost, read against 09-19.** A13 (「最近 short 有比較多嗎?」, refused all three repeats on 09-17) and A35 (「open 跟 short 哪一個問題比較大?」, planned `query_machine_stats` where the grader wants `query_defect_history`) both come back; S17 comes back as well, so the third run is 26. A09, A23 and A25 miss in both post-08-30 runs: A09 and A23 drop one of the filters the question names -- `line_id` when a machine is also named -- and A25 plans `query_defect_history` for a question about *which machine*, which only `query_machine_stats` resolves. Nothing that was correct on 09-17 broke on 09-19.
+
+**What this says.** The drift baseline this project has been quoting -- ±3 questions, established from a single re-run on 2026-08-28 -- is too narrow: three readings of one unchanged model on one machine span **23-28 answered**, five questions, and two of the five move on their own between consecutive runs. A difference of that size between two runs is therefore not evidence of a change, and the 09-17 entry's "outside the ±3 drift" reads as a finding it cannot support. What survives as a candidate defect is the 3 questions missed in both later runs, and their shape is one thing: a plan that keeps the class and the machine and drops the line, or picks the wrong one of the two aggregate tools. Neither is addressed, and the fixture is not edited.
+
+**What this does not establish.** Three runs of one model on one machine, all with `think="low"` and `temperature` 0; nothing here identifies *where* the nondeterminism comes from (the MXFP4 kernels, the offload split, the batching) and this project cannot see inside Ollama to find out. The comparison against 2026-08-30 is against a published table rather than a stored per-question file, so it is exact on identifiers and scores and nothing else. The verdict of the 2026-09-17 model comparison does not move: it compares candidates against a control measured the same night, which is the reading this variance is an argument for.

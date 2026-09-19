@@ -753,8 +753,14 @@ that is now measured.** 2026-09-17, against a rule committed first (`77ac71a`):
 planning prompt, and `nemotron-3-nano:30b-a3b-q4_K_M` missed it on 17 of 20
 Chinese calls and 20 of 20 English, with swap past 15 GB on this 32 GB machine,
 so neither reached condition c or d. The same-night control answered 23/42 on
-the independent seventy against 28/42 on 2026-08-30 -- named in the
-adjudication entry, not explained.
+the independent seventy against 28/42 on 2026-08-30. **A third reading on
+2026-09-19 answered 26/42 with nothing in the repository changed** -- same
+prompt (last touched 2026-08-30), same registry, same 9-day store,
+`temperature` 0, the model's manifest dated 2026-08-16 -- so three runs of one
+model span 23-28 and the ±3 drift baseline, taken from a single re-run, is too
+narrow to call a five-question move a change. Two of the five come back on the
+third run; the three that do not (A09, A23, A25) drop a named filter or pick
+the wrong aggregate tool, and are not addressed.
 
 **Every decision the store held before 2026-08-23 reads `unrecorded`** -- 9,140
 of them, in `model_digest` and now in `reviewer_auth` too, stamped by the
