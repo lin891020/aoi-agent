@@ -62,7 +62,7 @@ scripts/                    gate_check, build_patches, train, report, seed_store
                             (and demo_script, the shot list it drives),
                             build_detector_patches, crop_reverifier_report,
                             mark_unattributed_resolutions, ...
-tests/                      1,563 tests; dataset-dependent ones behind `-m dataset`
+tests/                      1,587 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/deck/                  the project-journey deck (pptx, html with a self-test
                             mode, study guide) -- built from scripts/deck_content.py,
@@ -82,7 +82,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 1,563 tests, no GPU needed, no model called
+uv run pytest                                    # 1,587 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/gate_check.py --dataset hripcb --split aligned --limit 693 --thresholds 10 15 20 30 45 60 \
     --out eval/results/gate_check_hripcb_aligned.json   # the same gate on photographs (~2 min)
@@ -93,6 +93,9 @@ uv run python scripts/build_detector_patches.py  # RGB crops of the detector's b
 uv run python scripts/train.py --patches data/patches_pcbaoi --out models/pcbaoi_reverifier
                                                  # the same ResNet-18, minus the template channel
 uv run python scripts/crop_reverifier_report.py  # its ordering against the detector's, same boxes
+uv run python scripts/detector_fold_report.py    # is the crop threshold's shift the in-sample boxes?
+                                                 # one detector on half the boards, two arms of equal
+                                                 # size -- seen and unseen -- one test set (~1 h)
 uv run python scripts/render_diagrams.py         # the two README flow diagrams, from the graphs' constants
 uv run --with python-pptx --with playwright python scripts/build_deck.py [--embed-video]
                                                  # the journey deck: docs/deck/*.pptx, .html, study guide

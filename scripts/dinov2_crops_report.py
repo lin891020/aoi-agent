@@ -222,16 +222,28 @@ def read_columns(val_scores: np.ndarray, val_labels: np.ndarray, test_scores: np
 # the ResNet-18 arm
 
 
+def _shown(path: Path) -> str:
+    """A path for a log line, relative where it can be -- a scratch directory cannot.
+
+    `relative_to` raises rather than falling back, so a caller running this
+    against a directory outside the tree died in the log statement.
+    """
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
 def train_resnet(seed: int, patches: Path, out_dir: Path, device, log=print) -> None:
     """`scripts/train.py` unchanged -- a re-implementation here would not be the same model."""
     if (out_dir / "reverifier.pt").exists() and (out_dir / "test_predictions.npz").exists():
-        log(f"  {out_dir.relative_to(ROOT)} already trained")
+        log(f"  {_shown(out_dir)} already trained")
         return
     command = [sys.executable, str(ROOT / "scripts" / "train.py"),
                "--patches", str(patches), "--seed", str(seed), "--out", str(out_dir)]
     if device is not None:
         command += ["--device", str(device)]
-    log(f"  training seed {seed} -> {out_dir.relative_to(ROOT)}")
+    log(f"  training seed {seed} -> {_shown(out_dir)}")
     began = time.perf_counter()
     if subprocess.run(command, check=False).returncode != 0:
         raise SystemExit(f"scripts/train.py failed for seed {seed}")

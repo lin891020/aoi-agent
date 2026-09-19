@@ -54,12 +54,39 @@ def history_path(out: Path) -> Path:
     return out.with_name(out.stem + "_history.json")
 
 
+def restrict(items: list[pcbaoi.Item], stems_file: Path) -> list[pcbaoi.Item]:
+    """The items whose board is named in ``stems_file``, and a refusal if any is not.
+
+    A stem that matches nothing is a typo or a stale list, and training on the
+    silently smaller remainder would produce a detector describing a fold
+    nobody chose.
+    """
+    wanted = {line.strip() for line in stems_file.read_text().splitlines() if line.strip()}
+    kept = [item for item in items if item.base_stem in wanted]
+    missing = wanted - {item.base_stem for item in kept}
+    if missing:
+        raise SystemExit(f"{stems_file}: {len(missing)} base stem(s) match no image, "
+                         f"first {sorted(missing)[:3]}")
+    return kept
+
+
 def machine_is_quiet() -> list[str]:
-    """What is competing for the GPU, by the latency skill's own check."""
+    """What is competing for the GPU, by the latency skill's own check.
+
+    The parent is excluded along with this process: a report script that runs
+    this one as a step -- `scripts/detector_fold_report.py` -- sits in the
+    process table at whatever CPU it spent getting here, and a guard that
+    counts its own caller refuses every run it is part of. Anything else busy
+    still stops the training, which is the failure the guard is for.
+    """
     try:
         from reverifier_latency import competing_processes, ollama_ps, process_table, resident_models
 
-        return resident_models(ollama_ps()) + competing_processes(process_table(), os.getpid())
+        table = process_table()
+        busy = competing_processes(table, os.getpid())
+        parent = str(os.getppid())
+        return resident_models(ollama_ps()) + [
+            line for line in busy if line.split(None, 1)[0] != parent]
     except ImportError:  # pragma: no cover
         return []
 
@@ -75,6 +102,10 @@ def main() -> int:
     parser.add_argument("--name", default=None,
                         help="ultralytics run directory; defaults to the checkpoint's stem, "
                              "so a second run does not overwrite the first's curves")
+    parser.add_argument("--base-stems", type=Path, default=None,
+                        help="a file of base stems, one per line: train on these boards only. "
+                             "For a fold experiment that needs a detector which has not seen "
+                             "the rest; the split inside them is this script's usual one")
     parser.add_argument("--dry-run", action="store_true", help="export the split and stop")
     parser.add_argument("--ignore-contention", action="store_true")
     args = parser.parse_args()
@@ -86,6 +117,8 @@ def main() -> int:
         return 2
 
     items = pcbaoi.load("train_data_augmentation")
+    if args.base_stems is not None:
+        items = restrict(items, args.base_stems)
     train, val = pcbaoi.split_by_stem(items, seed=args.seed)
     test = pcbaoi.load("test_data")
     assert not pcbaoi.leaks(train, val) and not pcbaoi.leaks(train + val, test)
@@ -122,6 +155,7 @@ def main() -> int:
         "epochs": args.epochs, "imgsz": args.imgsz, "batch": args.batch,
         "device": args.device, "seed": args.seed,
         "train_images": len(train), "val_images": len(val),
+        "base_stems": str(args.base_stems) if args.base_stems else None,
         "val_boards": len({i.base_stem for i in val}),
         "wall_seconds": round(wall, 1),
         "contended": contended,
