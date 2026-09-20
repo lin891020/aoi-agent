@@ -9382,3 +9382,46 @@ The 2026-09-17 control answered **23/42** against the 2026-08-30 run's **28/42**
 **What this says.** The drift baseline this project has been quoting -- ±3 questions, established from a single re-run on 2026-08-28 -- is too narrow: three readings of one unchanged model on one machine span **23-28 answered**, five questions, and two of the five move on their own between consecutive runs. A difference of that size between two runs is therefore not evidence of a change, and the 09-17 entry's "outside the ±3 drift" reads as a finding it cannot support. What survives as a candidate defect is the 3 questions missed in both later runs, and their shape is one thing: a plan that keeps the class and the machine and drops the line, or picks the wrong one of the two aggregate tools. Neither is addressed, and the fixture is not edited.
 
 **What this does not establish.** Three runs of one model on one machine, all with `think="low"` and `temperature` 0; nothing here identifies *where* the nondeterminism comes from (the MXFP4 kernels, the offload split, the batching) and this project cannot see inside Ollama to find out. The comparison against 2026-08-30 is against a published table rather than a stored per-question file, so it is exact on identifiers and scores and nothing else. The verdict of the 2026-09-17 model comparison does not move: it compares candidates against a control measured the same night, which is the reading this variance is an argument for.
+
+## 2026-09-19 · commit 9eba15f
+
+### Are the crop re-verifier's thresholds shifted by boxes the detector had seen?
+
+Every crop entry carries the caveat and none of them measured it: the training crops are the detector's boxes on its own training images, the test crops are not, and on 2026-09-16 all three seeds' validation-chosen thresholds missed the 0.50% budget on test, worst 0.67%. Here one detector is trained on **half the boards** and draws the boxes for both arms: in-sample on the 70 boards it trained on, out-of-sample on the 70 it has never seen, and the same 717 test candidates from the 60 test images for both. `scripts/train.py` unchanged, three seeds an arm, 28 min. `scripts/detector_fold_report.py`.
+
+**Verdict, by the rule written before the run: The in-sample boxes were the shift: trained on crops the detector had not seen, the validation-chosen threshold escapes 0.00% on test, inside the 0.50% budget, against 0.52% trained on its own boards.**
+
+| arm | seed | oracle review removed | oracle escape | deployable review removed | deployable escape |
+|---|---|---|---|---|---|
+| in-sample | 0 | **0.7%** | 0.3% | 0.8% | 0.5% (over budget) |
+| in-sample | 1 | **1.7%** | 0.3% | — | — |
+| in-sample | 2 | **0.4%** | 0.3% | — | — |
+| out-of-sample | 0 | **2.0%** | 0.3% | 0.0% | 0.0% |
+| out-of-sample | 1 | **3.6%** | 0.3% | 1.8% | 0.0% |
+| out-of-sample | 2 | **1.3%** | 0.3% | 0.0% | 0.0% |
+| in-sample | median | — | — | — | 0.5% |
+| out-of-sample | median | — | — | — | 0.0% |
+
+**The two arms' training sets.** in-sample 5,500 crops from 70 boards, out-of-sample 6,972 from 70.
+**They differ by 21%, past the 20% this run set as the point where size is a second variable: the comparison above is not one variable changed, and the verdict is to be read with that in it.**
+
+**What this does not establish.** The detector is trained on half the boards, so it is weaker than the published one and its queue is its own: **none of these figures may be read against the 2026-08-28 or 2026-09-16 tables**, and none of them against the DeepPCB curve. One detector, one fold split, one seed for it. Three seeds an arm on a queue where the budget is about two escapes, which is the same thinness those entries name. And the arms differ in what the detector had seen, not in how the crops were cut: nothing here says a second acquisition of the same board would not do more.
+
+## 2026-09-20 · Adjudication — the fold run's verdict, read against its own thresholds
+
+The rule written before the run returned **the in-sample boxes were the shift**, and the rule is not wrong about the numbers it was given: the out-of-sample arm's median escape on test is 0.00% against the in-sample arm's 0.52%. What the rule did not require, and should have, is that a threshold holding the budget also *removes* something. Read against the thresholds behind it, this verdict is mostly vacuous.
+
+| arm | seed | deployable threshold | review removed | escape |
+|---|---|---|---|---|
+| in-sample | 0 | 0.9975 | 0.8% | 0.52% |
+| in-sample | 1 | none inside the budget | — | — |
+| in-sample | 2 | none inside the budget | — | — |
+| out-of-sample | 0 | 0.99997 | **0.0%** | 0.00% |
+| out-of-sample | 1 | 0.9996 | 1.8% | 0.00% |
+| out-of-sample | 2 | 1.0000 | **0.0%** | 0.00% |
+
+Two of the out-of-sample arm's three seeds choose a threshold at or within 0.00003 of 1.0: they dismiss no candidate at all, so they escape nothing and hold any budget by declining to act. One seed of three removes 1.8% at 0.00% escape, which is the only row in the table that is both inside the budget and doing work. On the other side two of three in-sample seeds found no threshold inside the budget on their own validation split, so that arm's median rests on one seed. **A median over three seeds where four of the six rows are degenerate is not a comparison, and the verdict sentence reads as one.** What should have been pre-registered beside it is a floor on review removed -- a threshold that removes nothing is not an operating point, which is the same rule this project already applies to the aggregate curve.
+
+**What the run does show, on the column that is not degenerate.** Oracle review removed, each seed's best threshold at the budget read on test: out-of-sample 2.0%, 3.6%, 1.3% (median 2.0%) against in-sample 0.7%, 1.7%, 0.4% (median 0.7%). Every out-of-sample seed is above every in-sample seed but one, on the same 717 test candidates and the same recipe, which is weak evidence in the direction the caveat predicted -- and it is oracle, so it is not an operating point either. The arms also differ by 21% in training crops, which the entry flags.
+
+**Left as it stands.** The entry above is what the pre-registered rule produced and stays unedited; this is the adjudication beside it, as with the listed-set rule and the SQL tool. The next version of this experiment needs a verdict that names a minimum review removed, and a queue larger than 717 candidates with about two escapes in it.

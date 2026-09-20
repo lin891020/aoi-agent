@@ -702,8 +702,21 @@ was never a convenience. Held by `tests/test_detector_patches.py`.
 Re-run on 2026-09-16 over three seeds, same recipe and candidates, trained on
 MPS: **0.3%, 1.2%, 2.8%, median 1.2%** -- the published 2.8% is the top of its
 own range, not its level. Every seed's validation-chosen threshold also missed
-the budget on test (worst 0.67%), because the training crops are the
-detector's in-sample boxes and the test crops are not.
+the budget on test (worst 0.67%), and the standing explanation was that the
+training crops are the detector's in-sample boxes and the test crops are not.
+**Measured on 2026-09-20** (`scripts/detector_fold_report.py`): one detector on
+half the boards, two arms of seventy boards each -- the boards it trained on
+and boards it never saw -- one shared test set of 717 candidates. The
+pre-registered rule returns "the in-sample boxes were the shift", and the
+adjudication beside it says why that reading is mostly vacuous: two of the
+out-of-sample arm's three seeds choose a threshold of 1.0 or within 0.00003 of
+it, dismiss nothing, and hold the budget by declining to act, while two of
+three in-sample seeds found no threshold inside the budget at all. What is left
+is the oracle column, where every out-of-sample seed but one beats every
+in-sample seed (median 2.0% against 0.7%) on the same candidates -- weak
+evidence in the caveat's direction, on a column that is not an operating point.
+The verdict this experiment needed and did not have is a floor on review
+removed: a threshold that removes nothing is not an operating point.
 
 **Stronger pretrained features were measured twice and did not help.**
 2026-09-15/16, frozen DINOv2 ViT-S/14 with a linear probe, each verdict
