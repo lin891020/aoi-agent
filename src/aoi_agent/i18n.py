@@ -844,6 +844,39 @@ LANGUAGE_NOTE = {
 }
 
 
+#: One clause of WI-201, rendered for the language that got it backwards.
+#:
+#: The document releases a *suspected* open that "measures continuous on
+#: electrical test" -- conducts, so it is not an open. 連續 carries both
+#: "continuous" and "continuity", and 5 of the 2026-09-02 run's 60 Chinese
+#: rationales wrote 連續開路 -- a confirmed open -- and released it: the clause
+#: with its condition reversed, which would ship a dead board. English wrote it
+#: the right way round on every row, so its entry is empty. Appended to the
+#: disposition path's prompt only, never to `LANGUAGE_NOTE`: that sentence is
+#: also the planner's and the synthesis prompt's, and their figures were
+#: measured under it as it stands. Named rather than described, as the class
+#: list above is, because the instruction that worked was the one that forbade
+#: the thing that happened. `AOI_RATIONALE_GLOSSARY=0` leaves it out -- the
+#: control arm `scripts/rationale_eval.py` is run against.
+RATIONALE_GLOSSARY = {
+    "zh-TW": "In WI-201, \"measures continuous on electrical test\" means the trace "
+             "conducts -- current passes, so it is not an open. Write it as 電測導通. "
+             "Never write 連續開路: in Chinese it reads as a confirmed open, the opposite "
+             "of the clause, and releasing a confirmed open ships a dead board.",
+    "en": "",
+}
+RATIONALE_GLOSSARY_ENV = "AOI_RATIONALE_GLOSSARY"
+
+
+def rationale_glossary(lang: str) -> str:
+    """The note for this language, or nothing when the control arm is running."""
+    import os
+
+    if os.environ.get(RATIONALE_GLOSSARY_ENV, "1").strip().lower() in ("0", "off", "false", "no"):
+        return ""
+    return RATIONALE_GLOSSARY.get(normalise(lang), "")
+
+
 def normalise(locale: str | None) -> str:
     """The locale to use for a value that may have come from a cookie."""
     return locale if locale in STRINGS else DEFAULT_LOCALE

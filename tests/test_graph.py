@@ -7,12 +7,12 @@ from dataclasses import dataclass
 
 import httpx
 import pytest
+from conftest import ABOVE_CONFIDENT, IN_THE_EXPLANATION_BAND
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 
 from aoi_agent.graph import flow
 from aoi_agent.llm.ollama import ChatResult, Timing
-from conftest import ABOVE_CONFIDENT, IN_THE_EXPLANATION_BAND
 
 
 @dataclass
@@ -406,13 +406,19 @@ def test_the_explanation_is_asked_for_in_the_lines_language(stub_tools, monkeypa
     line reads -- Traditional Chinese unless `AOI_LINE_LANGUAGE` says
     otherwise. The sentence is the one the analysis prompts use, from the
     same table, so the two paths cannot drift apart on it."""
-    from aoi_agent.i18n import LANGUAGE_NOTE, LINE_LANGUAGE_ENV
+    from aoi_agent.i18n import LANGUAGE_NOTE, LINE_LANGUAGE_ENV, RATIONALE_GLOSSARY
 
     monkeypatch.delenv(LINE_LANGUAGE_ENV, raising=False)
     client = StubClient()
     run(flow.build_graph(client, InMemorySaver()))
-    assert client.systems[0].endswith(LANGUAGE_NOTE["zh-TW"])
-    assert client.systems[0].startswith(flow.SYSTEM_PROMPT), "the measured prompt is unchanged"
+    system = client.systems[0]
+    assert system.startswith(flow.SYSTEM_PROMPT), "the measured prompt is unchanged"
+    # Since 2026-09-22 the Chinese prompt carries one more sentence after the
+    # language note -- WI-201's clause, which it was measured writing backwards
+    # -- so the note is followed rather than last. What this test holds is that
+    # it is the shared sentence, verbatim, and nothing else was reworded.
+    assert system == (f"{flow.SYSTEM_PROMPT}\n\n{LANGUAGE_NOTE['zh-TW']}"
+                      f"\n\n{RATIONALE_GLOSSARY['zh-TW']}")
 
     monkeypatch.setenv(LINE_LANGUAGE_ENV, "en")
     client = StubClient()

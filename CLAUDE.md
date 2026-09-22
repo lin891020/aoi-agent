@@ -62,7 +62,7 @@ scripts/                    gate_check, build_patches, train, report, seed_store
                             (and demo_script, the shot list it drives),
                             build_detector_patches, crop_reverifier_report,
                             mark_unattributed_resolutions, ...
-tests/                      1,587 tests; dataset-dependent ones behind `-m dataset`
+tests/                      1,601 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/deck/                  the project-journey deck (pptx, html with a self-test
                             mode, study guide) -- built from scripts/deck_content.py,
@@ -82,7 +82,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 1,587 tests, no GPU needed, no model called
+uv run pytest                                    # 1,601 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/gate_check.py --dataset hripcb --split aligned --limit 693 --thresholds 10 15 20 30 45 60 \
     --out eval/results/gate_check_hripcb_aligned.json   # the same gate on photographs (~2 min)
@@ -464,10 +464,17 @@ board is back under the unscoped reading.
   **`class_not_named` 0 of 60 and clean 45/60 in Chinese, 52/60 in
   English** -- the word 開路 survives in 9 rows as the physical event beside
   the identifier, never in place of it. What the re-read found instead is
-  the thing no check counts: 5 of 60 Chinese rationales write WI-201's
+  the thing no exact check counts: 5 of 60 Chinese rationales write WI-201's
   continuity clause backwards (「電測證實連續開路 ... cosmetic thinning 釋放」),
-  every word sourced, the condition reversed. Named in the 09-02 entry, not
-  fixed. Three of the eval's own six rows did not survive
+  every word sourced, the condition reversed. Counted since 2026-09-22 by a
+  fourth flag, `release_on_confirmed_open`, which reproduces the hand count
+  on the stored runs (5 of 60 at `64d363a`, 3 of 60 at `6c09a60`, 0 of 60 in
+  English both times), and addressed by `i18n.RATIONALE_GLOSSARY` -- one
+  sentence naming 連續開路 and asking for 電測導通, appended to the
+  disposition path's prompt only, because `LANGUAGE_NOTE` is also the
+  planner's and the synthesis prompt's and their figures were measured under
+  it. `AOI_RATIONALE_GLOSSARY=0` is the control arm; whether the sentence
+  works is the two-arm run in docs/benchmarks.md, not this paragraph. Three of the eval's own six rows did not survive
   adjudication and two of the three failures were the checker's: a document
   check comparing WI numbers against file slugs, so it could never return
   zero; a class name typeset with U+2011 counted as unnamed. Both are fixed

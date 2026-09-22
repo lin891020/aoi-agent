@@ -28,19 +28,18 @@ import time
 from typing import Any
 
 import httpx
-
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import interrupt
 
-from aoi_agent.i18n import LANGUAGE_NOTE, line_language
 from aoi_agent.graph.checkpoint import make_checkpointer
 from aoi_agent.graph.rationale_check import unsourced_figures
 from aoi_agent.graph.state import ReviewState
+from aoi_agent.i18n import LANGUAGE_NOTE, line_language, rationale_glossary
 from aoi_agent.llm.ollama import EXPLANATION_DEADLINE_S, OllamaClient
-from aoi_agent.provenance import DecisionProvenance, code_version
 from aoi_agent.mcp_servers.classify import classify_defect
 from aoi_agent.mcp_servers.production import query_board_context, query_machine_stats
 from aoi_agent.mcp_servers.standards import search_standards
+from aoi_agent.provenance import DecisionProvenance, code_version
 from aoi_agent.vision.inference import DEFAULT_DISMISS_THRESHOLD
 
 DEFAULT_MODEL = "gpt-oss:20b"
@@ -230,6 +229,21 @@ inside it, and do not quote the schema. Say what the reading and the context
 show and what would settle the class."""
 
 
+def reason_system_prompt(language: str) -> str:
+    """The reason node's system prompt in the line's language.
+
+    `SYSTEM_PROMPT`, the language sentence the analysis prompts share, and --
+    on this path only -- the glossary for the one clause a language has been
+    measured writing backwards. A function rather than an f-string at the call
+    site so the control arm and the planner's exclusion are testable without a
+    model.
+    """
+    glossary = rationale_glossary(language)
+    note = f"{SYSTEM_PROMPT}\n\n{LANGUAGE_NOTE[language]}"
+    return f"{note}\n\n{glossary}" if glossary else note
+
+
+
 def decision_provenance(model_digest: str | None) -> DecisionProvenance | None:
     """What an auditor needs to reproduce a disposition made on this path.
 
@@ -403,8 +417,7 @@ Give your verdict."""
                     # and the deadline it runs under is re-measured
                     # (`scripts/latency_report.py`), because Chinese prose is
                     # more tokens than English for the same content.
-                    {"role": "system",
-                     "content": f"{SYSTEM_PROMPT}\n\n{LANGUAGE_NOTE[line_language()]}"},
+                    {"role": "system", "content": reason_system_prompt(line_language())},
                     {"role": "user", "content": prompt},
                 ],
                 think="low",

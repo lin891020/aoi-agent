@@ -65,19 +65,19 @@ import subprocess
 import sys
 import time
 from collections import Counter
-from datetime import date
+from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from agent_eval import investigated  # noqa: E402
 from langgraph.checkpoint.memory import InMemorySaver  # noqa: E402
 
 from aoi_agent.graph.flow import DEFAULT_MODEL, build_graph  # noqa: E402
 from aoi_agent.i18n import LINE_LANGUAGE_ENV  # noqa: E402
 from aoi_agent.llm.ollama import EXPLANATION_DEADLINE_S, OllamaClient  # noqa: E402
-from agent_eval import investigated  # noqa: E402
 
 #: Other work on this machine cannot change what a rationale says, but it can
 #: turn a call into a timeout -- and `no_explanation` is one of the counted
@@ -133,15 +133,26 @@ FIGURE = re.compile(r"\d")
 #: Classes whose work instructions admit no acceptable size at all.
 ZERO_TOLERANCE = ("open", "short")
 
+#: WI-201 releases a *suspected* open that measures continuous -- conducts -- on
+#: electrical test. The Chinese rationale writes 連續開路, which reads as a
+#: confirmed open, and releases that: the clause with its condition reversed.
+#: Every word is sourced, so no exact check sees it; 5 of the 2026-09-02 run's
+#: 60 and 3 of the 2026-09-17 run's, the first counted by hand and both
+#: reproduced by this pattern on the stored files. The release has to come
+#: *after* the confirmation -- read in either order, the pattern raised a
+#: sentence that asks for the test and releases nothing.
+RELEASE_ON_CONFIRMED_OPEN = re.compile(r"(證實|確認|經電測).{0,12}連續開路.{0,40}(釋放|放行)")
+
 CHECKED = ("unsourced_figure", "foreign_document", "no_explanation")
-FLAGGED = ("class_not_named", "other_class_named", "limit_for_a_zero_tolerance_class")
+FLAGGED = ("class_not_named", "other_class_named", "limit_for_a_zero_tolerance_class",
+           "release_on_confirmed_open")
 
 
 def commit() -> str:
     try:
         return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
-    except Exception:
-        return "unknown"
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"   # no git, or not a checkout: the entry says so rather than failing
 
 
 #: The model writes `pin\u2011hole` with a non-breaking hyphen often enough that
@@ -209,6 +220,10 @@ def findings(state: dict, model_class: str) -> dict[str, list[str]]:
         for sentence in sentences(rationale):
             if LIMIT_PHRASE.search(sentence) and FIGURE.search(sentence):
                 found.setdefault("limit_for_a_zero_tolerance_class", []).append(sentence.strip())
+    for sentence in sentences(rationale):
+        if RELEASE_ON_CONFIRMED_OPEN.search(sentence):
+            found.setdefault("release_on_confirmed_open", []).append(
+                sentence.strip().rstrip("；，"))
     return found
 
 
@@ -303,13 +318,13 @@ def main() -> int:
     args.out.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n")
 
     def row_for(kind: str) -> str:
-        cells = " | ".join(str(per_language[l]["counts"][kind]) for l in args.languages)
+        cells = " | ".join(str(per_language[lang]["counts"][kind]) for lang in args.languages)
         return f"| `{kind}` | {cells} | {overall['counts'][kind]} |"
 
     seen = sorted({p for phase in record["contention"].values() for p in phase["busy_processes"]})
     busy = ", ".join(f"`{p}`" for p in seen[:4])
     lines = [
-        f"## {date.today().isoformat()} · commit {commit()}",
+        f"## {datetime.now(UTC).date().isoformat()} · commit {commit()}",
         "",
         "### Is the operator's rationale true of what the model was shown?",
         "",
@@ -332,8 +347,8 @@ def main() -> int:
       + [row_for(k) for k in FLAGGED] + [
         "",
         "Clean by language: " + ", ".join(
-            f"{l} {per_language[l]['clean']}/{per_language[l]['rows']}"
-            for l in args.languages) + ".",
+            f"{lang} {per_language[lang]['clean']}/{per_language[lang]['rows']}"
+            for lang in args.languages) + ".",
         "",
         (f"**The machine was not quiet**: {busy} was running, so a "
          f"`no_explanation` here may be a timeout rather than the model. "

@@ -139,3 +139,49 @@ def test_a_class_named_with_a_typographic_hyphen_counts_as_named(scorer):
 def test_a_decimal_point_does_not_end_a_sentence(scorer):
     # `21.1%` was split into `1%`, and the flagged fragments started mid-number.
     assert scorer.sentences("rate 21.1% here. next") == ["rate 21.1% here", " next"]
+
+
+# ---- WI-201's release clause, written backwards --------------------------------
+#
+# The document releases a *suspected* open that measures continuous -- conducts
+# -- on electrical test. The Chinese rationale writes 連續開路, which reads as a
+# confirmed open, and releases that: the condition reversed, every word sourced,
+# so none of the other checks can see it. The positives are the sentences the
+# 2026-09-02 run wrote, verbatim; the negatives are the two shapes a looser
+# pattern raised.
+
+INVERTED = [
+    "若經電測證實連續開路，則可視為 cosmetic thinning 釋放。",
+    "若經電測確認為連續開路，則可視為 cosmetic thinning 釋放。",
+    "若操作人員確認此區域在電測上連續開路，則應記錄為 cosmetic thinning 並釋放；",
+    "若操作員確認此區域在電測上連續開路，則應視為 cosmetic thinning 並釋放；",
+    "若經電測確認連續開路，則可視為外觀缺陷並釋放。",
+]
+NOT_INVERTED = [
+    # asks for the test, releases nothing
+    "缺乏額外的電氣測試結果來確認是否為連續開路，故無法確定此區域是否為缺陷。",
+    # the clause as the document writes it
+    "若電測量測為導通，則記錄為 cosmetic thinning 並釋放，並標記線路圖供審查。",
+    # release named and open named, but the release is not conditioned on the open
+    "未達到自動放行門檻，需人工確認是否為開路。",
+]
+
+
+@pytest.mark.parametrize("sentence", INVERTED)
+def test_a_release_conditioned_on_a_confirmed_open_is_flagged(scorer, sentence):
+    found = scorer.findings(_state(f"open 的分數偏低。{sentence}"), "open")
+    assert found["release_on_confirmed_open"] == [sentence.rstrip("。；").strip()]
+
+
+@pytest.mark.parametrize("sentence", NOT_INVERTED)
+def test_the_clause_the_right_way_round_is_not(scorer, sentence):
+    found = scorer.findings(_state(f"open 的分數偏低。{sentence}"), "open")
+    assert "release_on_confirmed_open" not in found
+
+
+def test_the_backwards_clause_is_a_flag_for_a_person_and_counts_against_clean(scorer):
+    assert "release_on_confirmed_open" in scorer.FLAGGED
+    rows = [{"findings": scorer.findings(_state(f"open。{INVERTED[0]}"), "open")},
+            {"findings": {}}]
+    tally = scorer.tally(rows)
+    assert tally["counts"]["release_on_confirmed_open"] == 1 and tally["clean"] == 1
