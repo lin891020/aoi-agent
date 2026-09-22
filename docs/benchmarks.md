@@ -9425,3 +9425,92 @@ Two of the out-of-sample arm's three seeds choose a threshold at or within 0.000
 **What the run does show, on the column that is not degenerate.** Oracle review removed, each seed's best threshold at the budget read on test: out-of-sample 2.0%, 3.6%, 1.3% (median 2.0%) against in-sample 0.7%, 1.7%, 0.4% (median 0.7%). Every out-of-sample seed is above every in-sample seed but one, on the same 717 test candidates and the same recipe, which is weak evidence in the direction the caveat predicted -- and it is oracle, so it is not an operating point either. The arms also differ by 21% in training crops, which the entry flags.
 
 **Left as it stands.** The entry above is what the pre-registered rule produced and stays unedited; this is the adjudication beside it, as with the listed-set rule and the SQL tool. The next version of this experiment needs a verdict that names a minimum review removed, and a queue larger than 717 candidates with about two escapes in it.
+
+## 2026-09-22 · commit f328449
+
+### Is the operator's rationale true of what the model was shown?
+
+The verdict came off the LLM on 2026-08-23 and what it still writes -- the one sentence on a queue row an operator reads -- had never been scored. Two answers in this project's own question bank said so. 60 candidates the router sends to investigation, run in zh-TW and en, 25 min on `gpt-oss:20b`. Ground truth is not read: this scores the prose against the prompt, not against the board. `scripts/rationale_eval.py`.
+
+**No model judges another model.** Three kinds are checked exactly from what the run stored; three are pattern matches published with the sentence attached, for a person to resolve.
+
+| kind | zh-TW | en | both |
+|---|---|---|---|
+| `unsourced_figure` | 0 | 0 | 0 |
+| `foreign_document` | 0 | 0 | 0 |
+| `no_explanation` | 0 | 0 | 0 |
+| | | | |
+| `class_not_named` | 0 | 0 | 0 |
+| `other_class_named` | 5 | 5 | 10 |
+| `limit_for_a_zero_tolerance_class` | 10 | 5 | 15 |
+| `release_on_confirmed_open` | 9 | 0 | 9 |
+
+Clean by language: zh-TW 37/60, en 50/60.
+
+The machine was checked for other work before and after the run -- `ollama ps` and the process table, because the first alone comes back clean while a torch job saturates the same silicon -- and was quiet both times.
+
+
+**What this does not establish.** It asks whether the prose is true of the prompt, never whether the prompt was the right thing to show or whether the verdict beneath it was right -- `agent_eval.py` is the second and nothing is the first. A grounded figure used in a wrong comparison passes, which is `rationale_check.py`'s stated boundary and is inherited here. And the flags are patterns: their counts are a floor on what a pattern can raise, not a rate.
+
+## 2026-09-22 · commit f328449
+
+### Is the operator's rationale true of what the model was shown?
+
+The verdict came off the LLM on 2026-08-23 and what it still writes -- the one sentence on a queue row an operator reads -- had never been scored. Two answers in this project's own question bank said so. 60 candidates the router sends to investigation, run in zh-TW and en, 25 min on `gpt-oss:20b`. Ground truth is not read: this scores the prose against the prompt, not against the board. `scripts/rationale_eval.py`.
+
+**No model judges another model.** Three kinds are checked exactly from what the run stored; three are pattern matches published with the sentence attached, for a person to resolve.
+
+| kind | zh-TW | en | both |
+|---|---|---|---|
+| `unsourced_figure` | 0 | 0 | 0 |
+| `foreign_document` | 0 | 0 | 0 |
+| `no_explanation` | 0 | 0 | 0 |
+| | | | |
+| `class_not_named` | 0 | 0 | 0 |
+| `other_class_named` | 2 | 5 | 7 |
+| `limit_for_a_zero_tolerance_class` | 3 | 5 | 8 |
+| `release_on_confirmed_open` | 0 | 0 | 0 |
+
+Clean by language: zh-TW 55/60, en 50/60.
+
+The machine was checked for other work before and after the run -- `ollama ps` and the process table, because the first alone comes back clean while a torch job saturates the same silicon -- and was quiet both times.
+
+
+**What this does not establish.** It asks whether the prose is true of the prompt, never whether the prompt was the right thing to show or whether the verdict beneath it was right -- `agent_eval.py` is the second and nothing is the first. A grounded figure used in a wrong comparison passes, which is `rationale_check.py`'s stated boundary and is inherited here. And the flags are patterns: their counts are a floor on what a pattern can raise, not a rate.
+
+## 2026-09-23 · Adjudication — does naming 連續開路 stop the clause being written backwards?
+
+Two arms on 2026-09-22, the same 60 candidates and both languages, 25 minutes each, `f328449`, read by the flag committed before them (`release_on_confirmed_open`, which reproduces the 2026-09-02 hand count of 5 of 60 on that run's stored file and 3 of 60 on 2026-09-17's). **The two entries above are these arms in order: the first is the control, run with `AOI_RATIONALE_GLOSSARY=0`; the second carries the glossary.** Neither entry names its own arm, because the line that prints it was added after they were written.
+
+| | control (no glossary) | with the glossary |
+|---|---|---|
+| `release_on_confirmed_open`, zh-TW | **9 / 60** | **0 / 60** |
+| `release_on_confirmed_open`, en | 0 / 60 | 0 / 60 |
+| clean, zh-TW | 37 / 60 | **55 / 60** |
+| clean, en | 50 / 60 | 50 / 60 |
+| `unsourced_figure` / `no_explanation`, both languages | 0 / 120 | 0 / 120 |
+
+**Verdict, by the rule written before the run: fixed.** The glossary arm writes the clause backwards zero times against the control's nine, and neither guardrail moved: no unsourced figure and no missing explanation in either arm, and English -- whose note is empty, so its prompt is unchanged character for character -- reads 50 of 60 clean on both sides, which is what says the difference is the sentence and not the night.
+
+**What the control says on its own.** Nine of sixty is higher than the 5 and 3 this flag counts on the two stored runs, so the defect was not shrinking; the earlier hand count was a floor on a pattern, as the 09-02 entry said, and the pattern's own count moves with the run. The clean figure is the one that must not be read against the older entries: `clean` now means "no flag of any kind", and there is a fourth flag, so the control's 37 of 60 is a stricter reading of the same prose than the 45 of 60 published on 2026-09-02.
+
+**What this does not establish.** One night, one model, one pair of runs, and the glossary is one sentence about one clause: nothing here says the model will not compare some other grounded phrase wrongly, which is `rationale_check.py`'s standing boundary. The flag is a pattern and its count is a floor. The station's live path is not changed: an operator still reads whatever the reason node wrote, and no run-time check raises this -- the glossary prevents, the flag counts, and neither vetoes.
+
+## 2026-09-23 · commit f328449
+
+### Five readings of the independent seventy, back to back, on one loaded model
+
+Three readings of the planner on unchanged code had spanned 23-28 of 42 answered (2026-08-30, 09-17, 09-19) and the 09-19 entry called the ±3 drift baseline too narrow. This is what five more say, run one after another on 2026-09-22 between 13:19 and 16:39, `--plan-only --repeats 3`, nothing else on the machine, nothing appended by them:
+
+| reading | should answer | should refuse | misses |
+|---|---|---|---|
+| 2026-08-30 | 28 / 42 | 18 / 28 | — |
+| 2026-09-17 | 23 / 42 | 17 / 28 | — |
+| 2026-09-19 | 26 / 42 | 17 / 28 | — |
+| 2026-09-22, runs 1-5 | **25 / 42 every time** | **17 / 28 every time** | **the same 28 questions, identically, all five times** |
+
+**The variance is between sessions, not between runs.** Five consecutive readings agree question for question -- not merely on the score -- while three readings taken on three different days span five questions. The first of the five began with no model resident and loaded one; the other four reused it, and all five agree, so residency is not the variable either. Each run's own internal figure is unchanged too: 59 of 70 questions planned the same tools across that run's three repeats, on every one of the five.
+
+What this means for every comparison in this file: **two arms must be measured in the same session to be compared at all.** The model-comparison entry and the SQL tool's two arms already are, for other reasons; the 09-17 control was, which is why its verdict stands while the 23/42-against-28/42 sentence beside it did not. What moves between sessions is not visible from here -- the offload split, the KV cache, whatever Ollama rebuilds when it next loads these weights -- and this project can measure the effect without seeing the cause.
+
+**What this does not establish.** One model, one machine, one day for the five. Back-to-back agreement is not determinism in general: it says the planner's output is fixed for as long as the serving state is, not that the serving state is fixed. And the five runs sit on two commits -- `0a284a9` and `f328449`, which changed the disposition path's prompt and the rationale scorer, neither of which the planner reads; `tests/test_rationale_glossary.py` holds that separation.

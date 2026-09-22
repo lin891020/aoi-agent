@@ -76,7 +76,11 @@ from agent_eval import investigated  # noqa: E402
 from langgraph.checkpoint.memory import InMemorySaver  # noqa: E402
 
 from aoi_agent.graph.flow import DEFAULT_MODEL, build_graph  # noqa: E402
-from aoi_agent.i18n import LINE_LANGUAGE_ENV  # noqa: E402
+from aoi_agent.i18n import (  # noqa: E402
+    LINE_LANGUAGE_ENV,
+    RATIONALE_GLOSSARY_ENV,
+    rationale_glossary,
+)
 from aoi_agent.llm.ollama import EXPLANATION_DEADLINE_S, OllamaClient  # noqa: E402
 
 #: Other work on this machine cannot change what a rationale says, but it can
@@ -308,7 +312,12 @@ def main() -> int:
     per_language = {language: tally([r for r in rows if r["language"] == language])
                     for language in args.languages}
     overall = tally(rows)
+    # Which prompt wrote these rationales. The two 2026-09-22 entries predate
+    # this line and are told apart in the adjudication beside them; an entry
+    # that cannot name its own arm is a row nobody can reproduce.
+    arm = "with the WI-201 glossary" if rationale_glossary("zh-TW") else "control, glossary off"
     record = {"commit": commit(), "model": args.model, "candidates": len(sample),
+              "prompt_arm": arm,
               "languages": args.languages, "wall_seconds": round(wall, 1),
               "checked": list(CHECKED), "flagged": list(FLAGGED),
               "per_language": per_language, "overall": overall,
@@ -334,7 +343,8 @@ def main() -> int:
         f"{len(sample)} candidates the router sends to investigation, run in "
         f"{' and '.join(args.languages)}, {wall / 60:.0f} min on `{args.model}`. "
         f"Ground truth is not read: this scores the prose against the prompt, "
-        f"not against the board. `scripts/rationale_eval.py`.",
+        f"not against the board. Prompt arm: **{arm}** "
+        f"(`{RATIONALE_GLOSSARY_ENV}`). `scripts/rationale_eval.py`.",
         "",
         "**No model judges another model.** Three kinds are checked exactly from "
         "what the run stored; three are pattern matches published with the "
