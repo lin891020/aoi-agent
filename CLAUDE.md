@@ -473,8 +473,15 @@ board is back under the unscoped reading.
   sentence naming 連續開路 and asking for 電測導通, appended to the
   disposition path's prompt only, because `LANGUAGE_NOTE` is also the
   planner's and the synthesis prompt's and their figures were measured under
-  it. `AOI_RATIONALE_GLOSSARY=0` is the control arm; whether the sentence
-  works is the two-arm run in docs/benchmarks.md, not this paragraph. Three of the eval's own six rows did not survive
+  it. `AOI_RATIONALE_GLOSSARY=0` is the control arm, and the two-arm run on
+  2026-09-22 reads **9 of 60 without the sentence and 0 of 60 with it**,
+  zh-TW clean 37 -> 55, English unchanged at 50 of 60 on both sides and both
+  guardrails at 0 of 120, so the verdict written first is **fixed**. The
+  control's nine is higher than the 5 and 3 the flag counts on the stored
+  runs, so the defect was not shrinking on its own; and `clean` now counts a
+  fourth flag, so its figures are not comparable with the entries before
+  2026-09-22. Nothing vetoes the sentence at run time: the glossary prevents
+  it, the flag counts it. Three of the eval's own six rows did not survive
   adjudication and two of the three failures were the checker's: a document
   check comparing WI numbers against file slugs, so it could never return
   zero; a class name typeset with U+2011 counted as unnamed. Both are fixed
@@ -783,7 +790,11 @@ prompt (last touched 2026-08-30), same registry, same 9-day store,
 model span 23-28 and the ±3 drift baseline, taken from a single re-run, is too
 narrow to call a five-question move a change. Two of the five come back on the
 third run; the three that do not (A09, A23, A25) drop a named filter or pick
-the wrong aggregate tool, and are not addressed.
+the wrong aggregate tool, and are not addressed. **Five more readings on
+2026-09-22, run back to back, answer 25/42 every time and miss the same 28
+questions identically** -- so the variance is between sessions and not between
+runs, and two arms have to be measured inside one session to be comparable at
+all. What changes between them is not visible from here; the effect is.
 
 **Every decision the store held before 2026-08-23 reads `unrecorded`** -- 9,140
 of them, in `model_digest` and now in `reviewer_auth` too, stamped by the
