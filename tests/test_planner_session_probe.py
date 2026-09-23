@@ -126,3 +126,90 @@ def test_only_the_full_four_condition_run_may_append(probe):
     assert probe.publishable(["C1", "C2", "C3", "C4"], 70)
     assert not probe.publishable(["C1", "C2"], 70)
     assert not probe.publishable(["C1", "C2", "C3", "C4"], 6)
+
+
+# ---- the steps mode: the runner is forced and read back ----------------------------
+
+SYNTHETIC_LOG = """
+time=2026-09-23T15:10:50.674+08:00 level=INFO source=sched.go:613 msg="system memory" total="32.0 GiB" free="17.9 GiB" free_swap="0 B"
+load_tensors: loading model tensors, this can take a while... (load_mode = mmap)
+llama_context: n_batch               = 512
+llama_context: n_ubatch              = 512
+time=2026-09-23T15:10:52.509+08:00 level=INFO source=sched.go:728 msg="loaded runners" count=1
+slot   operator(): id  0 | task 1 | created context checkpoint 1 of 8 (pos_min = 100, pos_max = 200)
+slot   operator(): id  0 | task 1 | restored context checkpoint (pos_min = 100)
+[GIN] 2026/09/23 - 15:11:12 | 200 |  9.9s |       127.0.0.1 | POST     "/api/chat"
+slot   operator(): id  0 | task 2 | erased invalidated context checkpoint (pos_min = 100)
+slot   operator(): id  0 | task 2 | created context checkpoint 2 of 8 (pos_min = 300, pos_max = 400)
+[GIN] 2026/09/23 - 15:11:24 | 200 |  9.9s |       127.0.0.1 | POST     "/api/chat"
+[GIN] 2026/09/23 - 15:40:00 | 200 |  9.9s |       127.0.0.1 | POST     "/api/chat"
+""".strip().splitlines()
+
+
+def test_window_facts_read_the_load_and_the_checkpoints_inside_the_window(probe):
+    facts = probe.window_facts(SYNTHETIC_LOG, "2026/09/23", "15:10:00", "15:12:00")
+    assert facts["n_batch"] == 512 and facts["load_mode"] == "mmap"
+    assert facts["requests"] == 2
+    assert (facts["created"], facts["erased"], facts["restored"]) == (2, 1, 1)
+
+
+def test_window_facts_ignore_a_load_and_requests_outside_the_window(probe):
+    facts = probe.window_facts(SYNTHETIC_LOG, "2026/09/23", "15:30:00", "15:50:00")
+    assert facts["n_batch"] is None and facts["requests"] == 1
+    assert facts["created"] == 0
+
+
+@pytest.mark.parametrize(("spec", "num_batch", "use_mmap"), [
+    ("512", 512, True), ("1024", 1024, True), ("mmap0", 512, False), ("mmap1", 512, True)])
+def test_a_step_spec_names_one_runner(probe, spec, num_batch, use_mmap):
+    step = probe.parse_step(spec)
+    assert (step["num_batch"], step["use_mmap"]) == (num_batch, use_mmap)
+
+
+def test_an_unknown_step_is_refused(probe):
+    with pytest.raises(SystemExit, match="unknown step"):
+        probe.parse_step("2048")
+
+
+def _steps(*rows):
+    out = []
+    for spec, vs_base, vs_same in rows:
+        out.append({"spec": spec, "moved_vs_baseline": vs_base, "moved_vs_same_spec": vs_same})
+    return out
+
+
+@pytest.mark.parametrize(("rows", "label"), [
+    ([("512", 0, None), ("1024", 22, None), ("512", 0, 0), ("1024", 22, 0), ("mmap0", 1, None), ("512", 1, 1)],
+     "batch_is_a_cause"),
+    ([("512", 0, None), ("1024", 22, None), ("512", 1, 1), ("1024", 20, 9), ("512", 0, 0)],
+     "batch_moves_but_not_reproducibly"),
+    ([("512", 0, None), ("1024", 1, None), ("512", 0, 0), ("1024", 2, 1), ("512", 0, 0)],
+     "batch_is_not_a_cause"),
+    ([("512", 0, None), ("1024", 22, None), ("512", 7, 7), ("1024", 22, 0), ("512", 0, 0)],
+     "baseline_unstable"),
+    ([("512", 0, None), ("1024", 22, None)], "incomplete"),
+])
+def test_the_steps_verdict_is_the_pre_registered_ladder(probe, rows, label):
+    assert probe.step_verdict(_steps(*rows))[0] == label
+
+
+def test_the_mmap_step_is_read_on_its_own(probe):
+    rows = _steps(("512", 0, None), ("1024", 22, None), ("512", 0, 0), ("1024", 22, 0),
+                  ("mmap0", 15, None), ("512", 0, 0))
+    assert "a second cause" in probe.step_verdict(rows)[1]
+
+
+def test_a_step_whose_batch_the_server_did_not_honour_is_refused(probe, monkeypatch, tmp_path):
+    monkeypatch.setattr(probe, "unload", lambda *_a, **_k: None)
+    monkeypatch.setattr(probe, "measure", lambda *_a, **_k: {"S01": "x"})
+    monkeypatch.setattr(probe, "OllamaClient", lambda *_a, **_k: object())
+    monkeypatch.setattr(probe.time, "sleep", lambda *_: None)
+    log = tmp_path / "ollama.log"
+    monkeypatch.setattr(probe, "LOG_PATH", log)
+    # the server loaded batch 512 although 1024 was asked for
+    day = probe.datetime.now(probe.LOCAL).strftime("%Y-%m-%d")
+    log.write_text(f"time={day}T00:00:00.000+08:00 msg=\"system memory\" free=\"1 GiB\"\n"
+                   "llama_context: n_batch               = 512\n"
+                   f"[GIN] {day.replace('-', '/')} - 23:59:59 | 200 | 1s | 127.0.0.1 | POST \"/api/chat\"\n")
+    with pytest.raises(SystemExit, match="refusing to count"):
+        probe.run_steps(["1024"], [{"id": "S01", "question": "q"}], {}, "m", 0, log=lambda *_: None)

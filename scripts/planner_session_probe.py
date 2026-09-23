@@ -50,14 +50,28 @@ other by 2 to 5 questions: a smaller move would not be the size of the thing
 being explained. `kv_cache_type()` only records what the server was started
 with; changing it is the scheduling script's job, not this one's.
 
+**The steps mode, added the same day the conditions ran.** The four conditions
+answered "neither" on a batch-512 load and, by accident, something else on a
+batch-1024 one: the second arm was meant to change the KV cache type and did
+not (`launchctl kickstart` does not re-read a plist's environment), but the
+server had 18.6 GiB free when it loaded and chose `n_batch` 1024, and 22 of 70
+plans went with it. So the variable is forced now rather than found: each step
+unloads the model, sets `num_batch` and `use_mmap` on every request, measures
+the seventy, and then reads the load the server actually made out of its own
+log -- a step whose requested batch is not the batch in the log refuses to be
+counted. Checkpoint churn (`created` / `erased` / `restored`) is read per step
+from the same log, because the restores stopped on the 1024 load and that is
+the mechanism candidate.
+
+    uv run python scripts/planner_session_probe.py --steps 512 1024 512 1024 mmap0 512
     uv run python scripts/planner_session_probe.py --conditions C1 C2 --questions 6 --dry-run
-    uv run python scripts/planner_session_probe.py          # four conditions, ~1 h
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 import time
@@ -229,6 +243,189 @@ def publishable(conditions: list[str], questions: int) -> bool:
     return tuple(conditions) == CONDITIONS and questions == 70
 
 
+# ---- the steps mode: the runner as a controlled variable ----------------------
+
+LOG_PATH = Path("/opt/homebrew/var/log/ollama.log")
+#: The server log is stamped in local time, so the windows are read in it.
+LOCAL = datetime.now(UTC).astimezone().tzinfo
+GIN_CHAT = re.compile(r'\[GIN\] (\d{4}/\d{2}/\d{2}) - (\d{2}:\d{2}:\d{2}) \|.*"/api/chat"')
+STEP_MOVED = 3
+
+
+def parse_step(spec: str) -> dict:
+    """`512`, `1024`, `mmap0` (512 without mmap) or `mmap1`."""
+    if spec in ("512", "1024"):
+        return {"label": f"batch {spec}", "num_batch": int(spec), "use_mmap": True}
+    if spec in ("mmap0", "mmap1"):
+        return {"label": f"batch 512, mmap {'on' if spec == 'mmap1' else 'off'}",
+                "num_batch": 512, "use_mmap": spec == "mmap1"}
+    raise SystemExit(f"unknown step {spec!r}; one of 512, 1024, mmap0, mmap1")
+
+
+def window_facts(lines: list[str], day: str, start: str, end: str) -> dict:
+    """What the server log says happened between two clock times on one day.
+
+    The load block (n_batch, load_mode) is the last one that began inside the
+    window; checkpoint lines are attributed to the next `/api/chat` request
+    line after them, which is how the runner interleaves them.
+    """
+    facts = {"n_batch": None, "load_mode": None, "created": 0, "erased": 0, "restored": 0,
+             "requests": 0}
+    pending = {"created": 0, "erased": 0, "restored": 0}
+    stamp = re.compile(r"time=(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})")
+    inside_load = False
+    for line in lines:
+        m = stamp.search(line)
+        if m and m.group(1) == day.replace("/", "-"):
+            inside_load = start <= m.group(2) <= end and "system memory" in line and "free=" in line \
+                or (inside_load and "loaded runners" not in line)
+            if inside_load and "system memory" in line:
+                facts["n_batch"] = facts["load_mode"] = None
+        if inside_load:
+            b = re.search(r"llama_context: n_batch *= (\d+)", line)
+            if b:
+                facts["n_batch"] = int(b.group(1))
+            lm = re.search(r"load_mode = (\w+)", line)
+            if lm:
+                facts["load_mode"] = lm.group(1)
+        if "checkpoint" in line:
+            for key in pending:
+                if key in line:
+                    pending[key] += 1
+        g = GIN_CHAT.search(line)
+        if g:
+            if g.group(1) == day and start <= g.group(2) <= end:
+                facts["requests"] += 1
+                for key in pending:
+                    facts[key] += pending[key]
+            pending = {"created": 0, "erased": 0, "restored": 0}
+    return facts
+
+
+def step_verdict(steps: list[dict], moved: int = STEP_MOVED, total: int = 70) -> tuple[str, str]:
+    """The pre-registered reading of a `512 1024 512 1024 mmap0 512` sequence.
+
+    Every step is read against the first baseline. Baselines must agree with
+    it within the noise (2 or fewer), both forced-1024 steps must move at
+    least `moved` questions and agree with *each other* within the noise, and
+    the mmap step is read on its own. Anything else is reported as it came.
+    """
+    by = {}
+    for step in steps:
+        by.setdefault(step["spec"], []).append(step)
+    bases = by.get("512", [])
+    b1024 = by.get("1024", [])
+    mm = by.get("mmap0", [])
+    if len(bases) < 2 or len(b1024) < 2:
+        return "incomplete", "Incomplete: the rule needs two baselines and two forced-1024 steps."
+    if any(b["moved_vs_baseline"] > moved - 1 for b in bases[1:]):
+        return "baseline_unstable", (
+            f"Baseline unstable: a repeated batch-512 load moved "
+            f"{max(b['moved_vs_baseline'] for b in bases[1:])} of {total} against the first, past "
+            "the noise, so nothing else in this sequence can be read.")
+    pair = b1024[1].get("moved_vs_same_spec")
+    if all(b["moved_vs_baseline"] >= moved for b in b1024) and pair is not None and pair <= moved - 1:
+        label, text = "batch_is_a_cause", (
+            f"Batch size is a cause: two independent loads forced to 1024 move "
+            f"{b1024[0]['moved_vs_baseline']} and {b1024[1]['moved_vs_baseline']} of {total} plans "
+            f"against the 512 baseline and differ from each other on {pair}, while repeated 512 "
+            f"loads differ from the baseline on at most "
+            f"{max(b['moved_vs_baseline'] for b in bases[1:])}.")
+    elif all(b["moved_vs_baseline"] >= moved for b in b1024):
+        label, text = "batch_moves_but_not_reproducibly", (
+            f"Batch 1024 moves {b1024[0]['moved_vs_baseline']} and {b1024[1]['moved_vs_baseline']} "
+            f"plans but the two 1024 loads differ from each other on {pair}, so the load carries "
+            "something besides its batch size.")
+    else:
+        label, text = "batch_is_not_a_cause", (
+            f"Batch size is not a cause here: forced-1024 loads move "
+            f"{[b['moved_vs_baseline'] for b in b1024]} of {total}, inside the noise.")
+    if mm:
+        n = mm[0]["moved_vs_baseline"]
+        text += (f" Loading without mmap moves {n}: "
+                 + ("a second cause." if n >= moved else "not a cause on its own."))
+    return label, text
+
+
+def run_steps(specs: list[str], questions: list[dict], domains, model: str, pause: float,
+              log=print) -> list[dict]:
+    """Each step: unload, force the runner's options, measure, verify against the log."""
+    day = datetime.now(LOCAL).strftime("%Y/%m/%d")
+    steps: list[dict] = []
+    for index, spec in enumerate(specs):
+        step = {"index": index, "spec": spec, **parse_step(spec)}
+        unload(model, pause=pause)
+        client = OllamaClient(model, load_options={"num_batch": step["num_batch"],
+                                                   "use_mmap": step["use_mmap"]})
+        log(f"step {index} ({step['label']}): measuring")
+        started = datetime.now(LOCAL).strftime("%H:%M:%S")
+        step["plans"] = measure(client, questions, domains, log=log)
+        ended = datetime.now(LOCAL).strftime("%H:%M:%S")
+        time.sleep(3)   # the runner writes the last request's log lines after answering
+        facts = window_facts(LOG_PATH.read_text(errors="replace").splitlines(), day, started, ended) \
+            if LOG_PATH.exists() else {}
+        step.update({"started": started, "ended": ended, "log": facts})
+        if facts.get("n_batch") != step["num_batch"]:
+            raise SystemExit(f"step {index}: requested num_batch {step['num_batch']} but the "
+                             f"server loaded with {facts.get('n_batch')}; refusing to count it")
+        expected_mode = "mmap" if step["use_mmap"] else "none"
+        if facts.get("load_mode") not in (expected_mode, None):
+            raise SystemExit(f"step {index}: requested use_mmap={step['use_mmap']} but the "
+                             f"server loaded with load_mode={facts.get('load_mode')}")
+        baseline = steps[0]["plans"] if steps else step["plans"]
+        step["moved_vs_baseline_ids"] = differences(baseline, step["plans"])
+        step["moved_vs_baseline"] = len(step["moved_vs_baseline_ids"])
+        same = [x for x in steps if x["spec"] == spec]
+        step["moved_vs_same_spec"] = len(differences(same[-1]["plans"], step["plans"])) if same else None
+        log(f"  moved vs baseline {step['moved_vs_baseline']}, log n_batch {facts.get('n_batch')} "
+            f"load_mode {facts.get('load_mode')} restored {facts.get('restored')}")
+        steps.append(step)
+    return steps
+
+
+def render_steps(record: dict) -> str:
+    lines = [
+        f"## {record['date']} · commit {record['commit']}",
+        "",
+        "### The runner as a controlled variable: batch size and mmap, forced, one at a time",
+        "",
+        f"The four-condition probe answered *neither* on a batch-512 load and, by accident, moved "
+        f"22 of 70 on a batch-1024 one; the server chooses the batch by free memory (18.6 GiB on "
+        f"this machine, 136 loads, no exception). Here the runner is forced through the request "
+        f"options and read back from the server's log after every step; a step whose requested "
+        f"batch is not the loaded one is refused. Same {record['questions']} questions, one repeat, "
+        f"plans compared call by call against the first baseline. KV cache `{record['kv_cache']}`, "
+        f"{record['wall_minutes']:.0f} min. `scripts/planner_session_probe.py --steps "
+        f"{' '.join(record['specs'])}`.",
+        "",
+        f"**Verdict, by the rule written before the run: {record['verdict_sentence']}**",
+        "",
+        "| step | runner | moved vs first baseline | vs previous same runner | n_batch in log "
+        "| load_mode | checkpoints restored / created |",
+        "|---|---|---|---|---|---|---|",
+    ]
+    for st in record["steps"]:
+        f = st["log"]
+        same = "—" if st["moved_vs_same_spec"] is None else str(st["moved_vs_same_spec"])
+        lines.append(f"| {st['index']} | {st['label']} | **{st['moved_vs_baseline']}** | {same} | "
+                     f"{f.get('n_batch')} | {f.get('load_mode')} | {f.get('restored')} / {f.get('created')} |")
+    lines.append("")
+    for st in record["steps"]:
+        if st["moved_vs_baseline_ids"]:
+            lines.append(f"Step {st['index']} ({st['label']}) moved: {', '.join(st['moved_vs_baseline_ids'])}.")
+    lines += [
+        "",
+        "**What this does not establish.** One model and one machine; two loads per forced setting, "
+        "which separates a setting from a load but not from the day. The checkpoint counts are "
+        "read beside the plans, not manipulated -- the server exposes no switch for them -- so "
+        "they are consistent with the mechanism and do not prove it. And the historical readings "
+        "this began from were all batch-512 loads, so whatever moved them is not the batch; the "
+        "mmap step is the one remaining logged difference among them.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def render(record: dict) -> str:
     moves = record["moves"]
     lines = [
@@ -276,6 +473,8 @@ def main() -> int:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--questions", type=int, default=70)
     parser.add_argument("--conditions", nargs="+", default=list(CONDITIONS), choices=CONDITIONS)
+    parser.add_argument("--steps", nargs="+", default=None,
+                        help="the steps mode: a sequence such as 512 1024 512 1024 mmap0 512")
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument("--rounds", type=int, default=INTERPOSED_ROUNDS)
     parser.add_argument("--pause", type=float, default=30.0,
@@ -285,7 +484,11 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    if not args.dry_run and not publishable(args.conditions, args.questions):
+    if args.steps and not args.dry_run and not (args.questions == 70 and len(args.steps) >= 4):
+        print("the steps mode appends only a full-fixture sequence of at least four steps; "
+              "pass --dry-run", file=sys.stderr)
+        return 2
+    if not args.steps and not args.dry_run and not publishable(args.conditions, args.questions):
         print("only the full run (C1 C2 C3 C4 over all 70 questions) may append; pass --dry-run",
               file=sys.stderr)
         return 2
@@ -294,6 +497,29 @@ def main() -> int:
     domains = store_domains()
     client = OllamaClient(args.model)
     started = time.perf_counter()
+
+    if args.steps:
+        steps = run_steps(args.steps, questions, domains, args.model, args.pause)
+        label, sentence = step_verdict(steps, total=len(questions))
+        record = {
+            "date": datetime.now(UTC).date().isoformat(),
+            "commit": subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True,
+                                     text=True, check=False).stdout.strip() or "unknown",
+            "model": args.model, "questions": len(questions), "specs": args.steps,
+            "kv_cache": kv_cache_type(), "verdict": label, "verdict_sentence": sentence,
+            "steps": steps, "wall_minutes": (time.perf_counter() - started) / 60,
+        }
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(json.dumps(record, indent=2, ensure_ascii=False) + "\n")
+        body = render_steps(record)
+        print("\n" + body)
+        if args.dry_run:
+            print("(dry run -- nothing appended)")
+            return 0
+        args.benchmarks.write_text(args.benchmarks.read_text().rstrip() + "\n\n" + body.rstrip() + "\n")
+        print(f"appended to {args.benchmarks.relative_to(ROOT)}")
+        return 0
+
     plans: dict[str, dict[str, str]] = {}
 
     for condition in args.conditions:

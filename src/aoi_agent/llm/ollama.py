@@ -102,10 +102,18 @@ class OllamaClient:
         base_url: str = BASE_URL,
         keep_alive: str = KEEP_ALIVE,
         timeout: float = EXPLANATION_DEADLINE_S,
+        load_options: dict[str, Any] | None = None,
     ):
         self.model = model
         self.base_url = base_url.rstrip("/")
         self.keep_alive = keep_alive
+        # Options that shape the runner rather than one answer -- `num_batch`,
+        # `use_mmap` -- and so belong to the client, not to a call: the server
+        # reloads the model when they differ from the runner it has, and a
+        # measurement that let them float would be reading whichever runner the
+        # machine's free memory had chosen (2026-09-23: batch 512 or 1024 by
+        # whether 18.6 GiB was free, and 22 of 70 plans with it).
+        self.load_options = dict(load_options or {})
         self._client = httpx.Client(timeout=timeout)
 
     def chat(
@@ -117,7 +125,7 @@ class OllamaClient:
         response_format: dict | None = None,
         max_tokens: int | None = None,
     ) -> ChatResult:
-        options: dict[str, Any] = {"temperature": temperature}
+        options: dict[str, Any] = {**self.load_options, "temperature": temperature}
         if max_tokens is not None:
             options["num_predict"] = max_tokens
 
