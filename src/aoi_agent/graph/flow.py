@@ -34,7 +34,7 @@ from langgraph.types import interrupt
 from aoi_agent.graph.checkpoint import make_checkpointer
 from aoi_agent.graph.rationale_check import unsourced_figures
 from aoi_agent.graph.state import ReviewState
-from aoi_agent.i18n import LANGUAGE_NOTE, line_language, rationale_glossary
+from aoi_agent.i18n import language_note, line_language, rationale_glossary
 from aoi_agent.llm.ollama import EXPLANATION_DEADLINE_S, OllamaClient
 from aoi_agent.mcp_servers.classify import classify_defect
 from aoi_agent.mcp_servers.production import query_board_context, query_machine_stats
@@ -239,7 +239,7 @@ def reason_system_prompt(language: str) -> str:
     model.
     """
     glossary = rationale_glossary(language)
-    note = f"{SYSTEM_PROMPT}\n\n{LANGUAGE_NOTE[language]}"
+    note = f"{SYSTEM_PROMPT}\n\n{language_note(language)}"
     return f"{note}\n\n{glossary}" if glossary else note
 
 

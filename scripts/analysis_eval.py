@@ -67,6 +67,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from aoi_agent.analysis.graph import build_analysis_graph, make_plan_node  # noqa: E402
 from aoi_agent.analysis.plan import REGISTRATIONS, store_domains  # noqa: E402
 from aoi_agent.graph.flow import DEFAULT_MODEL  # noqa: E402
+from aoi_agent.i18n import language_note_arm
 from aoi_agent.llm.ollama import EXPLANATION_DEADLINE_S, OllamaClient  # noqa: E402
 
 #: Printed directly under the table when nothing failed, not after the misses
@@ -393,6 +394,12 @@ def rate(correct: int, total: int) -> str:
     return f"{correct}/{total} = {correct / total:.0%}" if total else "—"
 
 
+def eval_client(model: str, num_batch: int | None) -> OllamaClient:
+    """The planner's client, with the batch pinned when the run names one."""
+    load_options = {"num_batch": num_batch} if num_batch else None
+    return OllamaClient(model, timeout=EVAL_TIMEOUT_S, load_options=load_options)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", default=DEFAULT_MODEL)
@@ -413,6 +420,13 @@ def main() -> int:
     parser.add_argument("--note", default="",
                         help="one line into the report header, for a re-run "
                              "whose figures are not comparable with the last")
+    parser.add_argument("--num-batch", type=int, default=None,
+                        help="pin the runner's batch size on every request. "
+                             "Left unset, the server picks 512 or 1024 by free "
+                             "memory at load time, and the 2026-09-23 probe "
+                             "showed the two settings plan 22 of 70 questions "
+                             "differently; a run meant to be compared with "
+                             "another should name its batch")
     parser.add_argument("--plan-only", action="store_true",
                         help="score the plan without running the tools or the "
                              "synthesis call. Roughly halves the wall time and "
@@ -426,7 +440,9 @@ def main() -> int:
 
     questions = load_questions(args.questions)
     domains = store_domains()
-    client = OllamaClient(args.model, timeout=EVAL_TIMEOUT_S)
+    client = eval_client(args.model, args.num_batch)
+    print(f"language note: {language_note_arm()}; num_batch: "
+          f"{args.num_batch if args.num_batch else 'the server\'s choice'}")
 
     if args.plan_only:
         # Only the planner runs. Everything this script scores -- the plan, the

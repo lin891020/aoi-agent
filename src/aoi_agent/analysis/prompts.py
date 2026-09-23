@@ -27,12 +27,13 @@ import json
 from typing import Any
 
 from aoi_agent.analysis.plan import PLANNABLE_TOOLS, Domains
+
 # The hidden-key rule lives with the walk that renders it, so there is one
 # spelling of `ground_truth` for both routes out of a tool's payload. The
 # import points at the station from the analysis layer, which is the wrong
 # direction on paper -- taken deliberately, because two copies of an invariant
 # is the failure it is meant to prevent, and `result_view` imports nothing.
-from aoi_agent.i18n import DEFAULT_LOCALE, LANGUAGE_NOTE, normalise
+from aoi_agent.i18n import language_note
 from aoi_agent.station.result_view import strip_hidden
 
 SYSTEM_PROMPT = """You plan data lookups for a PCB production line's review station.
@@ -436,7 +437,7 @@ def _domain_note(domains: Domains) -> str:
 
 
 def _language_note(lang: str | None) -> str:
-    return LANGUAGE_NOTE.get(normalise(lang), LANGUAGE_NOTE[DEFAULT_LOCALE])
+    return language_note(lang)
 
 
 def build_planning_messages(

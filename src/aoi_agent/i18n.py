@@ -843,6 +843,45 @@ LANGUAGE_NOTE = {
           "spelling every time it is named.",
 }
 
+#: The note as it read from 2026-08-29 to 2026-09-02, before the class list.
+#: Kept because the planner's independent-seventy readings straddle that
+#: change: 28/42 on 2026-08-30 was measured under this sentence and every
+#: reading since (23, 26, 25) under the one above, and the 09-19 entry that
+#: called the spread "unchanged code" had not noticed that `LANGUAGE_NOTE` is
+#: also the planner's. `AOI_LANGUAGE_NOTE=2026-08-30` selects it, for the arm
+#: `scripts/language_note_arms.py` reads against the current sentence inside
+#: one session; any other value is refused rather than read as the default,
+#: so a misspelled arm cannot run the current sentence under the old name.
+LANGUAGE_NOTE_2026_08_30 = {
+    "zh-TW": "Write all prose you produce in Traditional Chinese (繁體中文). "
+             "Leave identifiers -- defect classes, line, machine and lot ids, "
+             "document numbers, tool names -- exactly as they appear in the "
+             "data.",
+    "en": "Write all prose you produce in English. Leave identifiers -- defect "
+          "classes, line, machine and lot ids, document numbers, tool names -- "
+          "exactly as they appear in the data.",
+}
+LANGUAGE_NOTE_ENV = "AOI_LANGUAGE_NOTE"
+LANGUAGE_NOTE_ARMS = {"current": LANGUAGE_NOTE, "2026-08-30": LANGUAGE_NOTE_2026_08_30}
+
+
+def language_note_arm() -> str:
+    """Which sentence is in force: `current` unless the switch names another."""
+    import os
+
+    arm = os.environ.get(LANGUAGE_NOTE_ENV, "current").strip() or "current"
+    if arm not in LANGUAGE_NOTE_ARMS:
+        raise ValueError(
+            f"{LANGUAGE_NOTE_ENV}={arm!r} names no language-note arm; "
+            f"the arms are {sorted(LANGUAGE_NOTE_ARMS)}")
+    return arm
+
+
+def language_note(lang: str | None) -> str:
+    """The one sentence about language, for whichever prompt is being built."""
+    table = LANGUAGE_NOTE_ARMS[language_note_arm()]
+    return table.get(normalise(lang), table[DEFAULT_LOCALE])
+
 
 #: One clause of WI-201, rendered for the language that got it backwards.
 #:

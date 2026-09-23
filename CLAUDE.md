@@ -62,7 +62,7 @@ scripts/                    gate_check, build_patches, train, report, seed_store
                             (and demo_script, the shot list it drives),
                             build_detector_patches, crop_reverifier_report,
                             mark_unattributed_resolutions, ...
-tests/                      1,617 tests; dataset-dependent ones behind `-m dataset`
+tests/                      1,655 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/deck/                  the project-journey deck (pptx, html with a self-test
                             mode, study guide) -- built from scripts/deck_content.py,
@@ -82,7 +82,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 1,617 tests, no GPU needed, no model called
+uv run pytest                                    # 1,655 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/gate_check.py --dataset hripcb --split aligned --limit 693 --thresholds 10 15 20 30 45 60 \
     --out eval/results/gate_check_hripcb_aligned.json   # the same gate on photographs (~2 min)
@@ -139,6 +139,9 @@ uv run python scripts/analysis_eval.py --plan-only  # the same score, without th
 uv run python scripts/planner_session_probe.py   # what moves the planner between sessions: four
                                                  # conditions in one session, plans compared call
                                                  # by call, C2 the noise floor (~1 h)
+uv run python scripts/language_note_arms.py --runs 2026-08-30:A.json current:B.json 2026-08-30:C.json current:D.json --day D --start T --end T
+                                                 # four `analysis_eval --raw` files from one load, ABAB: did
+                                                 # the 2026-09-02 language note move the planner? (reads only)
 uv run python scripts/analysis_eval.py --questions tests/fixtures/analysis_questions_independent.json
                                                  # the same scorer on seventy questions whose authors never saw the prompt
 AOI_SQL_TOOL=0 uv run python scripts/analysis_eval.py --plan-only --questions tests/fixtures/analysis_questions_independent.json
@@ -788,9 +791,10 @@ Chinese calls and 20 of 20 English, with swap past 15 GB on this 32 GB machine,
 so neither reached condition c or d. The same-night control answered 23/42 on
 the independent seventy against 28/42 on 2026-08-30. **A third reading on
 2026-09-19 answered 26/42 with nothing in the repository changed** -- same
-prompt (last touched 2026-08-30), same registry, same 9-day store,
-`temperature` 0, the model's manifest dated 2026-08-16 -- so three runs of one
-model span 23-28 and the ±3 drift baseline, taken from a single re-run, is too
+registry, same 9-day store, `temperature` 0, the model's manifest dated
+2026-08-16; that entry also said "same prompt, last touched 2026-08-30",
+which was false and is corrected at the end of this paragraph -- so three
+runs of one model span 23-28 and the ±3 drift baseline, taken from a single re-run, is too
 narrow to call a five-question move a change. Two of the five come back on the
 third run; the three that do not (A09, A23, A25) drop a named filter or pick
 the wrong aggregate tool, and are not addressed. **Five more readings on
@@ -810,7 +814,17 @@ beside the plans and not manipulated. So `OllamaClient` carries
 `num_batch`/`use_mmap` as `load_options` and the probe reads the load back out
 of the server log and refuses a step that did not get what it asked for. Not
 explained: the four historical readings were all 512 loads, so their 23-28
-spread has a cause this run does not contain.
+spread has a cause this run does not contain. **Nor is it the prompt.** The
+09-19 entry's "same prompt" was wrong: `LANGUAGE_NOTE` gained the class list on
+2026-09-02 (`bbe1df8`) and the planner appends that sentence, so the 28 was
+read under one sentence and the 23/26/25 under another. Read on one 512 load
+the same night (`scripts/language_note_arms.py`, ABAB, rule written first):
+**27/42 under either sentence**, twice each, one question moved either way
+(S03 gained, S17 timed out) and 12 of 70 planned differently without the
+score moving -- `AOI_LANGUAGE_NOTE=2026-08-30` is the switch. That
+same-sentence, same-batch 27 sits beside the previous day's five readings of
+25, so what separates sessions is still not a prompt, a batch, a sequence or
+a reload.
 
 **Every decision the store held before 2026-08-23 reads `unrecorded`** -- 9,140
 of them, in `model_digest` and now in `reviewer_auth` too, stamped by the

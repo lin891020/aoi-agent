@@ -9536,3 +9536,26 @@ Step 1 (batch 1024) moved: A04, A10, A12, A13, A22, A25, A27, A35, S02, S03, S04
 Step 3 (batch 1024) moved: A04, A10, A12, A13, A22, A25, A27, A35, S02, S03, S04, S09, S12, S13, S14, S17, S20, S22, S23, S29, S32, S35.
 
 **What this does not establish.** One model and one machine; two loads per forced setting, which separates a setting from a load but not from the day. The checkpoint counts are read beside the plans, not manipulated -- the server exposes no switch for them -- so they are consistent with the mechanism and do not prove it. And the historical readings this began from were all batch-512 loads, so whatever moved them is not the batch; the mmap step is the one remaining logged difference among them.
+
+## 2026-09-23 · commit 17ab3e7
+
+### Correction, and the two sentences read on one load — was 28 -> 23 the prompt?
+
+**Correction to the 2026-09-19 entry.** It says the planner prompt was last changed on 2026-08-30. `bbe1df8` (2026-09-02) changed `i18n.LANGUAGE_NOTE` to list the six classes, and `build_planning_messages` appends that sentence to every planning call. Rendered against today's store, the planning prompt at `68c7e23` (the 28/42 reading) hashes `af31604385e8` and the prompt at `6c09a60`, `9eba15f` and HEAD hashes `b519db949d60` -- the three later readings (23, 26, 25 x 5) were made under one prompt and the first under another. The sentence "nothing in this repository had moved between the two" was false, and the ±5 spread it priced is two prompts and one unknown, not one unknown.
+
+**The run.** `scripts/analysis_eval.py --plan-only --repeats 1 --num-batch 512` four times on one load, `AOI_LANGUAGE_NOTE` alternating `2026-08-30`, `current`, `2026-08-30`, `current`; the server log for the window 2026-09-23 22:08:36-23:05:26 holds 1 load(s) at n_batch [512]. `scripts/language_note_arms.py` reads the four `--raw` files; rule and prediction in its docstring, written first.
+
+| run | sentence | answered / 42 | refused / 28 | no plan | planned differently from run 1 |
+|---|---|---|---|---|---|
+| 1 | `2026-08-30` | 27 | 17 | 1 | — |
+| 2 | `current` | 27 | 17 | 0 | 12 |
+| 3 | `2026-08-30` | 27 | 17 | 1 | 1 |
+| 4 | `current` | 27 | 17 | 0 | 11 |
+
+**Verdict: not_the_sentence.** The arms differ by +0.0 of 42 (27.0 against 27.0); the class-list sentence does not move the planner, and the 28 -> 23 spread keeps the cause this run does not contain.
+
+Questions right under the 2026-08-30 sentence and wrong under the current one (run 1 against run 2): S03. The reverse: S17. Planned differently between the two sentences: 12 of 70 (A01, A10, A12, A13, A18, S03, S04, S09, S14, S17, S22, S35); between the two runs of the old sentence 1, of the current 2.
+
+**Read beside the verdict.** A question with no plan is a miss, and the questions that produced none were: `2026-08-30` S17; `current` none -- a deadline, not a plan, so the old sentence's count is a floor by that many. The sentence does move plans without moving the score: the questions planned differently between the arms are listed above, and the same load's own repeat floor is beside them. And the current sentence on this load reads 27 and 27 of 42 where the five same-day readings of 2026-09-22 read 25 on the same sentence and the same batch: one more between-session reading, on a prompt and a runner setting both now held fixed.
+
+**What this does not establish.** One load, one day, `--repeats 1` where the historical readings used 3 -- read as comparable because five same-load readings on 2026-09-22 agreed to the question and a straight repeat moved 0-1 of 70 on 2026-09-23. The 23/26/25 spread among the three readings on the current sentence is not addressed by this run: all three were 512 loads on one prompt, and whatever separates them is still not in any measurement here.
