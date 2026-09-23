@@ -9514,3 +9514,25 @@ Three readings of the planner on unchanged code had spanned 23-28 of 42 answered
 What this means for every comparison in this file: **two arms must be measured in the same session to be compared at all.** The model-comparison entry and the SQL tool's two arms already are, for other reasons; the 09-17 control was, which is why its verdict stands while the 23/42-against-28/42 sentence beside it did not. What moves between sessions is not visible from here -- the offload split, the KV cache, whatever Ollama rebuilds when it next loads these weights -- and this project can measure the effect without seeing the cause.
 
 **What this does not establish.** One model, one machine, one day for the five. Back-to-back agreement is not determinism in general: it says the planner's output is fixed for as long as the serving state is, not that the serving state is fixed. And the five runs sit on two commits -- `0a284a9` and `f328449`, which changed the disposition path's prompt and the rationale scorer, neither of which the planner reads; `tests/test_rationale_glossary.py` holds that separation.
+
+## 2026-09-23 · commit a54227b
+
+### The runner as a controlled variable: batch size and mmap, forced, one at a time
+
+The four-condition probe answered *neither* on a batch-512 load and, by accident, moved 22 of 70 on a batch-1024 one; the server chooses the batch by free memory (18.6 GiB on this machine, 136 loads, no exception). Here the runner is forced through the request options and read back from the server's log after every step; a step whose requested batch is not the loaded one is refused. Same 70 questions, one repeat, plans compared call by call against the first baseline. KV cache `q8_0`, 84 min. `scripts/planner_session_probe.py --steps 512 1024 512 1024 mmap0 512`.
+
+**Verdict, by the rule written before the run: Batch size is a cause: two independent loads forced to 1024 move 22 and 22 of 70 plans against the 512 baseline and differ from each other on 0, while repeated 512 loads differ from the baseline on at most 0. Loading without mmap moves 0: not a cause on its own.**
+
+| step | runner | moved vs first baseline | vs previous same runner | n_batch in log | load_mode | checkpoints restored / created |
+|---|---|---|---|---|---|---|
+| 0 | batch 512 | **0** | — | 512 | mmap | 5 / 210 |
+| 1 | batch 1024 | **22** | — | 1024 | mmap | 0 / 210 |
+| 2 | batch 512 | **0** | 0 | 512 | mmap | 5 / 210 |
+| 3 | batch 1024 | **22** | 0 | 1024 | mmap | 0 / 210 |
+| 4 | batch 512, mmap off | **0** | — | 512 | none | 5 / 210 |
+| 5 | batch 512 | **0** | 0 | 512 | mmap | 5 / 210 |
+
+Step 1 (batch 1024) moved: A04, A10, A12, A13, A22, A25, A27, A35, S02, S03, S04, S09, S12, S13, S14, S17, S20, S22, S23, S29, S32, S35.
+Step 3 (batch 1024) moved: A04, A10, A12, A13, A22, A25, A27, A35, S02, S03, S04, S09, S12, S13, S14, S17, S20, S22, S23, S29, S32, S35.
+
+**What this does not establish.** One model and one machine; two loads per forced setting, which separates a setting from a load but not from the day. The checkpoint counts are read beside the plans, not manipulated -- the server exposes no switch for them -- so they are consistent with the mechanism and do not prove it. And the historical readings this began from were all batch-512 loads, so whatever moved them is not the batch; the mmap step is the one remaining logged difference among them.

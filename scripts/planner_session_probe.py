@@ -7,9 +7,10 @@ is between sessions and not between runs, and the 09-23 entry drew the rule
 that two arms have to be measured inside one session to be comparable.
 
 What it could not say is why, and two candidates were already dead: the server
-process has not restarted since 2026-08-27 (`/opt/homebrew/var/log/ollama.log`,
-version 0.32.13 throughout) and every load behind those four readings carries
-the same parameters -- 25/25 layers on GPU, `n_ctx` 32768, batch 512/512, flash
+process had not restarted between 2026-08-27 and those readings
+(`/opt/homebrew/var/log/ollama.log`, version 0.32.13 throughout; it restarted
+twice on 2026-09-23, for the arm below) and every load behind those four
+readings carries the same parameters -- 25/25 layers on GPU, `n_ctx` 32768, batch 512/512, flash
 attention on, KV cache `q8_0`, a 12036.67 MiB GPU buffer. A five-minute probe
 then found that the same question answered after different preceding requests
 produces *different prose* and identical tool calls, each condition exactly

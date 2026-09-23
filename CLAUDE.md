@@ -797,7 +797,20 @@ the wrong aggregate tool, and are not addressed. **Five more readings on
 2026-09-22, run back to back, answer 25/42 every time and miss the same 28
 questions identically** -- so the variance is between sessions and not between
 runs, and two arms have to be measured inside one session to be comparable at
-all. What changes between them is not visible from here; the effect is.
+all. **What moves it is the runner, not the sequence** (2026-09-23,
+`scripts/planner_session_probe.py`): inside one session, a straight repeat, a
+fixed 200-question interposition and an unload-reload each move 0-1 of 70
+planned calls on a batch-512 load; the server picks `n_batch` by free memory
+at load time -- 1024 when 18.6 GiB is free, 512 otherwise, 136 loads without
+exception -- and two independent loads forced to 1024 move **the same 22 of
+70** against the 512 baseline while differing from each other on 0. Loading
+without mmap moves 0. The checkpoint restores the runner logs go from 5-6 per
+70 requests to 0 on the 1024 loads, which is the mechanism candidate, read
+beside the plans and not manipulated. So `OllamaClient` carries
+`num_batch`/`use_mmap` as `load_options` and the probe reads the load back out
+of the server log and refuses a step that did not get what it asked for. Not
+explained: the four historical readings were all 512 loads, so their 23-28
+spread has a cause this run does not contain.
 
 **Every decision the store held before 2026-08-23 reads `unrecorded`** -- 9,140
 of them, in `model_digest` and now in `reviewer_auth` too, stamped by the
