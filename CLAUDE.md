@@ -62,7 +62,7 @@ scripts/                    gate_check, build_patches, train, report, seed_store
                             (and demo_script, the shot list it drives),
                             build_detector_patches, crop_reverifier_report,
                             mark_unattributed_resolutions, ...
-tests/                      1,601 tests; dataset-dependent ones behind `-m dataset`
+tests/                      1,617 tests; dataset-dependent ones behind `-m dataset`
 docs/benchmarks.md          every measurement run, newest last
 docs/deck/                  the project-journey deck (pptx, html with a self-test
                             mode, study guide) -- built from scripts/deck_content.py,
@@ -82,7 +82,7 @@ an error.
 ## Commands
 
 ```bash
-uv run pytest                                    # 1,601 tests, no GPU needed, no model called
+uv run pytest                                    # 1,617 tests, no GPU needed, no model called
 uv run python scripts/gate_check.py              # S0: does differencing make false calls?
 uv run python scripts/gate_check.py --dataset hripcb --split aligned --limit 693 --thresholds 10 15 20 30 45 60 \
     --out eval/results/gate_check_hripcb_aligned.json   # the same gate on photographs (~2 min)
@@ -136,6 +136,9 @@ uv run python scripts/rationale_eval.py          # is the operator's rationale t
 uv run python scripts/agent_eval.py              # does the agent layer beat the classifier? (~9 min)
 uv run python scripts/analysis_eval.py           # does the planner plan the right lookups, and refuse the rest?
 uv run python scripts/analysis_eval.py --plan-only  # the same score, without the tools and the prose nobody scores
+uv run python scripts/planner_session_probe.py   # what moves the planner between sessions: four
+                                                 # conditions in one session, plans compared call
+                                                 # by call, C2 the noise floor (~1 h)
 uv run python scripts/analysis_eval.py --questions tests/fixtures/analysis_questions_independent.json
                                                  # the same scorer on seventy questions whose authors never saw the prompt
 AOI_SQL_TOOL=0 uv run python scripts/analysis_eval.py --plan-only --questions tests/fixtures/analysis_questions_independent.json
