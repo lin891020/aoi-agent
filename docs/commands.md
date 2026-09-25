@@ -67,6 +67,11 @@ uv run python scripts/analysis_eval.py --questions tests/fixtures/analysis_quest
                                                  # the same scorer on seventy questions whose authors never saw the prompt
 AOI_SQL_TOOL=0 uv run python scripts/analysis_eval.py --plan-only --questions tests/fixtures/analysis_questions_independent.json
                                                  # the control arm: the same seventy with run_sql out of the registry
+uv run python scripts/jev_refusal_eval.py --print-state   # what Jev (TypeSafe's decision model) is shown, no key needed
+uv run python scripts/jev_refusal_eval.py --gptoss-raw models/language_note_2_current.json --zh-en tests/fixtures/jev_zh_en_probe.json
+                                                 # can a non-generative model tell an answerable question from one
+                                                 # to refuse? three arms x three resends on the seventy, verdict
+                                                 # written first; needs AI_GATEWAY_API_KEY (Jev is on the free tier)
 uv run python scripts/synthesis_eval.py          # is the prose true of the results it was written from,
                                                  # in both languages? (~50 min; --lang both is the default
                                                  # and the only value it will publish)

@@ -61,6 +61,7 @@
 | 11 | 解釋來不來得及 | `scripts/latency_report.py` | Agent-layer latency · 08-29、08-30、09-17 | — | 提示寫進門檻；60 s 與 10 s 分開 |
 | — | 規劃器查對東西嗎 | `scripts/analysis_eval.py` | Analysis planner（多次）、SQL tool 兩臂 · 08-29、listed-set · 08-30 | `models/analysis_eval*.json` | 70 題外部出題；SQL 工具留、加守衛 |
 | — | 合成的文字對得上結果嗎 | `scripts/synthesis_eval.py` | synthesis · 08-31 | — | 兩種語言都量才發表 |
+| — | 非生成的決策模型（Jev）能不能判「該不該拒答」 | `scripts/jev_refusal_eval.py` | Jev refusal · 09-25 | `models/jev_refusal_*.json` | 見條目 |
 
 ### 第五章 · 同一個模型隔天答不一樣
 
@@ -70,6 +71,16 @@
 | 13 | 同一時段內什麼會動 | `scripts/planner_session_probe.py` | The runner as a controlled variable · 09-23 | `models/planner_session_*.json` | batch 是原因；mmap、順序、卸載不是 |
 | — | 09-02 那句提示詞 | `scripts/language_note_arms.py` | Correction, and the two sentences · 09-23 | `models/language_note_*.json` | 不是；`AOI_LANGUAGE_NOTE` 開關留著 |
 | — | 跨天的推力 | （讀既有資料） | closing adjudication · 09-25 | — | 框到日誌之下，收掉；評測預設釘 batch 512 |
+
+## Jev 的金鑰怎麼申請
+
+Jev 是 TypeSafe AI 的決策模型，只回機率不生成文字；本專案透過 Vercel AI Gateway 呼叫，它在免費層。
+
+1. 到 vercel.com 註冊（Hobby 免費，不用信用卡）。
+2. 儀表板左側 **AI Gateway** → **API Keys** → **Create key**，複製（只顯示一次）。
+3. 放進 `~/.zshrc`：`export AI_GATEWAY_API_KEY=vck_...`。不進 repo，`.env` 也在 gitignore。
+4. 驗證：`uv run python scripts/jev_refusal_eval.py --limit 2 --repeats 1 --arms full`，每題印出 P(answerable) 與延遲就通了。
+5. 原廠金鑰（console.typesafe.ai/keys）也可以：`TYPESAFE_API_KEY`，client 會自動改走 api.typesafe.ai。
 
 ## 怎麼重建一張圖
 
