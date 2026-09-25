@@ -824,7 +824,15 @@ the same night (`scripts/language_note_arms.py`, ABAB, rule written first):
 score moving -- `AOI_LANGUAGE_NOTE=2026-08-30` is the switch. That
 same-sentence, same-batch 27 sits beside the previous day's five readings of
 25, so what separates sessions is still not a prompt, a batch, a sequence or
-a reload.
+a reload. **Closed 2026-09-25, cause bounded and not identified.** Read
+across three sessions' per-question plans (23, 25, 27), the 13-14 of 70 that
+move between sessions land 10-12 inside the 22 the forced-1024 loads moved
+(p < 0.001 by chance), the load blocks of the 25 and the 27 differ in nothing
+but durations, and three server processes on one day plan identically on
+every 512 load; what pushes the knife-edge subset between days is below
+what the log shows. The rule is what matters: two arms on one load, batch
+pinned, load read back, 2 or fewer of 70 is the floor. The adjudication
+entry names what is not made.
 
 **Every decision the store held before 2026-08-23 reads `unrecorded`** -- 9,140
 of them, in `model_digest` and now in `reviewer_auth` too, stamped by the
