@@ -1,6 +1,6 @@
-"""Which invariants in CLAUDE.md would actually fail a test if broken?
+"""Which invariants in docs/invariants.md would actually fail a test if broken?
 
-CLAUDE.md's "Invariants" section is the load-bearing document in this
+docs/invariants.md's "Invariants" section is the load-bearing document in this
 repository: it is what a reader is asked to trust and what an agent is asked
 not to undo. Trusting it means something only if breaking one of those rules
 breaks the build. Audited by hand on 2026-08-22, seven of twelve did not --
@@ -23,8 +23,8 @@ Writing the entry is a human judgement, made once, ideally with a mutation to
 back it (see docs/benchmarks.md, "The invariant audit"). The script then holds
 that judgement to the code:
 
-- an invariant in CLAUDE.md with no entry here          -> drift
-- an entry here matching no invariant in CLAUDE.md      -> drift
+- an invariant in docs/invariants.md with no entry here -> drift
+- an entry here matching no invariant there             -> drift
 - a named test whose file is gone                       -> drift
 - a named test that has been renamed or deleted         -> drift
 - a named test wearing ``@pytest.mark.skip``            -> drift
@@ -60,7 +60,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-CLAUDE_MD = ROOT / "CLAUDE.md"
+#: The invariants lived in CLAUDE.md until 2026-09-25, when that file was cut
+#: down to what every session needs and the section moved here verbatim.
+INVARIANTS_MD = ROOT / "docs" / "invariants.md"
 INVARIANTS_HEADING = "## Invariants"
 
 ENFORCED = "enforced"
@@ -91,9 +93,9 @@ class Entry:
     proved_by: str = ""
 
 
-#: The registry. Adding an invariant to CLAUDE.md without adding a row here is
-#: a failure of this script, which is the point: the audit cannot fall behind
-#: the document silently.
+#: The registry. Adding an invariant to docs/invariants.md without adding a row
+#: here is a failure of this script, which is the point: the audit cannot fall
+#: behind the document silently.
 REGISTRY: tuple[Entry, ...] = (
     Entry(
         match="Report an operating-point curve",
@@ -616,17 +618,17 @@ REGISTRY: tuple[Entry, ...] = (
 
 
 # ---------------------------------------------------------------------------
-# CLAUDE.md
+# docs/invariants.md
 # ---------------------------------------------------------------------------
 
 
 def invariant_bullets(text: str | None = None) -> list[str]:
-    """The top-level bullets under CLAUDE.md's Invariants heading.
+    """The top-level bullets under docs/invariants.md's Invariants heading.
 
     Continuation lines are folded in, so a `match` phrase may sit anywhere in
     the bullet rather than only on its first line.
     """
-    text = CLAUDE_MD.read_text() if text is None else text
+    text = INVARIANTS_MD.read_text() if text is None else text
     lines = text.splitlines()
 
     start = next(
@@ -634,7 +636,7 @@ def invariant_bullets(text: str | None = None) -> list[str]:
     )
     if start is None:
         raise SystemExit(
-            f"{CLAUDE_MD.name}: no '{INVARIANTS_HEADING}' heading. "
+            f"{INVARIANTS_MD.name}: no '{INVARIANTS_HEADING}' heading. "
             "The audit reads that section; renaming it silently empties this script."
         )
     end = next(
@@ -770,7 +772,7 @@ def audit(
         hits = [i for i, bullet in enumerate(bullets) if entry.match in bullet]
         if not hits:
             loose.append(
-                f"{entry.match!r} matches no invariant in CLAUDE.md -- the rule was "
+                f"{entry.match!r} matches no invariant in docs/invariants.md -- the rule was "
                 "removed or reworded, and this entry has to follow it"
             )
             continue
@@ -826,7 +828,7 @@ def audit(
     for index, bullet in enumerate(bullets):
         if index not in claimed:
             loose.append(
-                f"CLAUDE.md invariant {title_of(bullet)!r} has no entry in the "
+                f"docs/invariants.md invariant {title_of(bullet)!r} has no entry in the "
                 "registry. Add one, even if the entry is 'unenforceable'"
             )
 
@@ -880,7 +882,7 @@ def main() -> int:
         print(f"DRIFT  {line}")
     if drift:
         print(
-            f"\n{drift} drift(s). A named test moved, or CLAUDE.md and this "
+            f"\n{drift} drift(s). A named test moved, or docs/invariants.md and this "
             "registry stopped agreeing."
         )
         return 1

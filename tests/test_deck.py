@@ -33,6 +33,9 @@ PUBLISHED = [
     ROOT / "README.md",
     ROOT / "README.zh-TW.md",
     ROOT / "CLAUDE.md",
+    ROOT / "docs" / "invariants.md",
+    ROOT / "docs" / "still-open.md",
+    ROOT / "docs" / "commands.md",
     ROOT / "docs" / "architecture.md",
     ROOT / "docs" / "findings.md",
 ]
@@ -54,7 +57,9 @@ FIVE = [s for s in SLIDES if s.kind == "five"]
 
 @pytest.fixture(scope="module")
 def published_text() -> str:
-    return "\n".join(p.read_text() for p in PUBLISHED if p.exists())
+    # A missing file used to be skipped, so a mistyped path passed while the
+    # figures it held went unchecked; read_text raises instead.
+    return "\n".join(p.read_text() for p in PUBLISHED)
 
 
 def test_every_quoted_figure_was_published(published_text):

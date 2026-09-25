@@ -1,4 +1,4 @@
-"""CLAUDE.md's invariants, and whether each still has the guard it claims.
+"""The invariants (docs/invariants.md, CLAUDE.md until 2026-09-25), and whether each still has the guard it claims.
 
 An invariant is a promise that something cannot happen. The promise is worth
 what the test behind it is worth, and on 2026-08-22 an outside audit found that
@@ -26,8 +26,9 @@ loudly, at the moment the code changes, rather than quietly forever.
 
 from __future__ import annotations
 
-import pytest
+from pathlib import Path
 
+import pytest
 from invariant_audit import (
     ENFORCED,
     PARTIAL,
@@ -40,15 +41,17 @@ from invariant_audit import (
     title_of,
 )
 
+ROOT = Path(__file__).resolve().parents[1]
+
 
 def test_every_invariant_still_has_the_enforcement_the_registry_claims():
     """The headline. Fails when a named test is renamed, deleted or skipped,
-    when an invariant is added to CLAUDE.md with no entry, or when an entry
+    when an invariant is added to docs/invariants.md with no entry, or when an entry
     outlives the rule it was written for."""
     rows, loose = audit()
     problems = [f"{row.title}: {p}" for row in rows for p in row.problems] + loose
     assert not problems, "\n".join(
-        ["the invariant audit and CLAUDE.md have drifted apart:", *problems]
+        ["the invariant audit and docs/invariants.md have drifted apart:", *problems]
     )
 
 
@@ -68,7 +71,7 @@ def test_every_invariant_in_the_document_is_accounted_for():
     test say out loud when it moves."""
     bullets = invariant_bullets()
     assert len(bullets) == len(REGISTRY) == 20, (
-        f"CLAUDE.md states {len(bullets)} invariants and the registry has "
+        f"docs/invariants.md states {len(bullets)} invariants and the registry has "
         f"{len(REGISTRY)} entries; docs/benchmarks.md and both READMEs publish 20"
     )
 
@@ -233,3 +236,20 @@ def test_a_multi_line_bullet_is_folded_into_one_string():
         "- not an invariant\n"
     )
     assert bullets == ["**A rule.** It carries on onto a second line.", "**Another.**"]
+
+
+def test_the_index_in_claude_md_is_the_twenty_titles_in_order():
+    """CLAUDE.md keeps one line per invariant so every session sees them, and
+    that list is a second copy of docs/invariants.md. A rule added, reworded or
+    dropped there alone would pass the audit -- which reads the full text --
+    while every session read the edited copy. Found in review on 2026-09-25,
+    the day the invariants moved out."""
+    text = (ROOT / "CLAUDE.md").read_text()
+    section = text.split("## The twenty rules", 1)
+    assert len(section) == 2, "CLAUDE.md no longer has the invariant index"
+    body = section[1].split("\n## ", 1)[0]
+    index = [line[2:].strip() for line in body.splitlines() if line.startswith("- ")]
+    assert index == [title_of(b) for b in invariant_bullets()], (
+        "CLAUDE.md's invariant index and docs/invariants.md disagree; "
+        "change the rule in docs/invariants.md and copy its bold lead here"
+    )

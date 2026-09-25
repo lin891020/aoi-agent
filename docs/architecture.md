@@ -525,3 +525,79 @@ cannot answer this" than a plausible wrong answer they have no way to check.
 | acceptance criteria | | ✓ original documents, not a real standard |
 | operator identity | ✓ a signed-in name, and how it was established | ✓ the operators themselves, on a demo store |
 | the analysis page's figures | ✓ computed from the store, by fixed queries | ✓ over the generated line metadata above |
+
+> Moved out of CLAUDE.md on 2026-09-25; before that date this section lived there.
+
+## Layout
+
+```
+src/aoi_agent/
+    data/deeppcb.py         dataset access, official splits
+    data/pcbaoi.py          PCB-AoI, the detector's dataset: VOC boxes, a split
+                            by base stem so no transform leaks, YOLO export
+    data/hripcb.py          the second dataset, as a view: same pair interface,
+                            its own class table, the rotated subset padded onto
+                            the template's frame
+    aoi/registration.py     phase correlation, and the three things it refuses
+    aoi/simulator.py        template differencing -- the "AOI"
+    aoi/matching.py         label candidates against ground truth
+    vision/                 patches, dataset, ResNet-18, inference, operating
+                            point, ONNX export and INT8 quantisation;
+                            detector.py is the second front end -- a YOLO box
+                            with P(false_call) = 1 - confidence, no template
+    store/                  SQLAlchemy models, seeding, standards retrieval,
+                            machine_events (the store's first non-board entity,
+                            and its only writer, events.py),
+                            the analysis_runs log, and the provenance every
+                            automated decision carries -- dispositions.py is
+                            the board-level record
+    mcp_servers/            four MCP servers (classify, production, standards,
+                            sql_readonly -- the last is the experiment)
+    graph/                  LangGraph flow with the human escalation,
+                            durable SQLite checkpointer
+    analysis/               the /ask flow -- typed plan, validator, Send
+                            fan-out, chart derived from the result shape;
+                            sql_guard.py is the one door model-written SQL
+                            may go through (a copy without the answer key,
+                            one SELECT, capped)
+    i18n.py                 the two string tables, and the rule that the
+                            switch renders chrome and never rewrites a record
+    station/                the review station -- FastAPI + Jinja, the
+                            front door (`/`, the line's denominator: six
+                            counts and three doors, since 2026-09-05), the
+                            escalation queue (`/queue`), /ask and its SSE progress
+                            stream, and service.py -- the review layer the
+                            CLI shares with it. /ask has its own writer in
+                            analysis/service.py.
+                            result_view.py is the ground_truth boundary and
+                            prose.py is the model's-Markdown one -- it returns
+                            structure, never markup, so no template needs
+                            `|safe`;
+                            chart_svg.py renders a chart spec server-side;
+                            auth.py is the sign-in, and states what the
+                            scheme does not protect against
+    cli.py
+scripts/                    gate_check, build_patches, train, report, seed_store,
+                            analysis_eval, add_operator, render_diagrams, demo_record
+                            (and demo_script, the shot list it drives),
+                            build_detector_patches, crop_reverifier_report,
+                            mark_unattributed_resolutions, ...
+tests/                      1,655 tests; dataset-dependent ones behind `-m dataset`
+docs/benchmarks.md          every measurement run, newest last
+docs/deck/                  the project-journey deck (pptx, html with a self-test
+                            mode, study guide) -- built from scripts/deck_content.py,
+                            whose figures must exist in a published document;
+                            planner-reach.zh-TW.html is a hand-authored diagram
+                            page the build screenshots onto its slide
+docs/architecture.md        layers, thresholds and where they come from
+docs/experiments/           the reading-room: an index of every experiment (question,
+                            script, benchmarks entry, result file, choice), the
+                            thirteen-figure page, and the planner-drift report
+.claude/skills/             project skills -- procedures with gates, not notes
+```
+
+Invoke the project skills; do not just read past them. `retraining-the-reverifier`
+before touching the training pipeline or regenerating a benchmark, and
+`measuring-llm-latency` before quoting any timing number. Both encode a failure
+that is silent -- a stale threshold, a contended GPU -- and neither shows up as
+an error.

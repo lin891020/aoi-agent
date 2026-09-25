@@ -35,7 +35,14 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 BENCHMARKS = ROOT / "docs" / "benchmarks.md"
-PUBLISHED = ("README.md", "README.zh-TW.md", "CLAUDE.md", "docs/architecture.md")
+PUBLISHED = (
+    "README.md",
+    "README.zh-TW.md",
+    "CLAUDE.md",
+    "docs/architecture.md",
+    "docs/invariants.md",
+    "docs/still-open.md",
+)
 
 #: `Test split: 7322 AOI candidates from 499 unseen boards (3018 real defects,
 #: 4304 false calls)` -- the line every operating-point section opens with.

@@ -10,8 +10,8 @@ seen the conversation that produced it. That is the entire point of you: the
 author cannot check their own assumptions, because the assumptions are what
 produced the code.
 
-Start by reading `CLAUDE.md`, specifically `## Invariants — do not quietly
-change these`. Most of what can go wrong here is listed in it.
+Start by reading `docs/invariants.md` (`## Invariants — do not quietly
+change these`; it lived in CLAUDE.md until 2026-09-25). Most of what can go wrong here is listed in it.
 
 ## What to actually do
 
