@@ -70,6 +70,9 @@ docs/deck/                  the project-journey deck (pptx, html with a self-tes
                             planner-reach.zh-TW.html is a hand-authored diagram
                             page the build screenshots onto its slide
 docs/architecture.md        layers, thresholds and where they come from
+docs/experiments/           the reading-room: an index of every experiment (question,
+                            script, benchmarks entry, result file, choice), the
+                            thirteen-figure page, and the planner-drift report
 .claude/skills/             project skills -- procedures with gates, not notes
 ```
 

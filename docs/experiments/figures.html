@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AOI-Agent 實驗圖集</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;700&family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --paper:#f6f7f4; --paper-2:#eceee9; --ink:#1c2430; --ink-2:#45505e; --muted:#7a8494;
+  --rule:#d5d9d2; --accent:#0e6b6b; --accent-2:#b4552b; --grid:#e1e4de; --band:#0e6b6b22;
+  --serif:"Noto Serif TC","Songti TC",serif; --sans:"Noto Sans TC","PingFang TC",sans-serif; --mono:"IBM Plex Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --paper:#161a1f; --paper-2:#1f242b; --ink:#e8eae6; --ink-2:#b9bfc7; --muted:#8a93a0;
+  --rule:#2f363f; --accent:#4fb8b2; --accent-2:#e2865a; --grid:#262c34; --band:#4fb8b222;
+}}
+:root[data-theme="dark"]{
+  --paper:#161a1f; --paper-2:#1f242b; --ink:#e8eae6; --ink-2:#b9bfc7; --muted:#8a93a0;
+  --rule:#2f363f; --accent:#4fb8b2; --accent-2:#e2865a; --grid:#262c34; --band:#4fb8b222;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.7}
+main{max-width:760px;margin:0 auto;padding:40px 16px 80px}
+h1{font-family:var(--serif);font-weight:700;font-size:2rem;line-height:1.25;margin:0 0 .4rem;text-wrap:balance}
+.lede{color:var(--ink-2);margin:0 0 .6rem;max-width:62ch}
+.meta{font-family:var(--mono);font-size:.78rem;color:var(--muted);letter-spacing:.02em;margin:0 0 2.4rem}
+h2{font-family:var(--serif);font-weight:700;font-size:1.35rem;margin:3rem 0 .2rem;text-wrap:balance}
+h2 span{font-family:var(--mono);font-weight:500;font-size:.8rem;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;display:block;margin-bottom:.2rem}
+.chapter-q{color:var(--ink-2);margin:0 0 1.4rem;max-width:62ch}
+figure{margin:0 0 2.6rem;padding:0;border-top:1px solid var(--rule);padding-top:1rem}
+figure .fig-title{font-family:var(--sans);font-weight:700;margin:0 0 .6rem;font-size:1rem}
+figure .fig-title b{font-family:var(--mono);font-weight:500;color:var(--accent);margin-right:.5rem}
+.chart{width:100%;overflow-x:auto}
+.chart svg{width:100%;height:auto;display:block;font-family:var(--mono);font-size:11px}
+figcaption{margin-top:.6rem;display:grid;grid-template-columns:4.2em 1fr;gap:.25rem .6rem;font-size:.93rem;color:var(--ink-2);max-width:66ch}
+figcaption dt{font-family:var(--mono);font-size:.74rem;letter-spacing:.06em;color:var(--muted);padding-top:.25em}
+figcaption dd{margin:0}
+figcaption dd.choice{color:var(--ink);font-weight:500}
+.src{font-family:var(--mono);font-size:.72rem;color:var(--muted);margin-top:.5rem}
+.note{background:var(--paper-2);border-left:3px solid var(--accent);padding:.8rem 1rem;margin:2rem 0;font-size:.93rem;color:var(--ink-2)}
+.glossary{font-size:.9rem;color:var(--ink-2);border-top:1px solid var(--rule);padding-top:1rem}
+.glossary dt{font-weight:700;color:var(--ink);margin-top:.5rem}
+.glossary dd{margin:0}
+@media (prefers-reduced-motion: reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<main>
+<h1>AOI-Agent 實驗圖集</h1>
+<p class="lede">十三張圖，每一張是一個實驗、它看到的東西、以及因此做的選擇。所有數字來自 docs/benchmarks.md，圖上的每個點都能在條目裡找到同一個數字。</p>
+<p class="meta">2026-08-22 → 2026-09-25 · DeepPCB / HRIPCB / PCB-AoI · gpt-oss:20b · M5 Air 32 GB</p>
+
+<div class="note">怎麼讀：<b>實驗</b>是做了什麼，<b>看到</b>是數據說了什麼，<b>選擇</b>是專案因此走哪條路。橫軸上寫「≤0.5%」的地方都是同一個預算：漏掉的真缺陷不能超過千分之五。</div>
+
+<!-- ============ 第一章 ============ -->
+<h2><span>第一章</span>主線：範本相減 + ResNet-18 重驗，在 DeepPCB 上</h2>
+<p class="chapter-q">問題：能省多少人工，代價漏多少真缺陷？以及這個數字可不可信。</p>
+
+<figure>
+<p class="fig-title"><b>圖 1</b>操作點曲線：省下的人工 vs 漏掉的真缺陷</p>
+<div class="chart" id="f1"></div>
+<figcaption>
+<dt>實驗</dt><dd>同一個模型，掃過六個漏率預算，每個預算讀「可以省掉多少人工檢視」。3,018 個真缺陷、4,304 個假警報。</dd>
+<dt>看到</dt><dd>曲線在 0.5% 附近變平：從 0.5% 放寬到 5%，人工只多省 8 個百分點，但漏掉的缺陷多十倍。實際部署的門檻（五折交叉、用區間上界選）落在 0.66%，省 55.6%。</dd>
+<dt>選擇</dt><dd class="choice">永遠報操作點曲線、不報準確率；門檻在別的資料上選，報告時連區間一起報。</dd>
+</figcaption>
+<p class="src">benchmarks: Operating points (2026-08-31), scripts/report.py, scripts/threshold_cv.py</p>
+</figure>
+
+<figure>
+<p class="fig-title"><b>圖 2</b>五個種子：重跑一次整個流程會落在哪</p>
+<div class="chart" id="f2"></div>
+<figcaption>
+<dt>實驗</dt><dd>同一份配方換五個隨機種子，各自重訓、重選門檻、在測試集上讀。</dd>
+<dt>看到</dt><dd>部署欄 49.0%–55.6%，中位數 50.9%；理想欄（在測試集上直接選門檻，不可部署）49.7%–52.8%。公布的 55.6% 是五個裡最好的一個。一半的散布是模型，一半是門檻選在曲線的哪裡。</dd>
+<dt>選擇</dt><dd class="choice">每個數字都註明種子，並同時報中位數和範圍；Wilson 區間和種子散布是兩個不同的區間，不能只報一個。</dd>
+</figcaption>
+<p class="src">benchmarks: Seed variance (2026-08-31), scripts/seed_variance.py</p>
+</figure>
+
+<figure>
+<p class="fig-title"><b>圖 3</b>一個預算、六個類別：漏的是不能漏的那兩類</p>
+<div class="chart" id="f3"></div>
+<figcaption>
+<dt>實驗</dt><dd>把總漏率 0.66% 拆到六個缺陷類別，對照各自的工作指導書。</dd>
+<dt>看到</dt><dd>open 漏 1.16%、short 漏 1.77%，恰好是文件說「任何一個確認就是嚴重」的兩類；其他四類都在預算內。試過用模型自己的 P(short) 加否決：門檻放到 0.05 才動一個漏件，代價省的人工掉 0.22%。它們是有把握的錯，不是猶豫的錯。</dd>
+<dt>選擇</dt><dd class="choice">不做類別否決。用第二種量測（電測）補 open，總漏率的數字永遠附這張拆解。</dd>
+</figcaption>
+<p class="src">benchmarks: Per-class escape (2026-09-08), scripts/class_escape_report.py</p>
+</figure>
+
+<figure>
+<p class="fig-title"><b>圖 4</b>盛行率：這個資料集 41% 是真缺陷，產線不是</p>
+<div class="chart" id="f4"></div>
+<figcaption>
+<dt>實驗</dt><dd>把同一條曲線重新加權到不同的真缺陷比例，讀 ≤0.5% 預算下省掉的人工。</dd>
+<dt>看到</dt><dd>漏率不隨盛行率變（分母是真缺陷數）；省下的人工隨產線變乾淨而上升，52.8% 是地板，0.5% 盛行率時 89%。不能轉移的是驗證：看過 100 個缺陷的試跑無法確認 0.5% 的預算。</dd>
+<dt>選擇</dt><dd class="choice">任何省人工的數字都附它假設的盛行率；以「影子模式」累積證據，而不是短試跑。</dd>
+</figcaption>
+<p class="src">benchmarks: Prevalence (2026-08-26), scripts/prevalence_report.py</p>
+</figure>
+
+<figure>
+<p class="fig-title"><b>圖 5</b>對位：修平移有效，旋轉修不了</p>
+<div class="chart" id="f5"></div>
+<figcaption>
+<dt>實驗</dt><dd>對 500 片板子加干擾（平移、旋轉、兩者），比較加相位相關對位前後每片的候選數。</dd>
+<dt>看到</dt><dd>平移 4 px：候選從 58.1 降到 20.7，召回 90.8% → 97.6%。旋轉 1°：53.4 → 50.4，幾乎沒動。次像素修正反而把 17/60 已對齊的板子弄糟，所以拒絕。</dd>
+<dt>選擇</dt><dd class="choice">對位只修平移，三種情況主動拒絕（次像素、超過畫面 5%、峰值太低）；旋轉的代價寫明，不假裝能處理。</dd>
+</figcaption>
+<p class="src">benchmarks: Registration (2026-08-24), src/aoi_agent/aoi/registration.py</p>
+</figure>
+
+<figure>
+<p class="fig-title"><b>圖 6</b>INT8：操作點不動，省的是記憶體不是時間</p>
+<div class="chart" id="f6"></div>
+<figcaption>
+<dt>實驗</dt><dd>同一個 checkpoint 匯出 ONNX、做動態與靜態 INT8，在 ≤0.5% 讀省下的人工，並量常駐記憶體。</dd>
+<dt>看到</dt><dd>四個版本 52.5%–53.0%，差在硬幣正反面；記憶體 389 MB → 74–81 MB。延遲本來就不是問題：每個候選 CPU 2.5 ms。</dd>
+<dt>選擇</dt><dd class="choice">不部署 INT8。站台留 float32；量化報告留在重訓鏈裡，因為它的結論只對一組權重成立。</dd>
+</figcaption>
+<p class="src">benchmarks: Quantisation (2026-08-26), scripts/quantisation_report.py</p>
+</figure>
+
+<!-- ============ 第二章 ============ -->
+<h2><span>第二章</span>換一種影像：照片與沒有範本的產線</h2>
+<p class="chapter-q">問題：主線的每一層在照片上還站得住嗎？</p>
+
+<figure>
+<p class="fig-title"><b>圖 7</b>HRIPCB 第一關：相減在照片上找不到缺陷，或找到太多假的</p>
+<div class="chart" id="f7"></div>
+<figcaption>
+<dt>實驗</dt><dd>693 張對齊的照片，掃六個灰階門檻，讀召回率；再加上專案自己的小干擾（±2 px、雜訊、增益），讀每張的假警報數。</dd>
+<dt>看到</dt><dd>出貨用的門檻 60 只抓到 14% 的缺陷；抓得到 92% 的門檻 10，一有干擾就每張 860 個假警報。DeepPCB 過關是因為二值化讓缺陷和對不齊的邊一樣是 255 階的差；照片上缺陷只差 36 階，每條邊都是漸層。</dd>
+<dt>選擇</dt><dd class="choice">寫明差分的適用範圍是二值化影像；不在 HRIPCB 上微調，改做偵測器前端。</dd>
+</figcaption>
+<p class="src">benchmarks: S0 gate on HRIPCB, Transfer (2026-08-26), scripts/gate_check.py --dataset hripcb</p>
+</figure>
+
+<figure>
+<p class="fig-title"><b>圖 8</b>照片裁切上的四種排序：沒有一個在預算內能省人工</p>
+<div class="chart" id="f8"></div>
+<figcaption>
+<dt>實驗</dt><dd>PCB-AoI（焊膏照片、無範本）：YOLO 偵測器畫框，再用四種方法排序這些框，在 ≤0.5% 讀省下的人工（理想欄，每種三個種子）。</dd>
+<dt>看到</dt><dd>偵測器信心 0.3%；ResNet 裁切 0.3 / 1.2 / 2.8；DINOv2 線性頭 0.7 / 1.0 / 1.0；DINOv2 提示微調 4.3 / 0.7 / 3.8。配對 bootstrap 的 95% 區間全部跨零。60 張測試圖只看得出很大的差距。「訓練框看過答案」的實驗也做了，判定空洞：兩個種子選了什麼都不撿的門檻。</dd>
+<dt>選擇</dt><dd class="choice">沒有東西上線。結論寫成「單靠外觀分不出假警報和缺陷」，範本通道從來不是方便而已。</dd>
+</figcaption>
+<p class="src">benchmarks: Detector front end, Crop re-verifier, DINOv2 crops, VPT crops, fold adjudication (08-26 → 09-20)</p>
+</figure>
+
+<!-- ============ 第三章 ============ -->
+<h2><span>第三章</span>更強的預訓練特徵，問了四次</h2>
+<p class="chapter-q">問題：把 ResNet-18 換成 DINOv2 會不會更好？</p>
+
+<figure>
+<p class="fig-title"><b>圖 9</b>DeepPCB 上的三種特徵（理想欄，每個點一個種子）</p>
+<div class="chart" id="f9"></div>
+<figcaption>
+<dt>實驗</dt><dd>凍結 DINOv2 + 線性頭（三種子）；再加深層提示微調（三種子，第二次跑修了未設種子的初始化）；對照 ResNet-18 五種子和手工特徵 + 樹。判定規則每次都先 commit。</dd>
+<dt>看到</dt><dd>線性頭更差（39.9%–42.0%）；提示微調 50.4%–51.6%，落在 ResNet 的 49.7%–52.8% 裡面，散布還比較小。所以之前的差距是「線性頭」的錯，不是骨幹的錯。可部署欄因為門檻選法不同，不能直接比。</dd>
+<dt>選擇</dt><dd class="choice">留 ResNet-18：追平但沒有超過，推論成本高一個數量級（線性頭已經 41 ms vs 2.5 ms）。這條線結束。</dd>
+</figcaption>
+<p class="src">benchmarks: DINOv2 probe (09-15), VPT (09-17/18 rerun), scripts/dinov2_probe.py, scripts/dinov2_vpt.py</p>
+</figure>
+
+<!-- ============ 第四章 ============ -->
+<h2><span>第四章</span>語言層：LLM 該做什麼、寫的東西可不可信</h2>
+<p class="chapter-q">問題：模型解釋的話是真的嗎？來得及嗎？</p>
+
+<figure>
+<p class="fig-title"><b>圖 10</b>中文理由的錯誤：三次修、三次量</p>
+<div class="chart" id="f10"></div>
+<figcaption>
+<dt>實驗</dt><dd>同樣 60 個候選、兩種語言，用精確檢查（數字有沒有來源、文件有沒有被檢索到）加樣式旗標比對提示詞。不用模型評模型。</dd>
+<dt>看到</dt><dd>數字亂編 0/120，一直是零。中文乾淨的比例 20/60 → 45/60（語言規則列出六個類別名）→ 55/60（詞彙句）。第二個問題是把 WI-201「電測導通就放行」寫成「電測開路就放行」：對照組 9/60，加一句詞彙後 0/60，英文兩邊都是 0。</dd>
+<dt>選擇</dt><dd class="choice">每個問題一句話進提示詞、一個旗標進評測；規劃器和合成的提示詞不動，因為它們的數字是在原句下量的。</dd>
+</figcaption>
+<p class="src">benchmarks: rationale eval (09-01, 09-02, 09-22 two arms), scripts/rationale_eval.py</p>
+</figure>
+
+<figure>
+<p class="fig-title"><b>圖 11</b>解釋的延遲：中文從 32 秒降到 9 秒，靠的是提示詞</p>
+<div class="chart" id="f11"></div>
+<figcaption>
+<dt>實驗</dt><dd>20 次真實呼叫，兩種語言，報中位數與 p90，只算模型的生成時間。</dd>
+<dt>看到</dt><dd>中文第一版 31.9 s / 35.9 s：模型沒被告知門檻，每次把兩種情況都寫一遍。把兩個門檻寫進提示、要求一段話：16.7 / 19.7。09-17 對照組 9.0 / 10.8。英文一直在 9–12 秒。60 秒上限內 0 次逾時。</dd>
+<dt>選擇</dt><dd class="choice">解釋上限 60 秒與判定預算 10 秒分成兩個常數；缺解釋是一種狀態不是錯誤字串；延遲數字一律註明語言。</dd>
+</figcaption>
+<p class="src">benchmarks: Agent-layer latency (08-29, 08-30, 09-17), scripts/latency_report.py</p>
+</figure>
+
+<!-- ============ 第五章 ============ -->
+<h2><span>第五章</span>同一個模型隔天答不一樣</h2>
+<p class="chapter-q">問題：規劃器的分數跨天在 23 到 28 之間跳，是退步還是雜訊？</p>
+
+<figure>
+<p class="fig-title"><b>圖 12</b>十次讀數：同一天內完全一樣，跨天會動</p>
+<div class="chart" id="f12"></div>
+<figcaption>
+<dt>實驗</dt><dd>同一份 70 題（42 題該答、28 題該拒答）、同一個模型、溫度 0，在不同日子讀「答對幾題」。</dd>
+<dt>看到</dt><dd>09-22 連續五次 25、錯的是同樣 28 題；09-23 兩次 27。跨天 23–28。變因在「載入的那一刻」或更外層，不在每次呼叫。</dd>
+<dt>選擇</dt><dd class="choice">把 ±3 的舊基線作廢；兩個版本要比，必須在同一次載入內比。</dd>
+</figcaption>
+<p class="src">benchmarks: 08-30, 09-17, 09-19, 09-22 five readings, 09-23 language-note run</p>
+</figure>
+
+<figure>
+<p class="fig-title"><b>圖 13</b>強制 batch：兩次 1024 動同樣 22 題，其他全是 0</p>
+<div class="chart" id="f13"></div>
+<figcaption>
+<dt>實驗</dt><dd>同一時段，每一步卸載、強制載入設定、量 70 題、從 Ollama 日誌讀回實際設定核對。順序 512 → 1024 → 512 → 1024 → 512 關 mmap → 512。判定規則先寫好。前一輪已經排除順序、打斷、卸載（各動 0–1 題）；後一輪排除 09-02 那句提示詞（兩句都 27/42）。</dd>
+<dt>看到</dt><dd>Ollama 載入時剩餘記憶體 ≥ 18.6 GiB 就用 batch 1024，否則 512，136 次零例外。1024 改變浮點加法的分組，22 題本來平手的決定翻面。跨天動的 13–14 題有 10–12 題就在這 22 題裡（機率 < 0.001），但那個跨天的推力不在日誌裡。</dd>
+<dt>選擇</dt><dd class="choice">評測預設釘 batch 512、每步從日誌核對、同一次載入內差 ≤ 2 題視為相同。觸發點框到工具到不了的層，收掉。</dd>
+</figcaption>
+<p class="src">benchmarks: The runner as a controlled variable (09-23), closing adjudication (09-25), scripts/planner_session_probe.py</p>
+</figure>
+
+<dl class="glossary">
+<dt>省下的人工（review removed）</dt><dd>假警報裡被模型直接撤掉、不用人看的比例。</dd>
+<dt>漏率（escape rate）</dt><dd>真缺陷被當成假警報放走的比例，分母是真缺陷數。</dd>
+<dt>理想欄 / 部署欄（oracle / deployed）</dt><dd>理想欄是在測試集上直接挑最好的門檻，只能拿來比模型；部署欄是門檻在別的資料上先選好，才是真的會用的數字。</dd>
+<dt>種子（seed）</dt><dd>訓練用的隨機起點；換一個就是重跑一次整個流程。</dd>
+<dt>batch</dt><dd>Ollama 一次送幾個 token 進 GPU 算；改變它會改變浮點數加法的順序。</dd>
+</dl>
+</main>
+
+<script>
+(function(){
+const css = getComputedStyle(document.documentElement);
+const C = n => css.getPropertyValue(n).trim();
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent, text){ const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (text != null) e.textContent = text; if (parent) parent.appendChild(e); return e; }
+function svg(id, w, h){ const host = document.getElementById(id); const s = el("svg", {viewBox:`0 0 ${w} ${h}`, role:"img"}); host.appendChild(s); return s; }
+function fmt(v, d){ return (Math.round(v * Math.pow(10, d)) / Math.pow(10, d)).toFixed(d); }
+
+// generic frame: returns scale functions and draws axes + grid
+function frame(s, o){
+  const {x0, x1, y0, y1, w, h, ml = 52, mr = 16, mt = 18, mb = 40, yTicks = [], xTicks = [], xLabel = "", yLabel = "", yFmt = v => v, xFmt = v => v, xLog = false} = o;
+  const sx = v => { const t = xLog ? (Math.log10(v) - Math.log10(x0)) / (Math.log10(x1) - Math.log10(x0)) : (v - x0) / (x1 - x0); return ml + t * (w - ml - mr); };
+  const sy = v => mt + (1 - (v - y0) / (y1 - y0)) * (h - mt - mb);
+  yTicks.forEach(t => { el("line", {x1: ml, x2: w - mr, y1: sy(t), y2: sy(t), stroke: C("--grid"), "stroke-width": 1}, s); el("text", {x: ml - 8, y: sy(t) + 4, "text-anchor": "end", fill: C("--muted")}, s, yFmt(t)); });
+  xTicks.forEach(t => { el("text", {x: sx(t), y: h - mb + 18, "text-anchor": "middle", fill: C("--muted")}, s, xFmt(t)); });
+  el("line", {x1: ml, x2: w - mr, y1: sy(y0), y2: sy(y0), stroke: C("--rule")}, s);
+  if (xLabel) el("text", {x: (ml + w - mr) / 2, y: h - 6, "text-anchor": "middle", fill: C("--ink-2")}, s, xLabel);
+  if (yLabel) el("text", {x: 12, y: mt - 6, fill: C("--ink-2")}, s, yLabel);
+  return {sx, sy};
+}
+function catFrame(s, o){
+  // categorical x: cats array; returns sx(i) center, band width
+  const {cats, y0, y1, w, h, ml = 52, mr = 16, mt = 18, mb = 40, yTicks = [], yFmt = v => v, yLabel = "", labelDy = 18} = o;
+  const band = (w - ml - mr) / cats.length;
+  const sx = i => ml + band * (i + 0.5);
+  const sy = v => mt + (1 - (v - y0) / (y1 - y0)) * (h - mt - mb);
+  yTicks.forEach(t => { el("line", {x1: ml, x2: w - mr, y1: sy(t), y2: sy(t), stroke: C("--grid")}, s); el("text", {x: ml - 8, y: sy(t) + 4, "text-anchor": "end", fill: C("--muted")}, s, yFmt(t)); });
+  cats.forEach((c, i) => { const lines = String(c).split("\n"); lines.forEach((ln, k) => el("text", {x: sx(i), y: h - mb + labelDy + k * 13, "text-anchor": "middle", fill: C("--ink-2")}, s, ln)); });
+  el("line", {x1: ml, x2: w - mr, y1: sy(y0), y2: sy(y0), stroke: C("--rule")}, s);
+  if (yLabel) el("text", {x: 12, y: mt - 6, fill: C("--ink-2")}, s, yLabel);
+  return {sx, sy, band};
+}
+function hline(s, f, y, x1, x2, label, color){ el("line", {x1, x2, y1: f.sy(y), y2: f.sy(y), stroke: color, "stroke-dasharray": "4 3"}, s); if (label) el("text", {x: x2, y: f.sy(y) - 5, "text-anchor": "end", fill: color}, s, label); }
+function dot(s, x, y, color, r = 4.5){ el("circle", {cx: x, cy: y, r, fill: color, stroke: C("--paper"), "stroke-width": 1.5}, s); }
+function label(s, x, y, t, color, anchor = "start"){ el("text", {x, y, "text-anchor": anchor, fill: color}, s, t); }
+function legend(s, items, x, y){ items.forEach((it, i) => { const yy = y + i * 15; if (it.shape === "line") el("line", {x1: x, x2: x + 16, y1: yy - 4, y2: yy - 4, stroke: it.color, "stroke-width": 2, "stroke-dasharray": it.dash || ""}, s); else el("circle", {cx: x + 8, cy: yy - 4, r: 4.5, fill: it.color}, s); label(s, x + 22, yy, it.text, C("--ink-2")); }); }
+
+const ink = () => C("--ink"), acc = () => C("--accent"), acc2 = () => C("--accent-2"), mut = () => C("--muted");
+
+// ---------- 圖 1 operating-point curve ----------
+(function(){
+  const W = 720, H = 300; const s = svg("f1", W, H);
+  const pts = [[0.10, 24.5], [0.25, 40.2], [0.50, 52.8], [1.00, 58.3], [2.00, 59.5], [5.00, 60.8]];
+  const f = frame(s, {x0: 0.08, x1: 6, y0: 0, y1: 70, w: W, h: H, xLog: true, yTicks: [0, 20, 40, 60], yFmt: v => v + "%", xTicks: [0.1, 0.25, 0.5, 1, 2, 5], xFmt: v => v + "%", xLabel: "漏率預算（對數刻度）", yLabel: "省下的人工"});
+  el("rect", {x: f.sx(0.08), y: f.sy(70), width: f.sx(0.5) - f.sx(0.08), height: f.sy(0) - f.sy(70), fill: C("--band")}, s);
+  el("line", {x1: f.sx(0.5), x2: f.sx(0.5), y1: f.sy(0), y2: f.sy(70), stroke: acc(), "stroke-dasharray": "4 3"}, s);
+  label(s, f.sx(0.5) + 5, f.sy(70) + 12, "QP-110 預算 ≤0.5%", acc());
+  const d = pts.map((p, i) => (i ? "L" : "M") + f.sx(p[0]) + " " + f.sy(p[1])).join(" ");
+  el("path", {d, fill: "none", stroke: ink(), "stroke-width": 2}, s);
+  pts.forEach(p => { dot(s, f.sx(p[0]), f.sy(p[1]), ink()); label(s, f.sx(p[0]), f.sy(p[1]) - 10, p[1] + "%", ink(), "middle"); });
+  // deployed point
+  dot(s, f.sx(0.663), f.sy(55.59), acc2(), 6);
+  label(s, f.sx(0.663) + 10, f.sy(55.59) + 16, "部署門檻 0.912：55.6% @ 0.66%", acc2());
+  legend(s, [{shape: "line", color: ink(), text: "理想欄：門檻在這個測試集上選"}, {shape: "dot", color: acc2(), text: "部署欄：門檻在 trainval 五折上選"}], 60, 250);
+})();
+
+// ---------- 圖 2 seeds ----------
+(function(){
+  const W = 720, H = 280; const s = svg("f2", W, H);
+  const seeds = [0, 1, 2, 3, 4], dep = [55.59, 50.90, 49.44, 49.00, 54.36], ora = [52.79, 52.36, 49.73, 51.37, 51.24], esc = [0.663, 0.364, 0.497, 0.331, 0.630];
+  const f = catFrame(s, {cats: seeds.map((x, i) => "種子 " + x + "\n漏 " + esc[i] + "%"), y0: 44, y1: 58, w: W, h: H, yTicks: [44, 48, 52, 56], yFmt: v => v + "%", yLabel: "省下的人工 @ ≤0.5%", mb: 48});
+  hline(s, f, 50.90, 52, W - 16, "部署欄中位數 50.9%", mut());
+  seeds.forEach((sd, i) => {
+    el("line", {x1: f.sx(i), x2: f.sx(i), y1: f.sy(dep[i]), y2: f.sy(ora[i]), stroke: C("--rule"), "stroke-width": 1.5}, s);
+    dot(s, f.sx(i), f.sy(ora[i]), mut()); dot(s, f.sx(i), f.sy(dep[i]), i === 0 ? acc2() : acc());
+    label(s, f.sx(i) + 9, f.sy(dep[i]) + 4, dep[i].toFixed(1) + "%", i === 0 ? acc2() : acc());
+  });
+  label(s, f.sx(0) - 9, f.sy(55.59) - 12, "公布的那一個", acc2(), "start");
+  legend(s, [{shape: "dot", color: acc(), text: "部署欄（五折上界選門檻）"}, {shape: "dot", color: mut(), text: "理想欄（測試集上選，不可部署）"}], 470, 40);
+})();
+
+// ---------- 圖 3 per-class ----------
+(function(){
+  const W = 720, H = 280; const s = svg("f3", W, H);
+  const cls = ["open", "short", "mousebite", "spur", "copper", "pin-hole"], v = [1.16, 1.77, 0.36, 0.21, 0.43, 0.00], n = ["7/602", "8/452", "2/558", "1/476", "2/466", "0/464"], gov = ["任一即嚴重", "任一即嚴重", "條件", "條件", "條件", "條件"];
+  const f = catFrame(s, {cats: cls.map((c, i) => c + "\n" + gov[i]), y0: 0, y1: 2.0, w: W, h: H, yTicks: [0, 0.5, 1.0, 1.5, 2.0], yFmt: v => v.toFixed(1) + "%", yLabel: "漏率（該類真缺陷的比例）", mb: 48});
+  hline(s, f, 0.5, 52, W - 16, "預算 0.5%", acc());
+  hline(s, f, 0.66, 52, 300, "總漏率 0.66%", mut());
+  cls.forEach((c, i) => { const bw = f.band * 0.5; const col = i < 2 ? acc2() : mut(); el("rect", {x: f.sx(i) - bw / 2, y: f.sy(v[i]), width: bw, height: f.sy(0) - f.sy(v[i]), fill: col}, s); label(s, f.sx(i), f.sy(v[i]) - 6, v[i].toFixed(2) + "%  (" + n[i] + ")", ink(), "middle"); });
+})();
+
+// ---------- 圖 4 prevalence ----------
+(function(){
+  const W = 720, H = 280; const s = svg("f4", W, H);
+  const p = [41.2, 20, 10, 5, 2, 1, 0.5], r = [52.8, 71.7, 80.6, 85.0, 87.7, 88.6, 89.0];
+  const f = frame(s, {x0: 0.4, x1: 50, y0: 40, y1: 100, w: W, h: H, xLog: true, yTicks: [40, 60, 80, 100], yFmt: v => v + "%", xTicks: [0.5, 1, 2, 5, 10, 20, 41.2], xFmt: v => v + "%", xLabel: "警報裡真缺陷的比例（盛行率，對數刻度，右邊是這個資料集）", yLabel: "省下的人工 @ ≤0.5%（漏率不變 0.497%）"});
+  const d = p.map((x, i) => (i ? "L" : "M") + f.sx(x) + " " + f.sy(r[i])).join(" ");
+  el("path", {d, fill: "none", stroke: ink(), "stroke-width": 2}, s);
+  p.forEach((x, i) => { dot(s, f.sx(x), f.sy(r[i]), i === 0 ? acc2() : ink()); label(s, f.sx(x), f.sy(r[i]) - 10, r[i] + "%", ink(), "middle"); });
+  label(s, f.sx(41.2) - 8, f.sy(52.8) + 22, "DeepPCB 測試集 41.2%", acc2(), "end");
+})();
+
+// ---------- 圖 5 registration ----------
+(function(){
+  const W = 720, H = 290; const s = svg("f5", W, H);
+  const cats = ["已對齊", "平移 2 px", "平移 4 px", "旋轉 0.5°", "旋轉 1.0°", "平移 4 px\n+ 旋轉 1°"], before = [18.1, 43.9, 58.1, 39.8, 53.4, 60.9], after = [16.1, 19.3, 20.7, 37.1, 50.4, 50.5];
+  const f = catFrame(s, {cats, y0: 0, y1: 70, w: W, h: H, yTicks: [0, 20, 40, 60], yLabel: "每片板子的候選數（越少越好）", mb: 52});
+  cats.forEach((c, i) => { const bw = f.band * 0.28; el("rect", {x: f.sx(i) - bw - 2, y: f.sy(before[i]), width: bw, height: f.sy(0) - f.sy(before[i]), fill: mut()}, s); el("rect", {x: f.sx(i) + 2, y: f.sy(after[i]), width: bw, height: f.sy(0) - f.sy(after[i]), fill: i <= 2 ? acc() : acc2()}, s); label(s, f.sx(i) - bw / 2 - 2, f.sy(before[i]) - 5, before[i], mut(), "middle"); label(s, f.sx(i) + bw / 2 + 2, f.sy(after[i]) - 5, after[i], ink(), "middle"); });
+  legend(s, [{shape: "dot", color: mut(), text: "對位前"}, {shape: "dot", color: acc(), text: "對位後：平移被修掉"}, {shape: "dot", color: acc2(), text: "對位後：旋轉幾乎沒動"}], 470, 40);
+})();
+
+// ---------- 圖 6 INT8 ----------
+(function(){
+  const W = 720, H = 240; const s = svg("f6", W, H);
+  // two mini panels
+  const g1 = el("g", {}, s), g2 = el("g", {transform: "translate(380 0)"}, s);
+  const wrap = g => ({appendChild: n => g.appendChild(n), setAttribute(){}});
+  const cats = ["FP32\ntorch", "FP32\nONNX", "INT8\n動態", "INT8\n靜態"], v = [52.8, 52.8, 52.5, 53.0];
+  const f = catFrame(g1, {cats, y0: 50, y1: 55, w: 340, h: H, yTicks: [50, 52, 54], yFmt: v => v + "%", yLabel: "省下的人工 @ ≤0.5%", mb: 48});
+  cats.forEach((c, i) => { const bw = f.band * 0.5; el("rect", {x: f.sx(i) - bw / 2, y: f.sy(v[i]), width: bw, height: f.sy(50) - f.sy(v[i]), fill: i < 2 ? mut() : acc()}, g1); label(g1, f.sx(i), f.sy(v[i]) - 6, v[i] + "%", ink(), "middle"); });
+  const cats2 = ["FP32 torch", "INT8 動態", "INT8 靜態"], m = [389, 81, 74];
+  const f2 = catFrame(g2, {cats: cats2, y0: 0, y1: 420, w: 340, h: H, yTicks: [0, 100, 200, 300, 400], yFmt: v => v + " MB", yLabel: "常駐記憶體", ml: 64, mb: 48});
+  cats2.forEach((c, i) => { const bw = f2.band * 0.5; el("rect", {x: f2.sx(i) - bw / 2, y: f2.sy(m[i]), width: bw, height: f2.sy(0) - f2.sy(m[i]), fill: i ? acc() : mut()}, g2); label(g2, f2.sx(i), f2.sy(m[i]) - 6, m[i] + " MB", ink(), "middle"); });
+})();
+
+// ---------- 圖 7 HRIPCB gate ----------
+(function(){
+  const W = 720, H = 300; const s = svg("f7", W, H);
+  const th = [10, 15, 20, 30, 45, 60], rec = [92.3, 89.7, 83.0, 38.9, 16.5, 14.3], fc = [860.5, 584.4, 391.7, 242.0, 83.8, 24.7];
+  const f = catFrame(s, {cats: th.map(t => "門檻 " + t), y0: 0, y1: 100, w: W, h: H, yTicks: [0, 25, 50, 75, 100], yFmt: v => v + "%", yLabel: "召回率（找到的真缺陷比例，對齊照片）", mr: 70});
+  // false-call secondary axis, log-ish mapping to right axis 1..1000
+  const sy2 = v => f.sy(Math.log10(v + 1) / 3 * 100);
+  th.forEach((t, i) => { const bw = f.band * 0.45; el("rect", {x: f.sx(i) - bw / 2, y: sy2(fc[i]), width: bw, height: f.sy(0) - sy2(fc[i]), fill: C("--band")}, s); label(s, f.sx(i), sy2(fc[i]) - 4, fc[i] + " 假警報/張", acc(), "middle"); });
+  const d = th.map((t, i) => (i ? "L" : "M") + f.sx(i) + " " + f.sy(rec[i])).join(" ");
+  el("path", {d, fill: "none", stroke: ink(), "stroke-width": 2}, s);
+  th.forEach((t, i) => { dot(s, f.sx(i), f.sy(rec[i]), i === 5 ? acc2() : ink()); label(s, f.sx(i) + 8, f.sy(rec[i]) + 4, rec[i] + "%", ink()); });
+  label(s, f.sx(5) + 8, f.sy(14.3) + 18, "出貨門檻", acc2());
+  [1, 10, 100, 1000].forEach(v => label(s, W - 62, sy2(v) + 4, v, mut()));
+  label(s, W - 62, 12, "假警報/張（干擾後，對數）", mut());
+  legend(s, [{shape: "line", color: ink(), text: "召回率，無干擾"}, {shape: "dot", color: C("--band"), text: "每張假警報數，±2 px 干擾後"}], 60, 40);
+})();
+
+// ---------- 圖 8 four orderings on crops ----------
+(function(){
+  const W = 720, H = 280; const s = svg("f8", W, H);
+  const groups = [{n: "偵測器信心\n（1 種子）", v: [0.3]}, {n: "ResNet-18 裁切\n（3 種子）", v: [0.3, 1.2, 2.8]}, {n: "DINOv2 線性頭\n（3 種子）", v: [0.7, 1.0, 1.0]}, {n: "DINOv2 提示微調\n（3 種子）", v: [4.3, 0.7, 3.8]}];
+  const f = catFrame(s, {cats: groups.map(g => g.n), y0: 0, y1: 6, w: W, h: H, yTicks: [0, 2, 4, 6], yFmt: v => v + "%", yLabel: "省下的人工 @ ≤0.5%（理想欄，PCB-AoI 60 張測試圖）", mb: 48});
+  label(s, W - 16, f.sy(6) - 5, "可省的上限是 22.3%（隊列裡只有 22.3% 是假警報），圖只畫到 6%", mut(), "end");
+  groups.forEach((g, i) => { const med = g.v.slice().sort((a, b) => a - b)[Math.floor(g.v.length / 2)]; el("line", {x1: f.sx(i) - 26, x2: f.sx(i) + 26, y1: f.sy(med), y2: f.sy(med), stroke: acc(), "stroke-width": 2}, s); g.v.forEach((val, k) => { const jitter = g.v.length > 1 ? (k - 1) * 14 : 0; dot(s, f.sx(i) + jitter, f.sy(val), ink()); label(s, f.sx(i) + jitter, f.sy(val) - 9, val + "%", ink(), "middle"); }); label(s, f.sx(i) + 32, f.sy(med) + 4, "中位 " + med + "%", acc()); });
+})();
+
+// ---------- 圖 9 DeepPCB three features ----------
+(function(){
+  const W = 720, H = 300; const s = svg("f9", W, H);
+  const groups = [{n: "手工特徵 + 樹\n（3 種子中位）", v: [16.7]}, {n: "DINOv2 線性頭\n（凍結）", v: [42.04, 41.30, 39.89]}, {n: "DINOv2 深層提示微調\n（48,775 參數）", v: [50.38, 51.39, 51.58]}, {n: "ResNet-18\n（5 種子）", v: [52.79, 52.36, 49.73, 51.37, 51.24]}];
+  const f = catFrame(s, {cats: groups.map(g => g.n), y0: 0, y1: 60, w: W, h: H, yTicks: [0, 20, 40, 60], yFmt: v => v + "%", yLabel: "省下的人工 @ ≤0.5%（理想欄，DeepPCB 測試集）", mb: 48});
+  el("rect", {x: 52, y: f.sy(52.79), width: W - 68, height: f.sy(49.73) - f.sy(52.79), fill: C("--band")}, s);
+  label(s, 56, f.sy(52.79) - 5, "ResNet-18 五種子的範圍 49.7%–52.8%", acc());
+  groups.forEach((g, i) => { g.v.forEach((val, k) => { const jitter = g.v.length > 1 ? (k - (g.v.length - 1) / 2) * 12 : 0; dot(s, f.sx(i) + jitter, f.sy(val), i === 3 ? acc() : ink()); }); const med = g.v.slice().sort((a, b) => a - b)[Math.floor(g.v.length / 2)]; label(s, f.sx(i), f.sy(med) - 14 - (g.v.length > 1 ? 6 : 0), "中位 " + med.toFixed(1) + "%", ink(), "middle"); });
+})();
+
+// ---------- 圖 10 rationale ----------
+(function(){
+  const W = 720, H = 260; const s = svg("f10", W, H);
+  const g1 = el("g", {}, s), g2 = el("g", {transform: "translate(380 0)"}, s);
+  const c1 = ["09-01\n原提示", "09-02\n列出類別名", "09-22\n加詞彙句"], v1 = [20, 45, 55];
+  const f = catFrame(g1, {cats: c1, y0: 0, y1: 60, w: 340, h: H, yTicks: [0, 20, 40, 60], yFmt: v => v + "/60", yLabel: "中文理由：沒有任何旗標的筆數", mb: 48});
+  c1.forEach((c, i) => { const bw = f.band * 0.5; el("rect", {x: f.sx(i) - bw / 2, y: f.sy(v1[i]), width: bw, height: f.sy(0) - f.sy(v1[i]), fill: acc()}, g1); label(g1, f.sx(i), f.sy(v1[i]) - 6, v1[i] + "/60", ink(), "middle"); });
+  const c2 = ["對照組\n沒有詞彙句", "加詞彙句"], v2 = [9, 0];
+  const f2 = catFrame(g2, {cats: c2, y0: 0, y1: 12, w: 340, h: H, yTicks: [0, 4, 8, 12], yFmt: v => v + "/60", yLabel: "把「電測導通」寫成「電測開路」的筆數", mb: 48});
+  c2.forEach((c, i) => { const bw = f2.band * 0.4; el("rect", {x: f2.sx(i) - bw / 2, y: f2.sy(v2[i]), width: bw, height: f2.sy(0) - f2.sy(v2[i]), fill: i ? acc() : acc2()}, g2); label(g2, f2.sx(i), f2.sy(v2[i]) - 6, v2[i] + "/60", ink(), "middle"); });
+  label(g2, f2.sx(1), f2.sy(0) - 14, "同一時段兩臂，英文兩邊都 0", mut(), "middle");
+})();
+
+// ---------- 圖 11 latency ----------
+(function(){
+  const W = 720, H = 280; const s = svg("f11", W, H);
+  const cats = ["08-29\n第一版中文提示", "08-30\n提示寫進門檻、一段話", "09-17\n對照組"], zh = [[31.9, 35.9], [16.7, 19.7], [9.0, 10.8]], en = [[8.6, 11.1], [11.8, 16.1], [10.0, 11.7]];
+  const f = catFrame(s, {cats, y0: 0, y1: 40, w: W, h: H, yTicks: [0, 10, 20, 30, 40], yFmt: v => v + " s", yLabel: "解釋的生成時間（中位數，鬚到 p90）", mb: 48});
+  hline(s, f, 10, 52, W - 16, "判定預算 10 s（不是解釋的上限，上限是 60 s）", mut());
+  cats.forEach((c, i) => { const bw = f.band * 0.22; [[zh[i], -bw - 3, acc2(), "中文"], [en[i], 3, acc(), "英文"]].forEach(([v, off, col]) => { el("rect", {x: f.sx(i) + off, y: f.sy(v[0]), width: bw, height: f.sy(0) - f.sy(v[0]), fill: col}, s); el("line", {x1: f.sx(i) + off + bw / 2, x2: f.sx(i) + off + bw / 2, y1: f.sy(v[0]), y2: f.sy(v[1]), stroke: ink(), "stroke-width": 1.5}, s); label(s, f.sx(i) + off + bw / 2, f.sy(v[1]) - 5, v[0] + "s", ink(), "middle"); }); });
+  legend(s, [{shape: "dot", color: acc2(), text: "中文 zh-TW"}, {shape: "dot", color: acc(), text: "英文 en"}], 560, 40);
+})();
+
+// ---------- 圖 12 readings timeline ----------
+(function(){
+  const W = 720, H = 240; const s = svg("f12", W, H);
+  const reads = [{d: "08-30", v: [28], note: "舊語言句"}, {d: "09-17", v: [23], note: ""}, {d: "09-19", v: [26], note: ""}, {d: "09-22", v: [25, 25, 25, 25, 25], note: "連續五次"}, {d: "09-23", v: [27, 27], note: "同一次載入兩次"}];
+  const f = catFrame(s, {cats: reads.map(r => r.d + (r.note ? "\n" + r.note : "")), y0: 20, y1: 30, w: W, h: H, yTicks: [20, 22, 24, 26, 28, 30], yFmt: v => v + "/42", yLabel: "42 題該答的題裡答對幾題", mb: 48});
+  reads.forEach((r, i) => { r.v.forEach((val, k) => { const jitter = (k - (r.v.length - 1) / 2) * 11; dot(s, f.sx(i) + jitter, f.sy(val), i === 0 ? mut() : acc()); }); label(s, f.sx(i), f.sy(r.v[0]) - 12, r.v[0] + (r.v.length > 1 ? " ×" + r.v.length : ""), ink(), "middle"); });
+  el("rect", {x: 52, y: f.sy(28), width: W - 68, height: f.sy(23) - f.sy(28), fill: C("--band")}, s);
+  label(s, W - 20, f.sy(28) - 5, "跨天範圍 23–28", acc(), "end");
+})();
+
+// ---------- 圖 13 forced batch steps ----------
+(function(){
+  const W = 720, H = 280; const s = svg("f13", W, H);
+  const steps = ["0\n512 基準", "1\n1024", "2\n512", "3\n1024", "4\n512 關 mmap", "5\n512"], moved = [0, 22, 0, 22, 0, 0], restored = [5, 0, 5, 0, 5, 5];
+  const f = catFrame(s, {cats: steps, y0: 0, y1: 30, w: W, h: H, yTicks: [0, 10, 20, 30], yFmt: v => v + "/70", yLabel: "跟基準比，計畫不同的題數", mb: 48});
+  hline(s, f, 3, 52, W - 16, "判定線 ≥3 題（同一次載入內重跑的雜訊是 0–2）", mut());
+  steps.forEach((c, i) => { const bw = f.band * 0.5; el("rect", {x: f.sx(i) - bw / 2, y: f.sy(moved[i]), width: bw, height: f.sy(0) - f.sy(moved[i]), fill: moved[i] ? acc2() : acc()}, s); label(s, f.sx(i), f.sy(moved[i]) - 6, moved[i] + (moved[i] ? "（同樣 22 題）" : ""), ink(), "middle"); });
+  label(s, 56, f.sy(30) - 5, "每一步的 batch 都從 Ollama 日誌讀回核對；1024 的兩步彼此差 0 題；檢查點還原 512 為 5/70、1024 為 0/70", mut());
+})();
+})();
+</script>
+</body>
+</html>
