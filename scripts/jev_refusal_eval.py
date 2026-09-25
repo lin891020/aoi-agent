@@ -280,8 +280,14 @@ def gptoss_from_log(path: Path, ids: list[str]) -> dict[str, dict]:
 
 
 def run(client: JevClient, rows: list[dict], arms: tuple[str, ...], repeats: int,
-        tools: list[str], fact_text: str, log=print, existing: list[dict] | None = None) -> list[dict]:
-    """Every (arm, repeat, question) once; records already present are kept."""
+        tools: list[str], fact_text: str, log=print, existing: list[dict] | None = None,
+        checkpoint=None) -> list[dict]:
+    """Every (arm, repeat, question) once; records already present are kept.
+
+    ``checkpoint(records)`` runs after every answer, so a run stopped halfway
+    (a 429 that outlasts the backoff, a closed terminal) resumes from its last
+    answer with ``--resume`` instead of starting over.
+    """
     records = list(existing or [])
     done = {(r["arm"], r["repeat"], r["id"]) for r in records}
     names = [t.split(" — ")[0] for t in tools]
@@ -303,6 +309,8 @@ def run(client: JevClient, rows: list[dict], arms: tuple[str, ...], repeats: int
                     "input_tokens": answer.input_tokens, "output_tokens": answer.output_tokens,
                     "asked_at": datetime.now().astimezone().isoformat(timespec="seconds"),
                 })
+                if checkpoint:
+                    checkpoint(records)
                 log(f"  [{len(records):>3}/{total}] {arm:<10} r{repeat} {row['id']} "
                     f"P(answerable)={answer.noul('answerable'):.2f} {answer.latency_s * 1000:.0f} ms")
     return records
@@ -481,7 +489,10 @@ def main() -> int:
     parser.add_argument("--zh-en", type=Path, default=None,
                         help="JSON {id: english_wording}; each is asked once on the full arm")
     parser.add_argument("--out", type=Path, default=None)
-    parser.add_argument("--resume", type=Path, default=None, help="a previous --out to continue")
+    parser.add_argument("--resume", type=Path, default=None,
+                        help="a previous --out, or the .partial.json a stopped run left, to continue")
+    parser.add_argument("--min-interval", type=float, default=2.5,
+                        help="seconds between requests; TypeSafe 429s about 2 in 3 sent back to back")
     parser.add_argument("--benchmarks", type=Path, default=ROOT / "docs" / "benchmarks.md")
     parser.add_argument("--print-state", action="store_true", help="show the three states for the first question and exit")
     parser.add_argument("--dry-run", action="store_true", help="run and analyse, append nothing")
@@ -500,9 +511,13 @@ def main() -> int:
         print("===== questions\n" + json.dumps(questions_for([t.split(' — ')[0] for t in tools]), indent=1, ensure_ascii=False))
         return 0
 
-    client = JevClient.from_env()
+    client = JevClient.from_env(min_interval_s=args.min_interval)
+    out = args.out or ROOT / "models" / f"jev_refusal_{datetime.now().astimezone().date().isoformat()}.json"
+    partial = out.with_suffix(".partial.json")
     existing = json.loads(args.resume.read_text())["records"] if args.resume else []
-    records = run(client, rows, tuple(args.arms), args.repeats, tools, fact_text, existing=existing)
+    records = run(client, rows, tuple(args.arms), args.repeats, tools, fact_text, existing=existing,
+                  checkpoint=lambda rs: partial.write_text(json.dumps({"records": rs}, ensure_ascii=False)))
+    print(f"all {len(records)} answers in; partial kept at {partial} until the result is written")
 
     zh_en = {}
     if args.zh_en:
@@ -534,8 +549,8 @@ def main() -> int:
               "door": client.door, "repeats": args.repeats, "requests": len(records),
               "analysis": analysis, "verdict": label, "verdict_sentence": sentence,
               "zh_en": zh_en, "per_question": per_question, "records": records}
-    out = args.out or ROOT / "models" / f"jev_refusal_{record['date']}.json"
     out.write_text(json.dumps(record, indent=1, ensure_ascii=False, default=sorted))
+    partial.unlink(missing_ok=True)
     body = render(record)
     print("\n" + body)
     print(f"\n-> {out}")

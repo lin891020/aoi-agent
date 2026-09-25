@@ -24,6 +24,14 @@ the server reports (``jev-1.13.0`` at the time of writing -- a cloud model
 changes under you, so every measurement stores it), token usage and the
 wall time. 429s are retried with a backoff because the free tier rate-limits
 harder than the paid one.
+
+On the gateway every request is pinned to TypeSafe's own backend. Measured
+2026-09-25: the gateway otherwise routes some requests to DigitalOcean, which
+answered 503 and was not failed over, and two backends would also mean two
+possibly different deployments of one model inside a single measurement.
+TypeSafe itself answered 429 ("high demand") on roughly two requests in three
+sent back to back, so the client waits a minimum interval between requests
+and backs off for up to a minute.
 """
 
 from __future__ import annotations
@@ -53,7 +61,8 @@ HOW_TO_GET_A_KEY = (
 )
 
 RETRY_STATUSES = (429, 500, 502, 503, 504)
-RETRY_BACKOFF_S = (1.0, 3.0, 9.0)
+RETRY_BACKOFF_S = (2.0, 5.0, 10.0, 20.0, 40.0, 60.0)
+GATEWAY_PROVIDER_PIN = {"gateway": {"only": ["typesafe-ai"]}}
 
 
 def noul(instructions: str, criteria: dict[str, str] | None = None) -> dict[str, Any]:
@@ -94,13 +103,16 @@ class JevClient:
     """``systemone``: state in, typed answers out."""
 
     def __init__(self, base_url: str, api_key: str, model: str, timeout: float = 30.0,
-                 sleep=time.sleep):
+                 sleep=time.sleep, min_interval_s: float = 0.0, clock=time.monotonic):
         self.base_url = base_url.rstrip("/")
         self.model = model
         self._client = httpx.Client(timeout=timeout,
                                     headers={"Authorization": f"Bearer {api_key}",
                                              "Content-Type": "application/json"})
         self._sleep = sleep
+        self._clock = clock
+        self.min_interval_s = min_interval_s
+        self._last_sent: float | None = None
 
     @classmethod
     def from_env(cls, environ: dict[str, str] | None = None, **kwargs) -> JevClient:
@@ -117,9 +129,12 @@ class JevClient:
         return "gateway" if self.base_url == GATEWAY_BASE_URL else "typesafe"
 
     def ask(self, state: Any, questions: dict[str, dict[str, Any]]) -> JevAnswer:
-        payload = {"model": self.model, "state": state, "questions": questions}
-        started = time.perf_counter()
-        for attempt, backoff in enumerate((*RETRY_BACKOFF_S, None)):
+        payload: dict[str, Any] = {"model": self.model, "state": state, "questions": questions}
+        if self.door == "gateway":
+            payload["providerOptions"] = GATEWAY_PROVIDER_PIN
+        for backoff in (*RETRY_BACKOFF_S, None):
+            self._pace()
+            started = time.perf_counter()      # the answered attempt only, not the waits before it
             response = self._client.post(f"{self.base_url}/v1/systemone", json=payload)
             if response.status_code in RETRY_STATUSES and backoff is not None:
                 self._sleep(backoff)
@@ -137,3 +152,11 @@ class JevClient:
             latency_s=latency,
             raw=body,
         )
+
+    def _pace(self) -> None:
+        """Wait out what is left of ``min_interval_s`` since the last request went out."""
+        if self._last_sent is not None and self.min_interval_s > 0:
+            wait = self.min_interval_s - (self._clock() - self._last_sent)
+            if wait > 0:
+                self._sleep(wait)
+        self._last_sent = self._clock()

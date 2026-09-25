@@ -173,6 +173,25 @@ def test_run_asks_every_arm_repeat_and_question_once_and_resumes():
     assert {r["model"] for r in again} == {"jev-1.13.0"}
 
 
+def test_a_stopped_run_resumes_from_its_checkpoint_without_asking_again():
+    rows = _rows()
+    saved = []
+
+    class _Dies(_StubClient):
+        def ask(self, state, questions):
+            if len(self.calls) == 4:
+                raise RuntimeError("429 outlasted the backoff")
+            return super().ask(state, questions)
+    with pytest.raises(RuntimeError):
+        ev.run(_Dies({}), rows, ("full",), 1, TOOLS, FACTS, log=lambda *_: None,
+               checkpoint=lambda rs: saved.append(list(rs)))
+    assert len(saved[-1]) == 4
+    client = _StubClient({})
+    done = ev.run(client, rows, ("full",), 1, TOOLS, FACTS, log=lambda *_: None, existing=saved[-1])
+    unique = len({r["id"] for r in rows})           # _rows() lists A04 twice
+    assert len(done) == unique and len(client.calls) == unique - 4
+
+
 def _analysis(full_f1_table, blind_p, gpt_refused):
     rows = _rows()
     table = {r["question"]: full_f1_table(r) for r in rows}

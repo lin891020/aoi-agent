@@ -91,3 +91,41 @@ def test_question_factories_write_the_documented_shapes():
     assert jev.noul("q", {"true": "a", "false": "b"})["criteria"] == {"true": "a", "false": "b"}
     assert jev.choice("q", {"x": "one", "y": "two"}) == {
         "type": "choice", "instructions": "q", "criteria": {"x": "one", "y": "two"}}
+
+
+def test_the_gateway_is_pinned_to_typesafe_and_the_typesafe_door_is_not():
+    """Measured 2026-09-25: unpinned, the gateway sent some requests to a backend that 503'd."""
+    seen = []
+
+    def handler(request):
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json={"model": "jev-1.13.0", "answers": {"ok": {"noul": 0.5}}})
+    gateway = jev.JevClient(jev.GATEWAY_BASE_URL, "vck", jev.GATEWAY_MODEL, sleep=lambda _s: None)
+    gateway._client = httpx.Client(transport=httpx.MockTransport(handler))
+    gateway.ask("x", {"ok": jev.noul("y")})
+    assert seen[0]["providerOptions"] == {"gateway": {"only": ["typesafe-ai"]}}
+    direct = jev.JevClient("https://api.typesafe.ai", "ts", "jev-latest", sleep=lambda _s: None)
+    direct._client = httpx.Client(transport=httpx.MockTransport(handler))
+    direct.ask("x", {"ok": jev.noul("y")})
+    assert "providerOptions" not in seen[1]
+
+
+def test_requests_are_paced_and_latency_excludes_the_waits():
+    now, slept = [100.0], []
+
+    def sleep(s):
+        slept.append(s)
+        now[0] += s
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        now[0] += 0.5
+        return httpx.Response(429, json={}) if len(calls) == 2 else _typesafe_shape(request)
+    client = jev.JevClient("https://api.typesafe.ai", "ts", "jev-latest", sleep=sleep,
+                           min_interval_s=3.0, clock=lambda: now[0])
+    client._client = httpx.Client(transport=httpx.MockTransport(handler))
+    client.ask("x", {"ok": jev.noul("y")})
+    answer = client.ask("x", {"ok": jev.noul("y")})
+    assert slept[0] == pytest.approx(2.5)            # 3 s interval less the 0.5 s the first call took
+    assert len(calls) == 3 and answer.latency_s < 1.0

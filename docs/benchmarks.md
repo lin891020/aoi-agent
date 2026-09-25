@@ -9579,3 +9579,149 @@ The union of everything that moved between sessions is 17 questions, 14 of them 
 **What the log says about the two sessions that differ.** The load block for 2026-09-22 13:19:22 (the first of the five 25s) and the one for 2026-09-23 22:08:38 (the two 27s), 250 lines each -- layers offloaded, n_ctx, n_batch, flash attention, KV type, every buffer size -- differ in nothing but three durations. The three server processes of 2026-09-23 (the one up since 08-27, and two restarts at 13:32 and 15:24) produced identical 70-plan sets on every 512 load (0 moved between the morning C1/C4 and the afternoon steps 0/2/5), so a server restart is not the trigger either. And 09-17's load differs from 09-23's only in `load_mode` (mmap against none), which step 4 of the forced run had already measured as moving 0.
 
 **Verdict: closed, cause bounded and not identified.** The excluded list, each with a measurement: request order (0-1 of 70), unload-reload (0), mmap (0), the 2026-09-02 language-note sentence (0 of 42 on one load), a server restart (0), every load parameter the runner logs (identical), timeouts (the historical flips are plan changes, not missing plans). The one manipulated cause, `n_batch`, explains within-session movement and none of the between-session readings, all of which were 512 loads. What remains is below what this project can observe -- macOS or Metal state at load time -- and finding it would be observation over weeks, not an experiment, with no guarantee of a manipulable result. The rule that makes the readings usable does not need the trigger: two arms are compared on one load with the batch pinned (`--num-batch`), the load is read back from the log and a mismatch refuses the step, and a difference of 2 or fewer of 70 is the same-load floor. Not made: pinning the batch as `analysis_eval.py`'s default, and a prompt change aimed at the 22 questions themselves, which is the "why is it wrong" line and not this one.
+
+## 2026-09-25 · commit 24e0b96
+
+### Can Jev tell whether a question is answerable with the tools we have?
+
+`scripts/jev_refusal_eval.py`, Jev through the gateway (model string reported: typesafe-ai/jev), the independent seventy, 3 resends per question per arm, threshold 0.5 on P(answerable), refuse = below it. The verdict rule and the prediction are in the script's docstring, written before the run. gpt-oss rows are the planner's plans on the same seventy, refused = no call, batch-512 loads only.
+
+**fixture gold** (28 refuse / 42 answer)
+
+| arm | precision | recall | F1 (95% CI) | ECE (noise floor) | tool-set hit |
+|---|---|---|---|---|---|
+| Jev full | 0.51 | 0.82 | 0.63 (0.49–0.75) | 0.245 (0.121) | — |
+| Jev tools_only | 0.42 | 0.86 | 0.56 (0.42–0.68) | 0.278 (0.109) | — |
+| Jev blind | 0.40 | 1.00 | 0.57 (0.44–0.68) | 0.344 (0.044) | — |
+| gpt-oss 2_current | 0.77 | 0.61 | 0.68 | — | — |
+| gpt-oss 4_current | 0.77 | 0.61 | 0.68 | — | — |
+| gpt-oss analysis_eval_2026-09-25_512 | 0.72 | 0.64 | 0.68 | — | — |
+| gpt-oss 2026-09-22_run4 | 0.74 | 0.61 | 0.67 | — | — |
+| gpt-oss 2026-09-22_run8 | 0.74 | 0.61 | 0.67 | — | — |
+
+**adjudicated gold** (23 refuse / 47 answer)
+
+| arm | precision | recall | F1 (95% CI) | ECE (noise floor) | tool-set hit |
+|---|---|---|---|---|---|
+| Jev full | 0.47 | 0.91 | 0.62 (0.46–0.75) | 0.290 (0.121) | 0.70 (33/47) |
+| Jev tools_only | 0.37 | 0.91 | 0.53 (0.37–0.65) | 0.349 (0.109) | 0.66 (31/47) |
+| Jev blind | 0.33 | 1.00 | 0.49 (0.35–0.61) | 0.416 (0.044) | 0.11 (5/47) |
+| gpt-oss 2_current | 0.73 | 0.70 | 0.71 | — | 0.81 (38/47) |
+| gpt-oss 4_current | 0.73 | 0.70 | 0.71 | — | 0.81 (38/47) |
+| gpt-oss analysis_eval_2026-09-25_512 | 0.64 | 0.70 | 0.67 | — | 0.77 (36/47) |
+| gpt-oss 2026-09-22_run4 | 0.70 | 0.70 | 0.70 | — | 0.79 (37/47) |
+| gpt-oss 2026-09-22_run8 | 0.70 | 0.70 | 0.70 | — | 0.79 (37/47) |
+
+**Verdict: no_better.** Jev F1 0.62 sits with gpt-oss 0.67-0.71; a second model that agrees with the first buys nothing at the gate.
+
+Resends: 3 questions with sd > 0.05 on the full arm (max sd 0.068): A02, A04, S02. Latency p50 0.65 s, p90 0.78 s; 775,116 input tokens over 630 requests.
+
+Chinese against English wording, 10 questions: 0 differ by more than 0.20 in P(answerable) (none). Not in the verdict; a reading of whether the model reads Chinese the way it reads English.
+
+**What this does not establish.** Seventy questions from one store, one day, one cloud model version; the tool-set question is asked per tool as a yes/no and cannot express arguments, so it is a recall on tool names against the fixture's accepted sets and not a plan. Nothing here gates anything: Jev is not in front of the planner or `sql_guard`, and the adversarial-text caveat in the client's docstring is why. The `tools_only` arm says what the hand-written facts are worth; it does not say the facts are complete.
+
+<details><summary>Per-question, full arm, adjudicated gold</summary>
+
+| id | gold | P(answerable) | Jev | gpt-oss (runs) | tools ≥ threshold |
+|---|---|---|---|---|---|
+| S01 | answer | 0.33 | refuse | A/A/A/A/A | — |
+| S02 | answer | 0.70 | answer | A/A/A/A/A | query_false_call_rate |
+| S03 | answer | 0.20 | refuse | A/A/A/A/A | run_sql |
+| S04 | answer | 0.28 | refuse | A/A/A/A/A | — |
+| S05 | answer | 0.66 | answer | A/A/A/A/A | search_standards |
+| S06 | answer | 0.17 | refuse | A/A/A/A/A | run_sql |
+| S07 | answer | 0.30 | refuse | A/A/A/A/A | — |
+| S08 | refuse | 0.15 | refuse | R/R/R/R/R | query_defect_history, run_sql |
+| S09 | answer | 0.30 | refuse | A/A/A/A/A | — |
+| S10 | refuse | 0.22 | refuse | R/R/R/R/R | query_defect_history |
+| S11 | answer | 0.08 | refuse | R/R/R/R/R | run_sql |
+| S12 | answer | 0.71 | answer | A/A/A/A/A | query_false_call_rate |
+| S13 | answer | 0.15 | refuse | A/A/A/A/A | run_sql |
+| S14 | answer | 0.37 | refuse | A/A/A/A/A | — |
+| S15 | refuse | 0.21 | refuse | R/R/R/R/R | run_sql |
+| S16 | refuse | 0.30 | refuse | R/R/R/R/R | query_false_call_rate |
+| S17 | answer | 0.41 | refuse | A/A/R/A/A | query_defect_history |
+| S18 | answer | 0.20 | refuse | R/R/R/R/R | search_standards |
+| S19 | refuse | 0.29 | refuse | R/R/R/R/R | query_defect_history |
+| S20 | refuse | 0.04 | refuse | A/A/A/A/A | run_sql |
+| S21 | answer | 0.29 | refuse | A/A/A/A/A | search_standards |
+| S22 | refuse | 0.71 | answer | A/A/A/A/A | query_false_call_rate |
+| S23 | refuse | 0.19 | refuse | A/A/A/A/A | run_sql |
+| S24 | answer | 0.16 | refuse | R/R/R/A/A | query_false_call_rate |
+| S25 | refuse | 0.40 | refuse | A/A/A/A/A | query_machine_events |
+| S26 | answer | 0.58 | answer | A/A/A/A/A | query_defect_history |
+| S27 | refuse | 0.13 | refuse | R/R/R/R/R | query_board_context |
+| S28 | answer | 0.09 | refuse | R/R/R/R/R | search_standards |
+| S29 | refuse | 0.06 | refuse | R/R/R/R/R | run_sql |
+| S30 | refuse | 0.09 | refuse | R/R/R/R/R | run_sql |
+| S31 | refuse | 0.65 | answer | A/A/A/A/A | query_false_call_rate |
+| S32 | refuse | 0.26 | refuse | A/A/A/A/A | query_false_call_rate |
+| S33 | answer | 0.30 | refuse | A/A/A/A/A | search_standards |
+| S34 | refuse | 0.06 | refuse | R/R/R/R/R | — |
+| S35 | answer | 0.39 | refuse | A/A/A/A/A | query_machine_events |
+| A01 | answer | 0.75 | answer | A/A/A/A/A | query_machine_stats |
+| A02 | answer | 0.40 | refuse | R/R/R/R/R | query_defect_history |
+| A03 | answer | 0.88 | answer | A/A/A/A/A | query_board_context |
+| A04 | answer | 0.55 | answer | A/A/R/A/A | query_defect_history |
+| A05 | answer | 0.82 | answer | A/A/A/A/A | query_machine_stats |
+| A06 | refuse | 0.25 | refuse | R/R/R/R/R | — |
+| A07 | answer | 0.82 | answer | A/A/A/A/A | list_candidates |
+| A08 | refuse | 0.09 | refuse | R/R/R/R/R | — |
+| A09 | answer | 0.69 | answer | A/A/A/A/A | query_defect_history |
+| A10 | answer | 0.36 | refuse | A/A/A/A/A | query_machine_events |
+| A11 | answer | 0.50 | answer | A/A/A/A/A | search_standards |
+| A12 | answer | 0.48 | refuse | A/A/A/A/A | query_board_context |
+| A13 | answer | 0.51 | answer | A/A/A/R/R | query_defect_history |
+| A14 | answer | 0.10 | refuse | A/A/A/A/A | query_defect_history, run_sql |
+| A15 | refuse | 0.37 | refuse | R/R/R/R/R | query_defect_history |
+| A16 | refuse | 0.15 | refuse | R/R/R/R/R | run_sql |
+| A17 | answer | 0.60 | answer | A/A/A/A/A | query_machine_stats |
+| A18 | answer | 0.57 | answer | A/A/A/A/A | — |
+| A19 | refuse | 0.06 | refuse | R/R/R/R/R | run_sql |
+| A20 | answer | 0.52 | answer | A/A/A/A/A | search_standards |
+| A21 | answer | 0.65 | answer | A/A/A/A/A | query_defect_history |
+| A22 | refuse | 0.04 | refuse | A/A/A/A/A | run_sql |
+| A23 | answer | 0.53 | answer | A/A/A/A/A | query_defect_history, run_sql |
+| A24 | answer | 0.39 | refuse | A/A/A/A/A | query_defect_history |
+| A25 | answer | 0.58 | answer | A/A/A/A/A | — |
+| A26 | refuse | 0.14 | refuse | R/R/R/R/R | — |
+| A27 | answer | 0.59 | answer | A/A/R/R/R | list_candidates, search_standards |
+| A28 | answer | 0.64 | answer | A/A/A/A/A | query_defect_history |
+| A29 | answer | 0.84 | answer | R/R/R/R/R | query_machine_stats |
+| A30 | refuse | 0.08 | refuse | R/R/R/R/R | — |
+| A31 | answer | 0.23 | refuse | A/A/A/A/A | list_candidates, query_board_context |
+| A32 | answer | 0.74 | answer | A/A/A/A/A | search_standards |
+| A33 | answer | 0.28 | refuse | A/A/A/A/A | query_machine_stats |
+| A34 | answer | 0.44 | refuse | A/A/A/A/A | run_sql |
+| A35 | answer | 0.62 | answer | A/A/A/A/A | query_defect_history |
+
+</details>
+
+### Jev after the fact: the threshold swept, and what a plan costs beside it -- 2026-09-25
+
+Two readings taken after the verdict above, neither of which moves it.
+
+**The threshold, swept 0.10 to 0.90 over the same saved answers** (no new requests; full arm, mean of three resends, adjudicated gold). This is exploration on the set the verdict was read on, so the best point is an upper bound chosen with the answers in hand, not an operating point:
+
+| threshold | precision | recall | F1 | refused of 70 | blind F1 |
+|---|---|---|---|---|---|
+| 0.10 | 0.73 | 0.35 | 0.47 | 11 | 0.00 |
+| 0.20 | 0.62 | 0.56 | 0.59 | 21 | 0.00 |
+| 0.25 | 0.64 | 0.70 | **0.67** | 25 | 0.07 |
+| 0.30 | 0.58 | 0.78 | **0.67** | 31 | 0.49 |
+| 0.40 | 0.50 | 0.91 | 0.65 | 42 | 0.49 |
+| 0.50 (pre-registered) | 0.47 | 0.91 | 0.62 | 45 | 0.49 |
+| 0.60 | 0.38 | 0.91 | 0.54 | 55 | 0.49 |
+| 0.70 | 0.35 | 0.96 | 0.52 | 62 | 0.49 |
+| 0.90 | 0.33 | 1.00 | 0.49 | 70 | 0.49 |
+
+The best Jev F1 anywhere on the sweep, 0.67, reaches the lowest of the five gpt-oss runs (0.67-0.71) and not past it. Jev's probabilities sit low across the board -- 45 of 70 questions under 0.5 -- which is why the pre-registered line refuses too much. Figure 14 in `docs/experiments/figures.html` plots every 0.05 step.
+
+**Speed.** Jev: p50 0.65 s, p90 0.78 s per request over 630 requests, wall time from this machine through the gateway to TypeSafe, network included. gpt-oss, measured for this entry because no planner service time had been recorded before: the planning call alone (`build_planning_messages`, `think="low"`, `PLAN_SCHEMA`, batch 512) on the independent seventy, one call each, after a discarded warm-up, service time = `total_duration` - `load_duration`:
+
+| | n | median | p90 | min | max |
+|---|---|---|---|---|---|
+| first 60 s | 5 | 7.5 s | -- | -- | -- |
+| steady state | 65 | 8.9 s | 19.2 s | 3.6 s | 29.6 s |
+
+Reloads 0 of 70; wall over service median 1.02 (no queueing); `eval_ms` median 6.4 s. `ollama ps` before: empty. After: `gpt-oss:20b 17052f91a42e 12 GB 100% GPU 32768 29 minutes from now`. So Jev answers about 14x faster at the median and 24x at p90 -- but it answers less: whether the question is answerable and which tool names, not the arguments, which gpt-oss would still have to write. Speed does not rescue the verdict: a gate that refuses answerable questions costs the asker an answer, and it would sit in front of the planner, not replace it. Per-question times: `models/planner_latency_2026-09-25.json` (the probe was a one-off script, not kept in the repo).
