@@ -394,8 +394,13 @@ def rate(correct: int, total: int) -> str:
     return f"{correct}/{total} = {correct / total:.0%}" if total else "—"
 
 
+#: Every historical reading was made on a 512 load, so this is the setting
+#: the published figures are comparable with; 0 means the server's choice.
+DEFAULT_NUM_BATCH = 512
+
+
 def eval_client(model: str, num_batch: int | None) -> OllamaClient:
-    """The planner's client, with the batch pinned when the run names one."""
+    """The planner's client, with the batch pinned unless the run passes 0."""
     load_options = {"num_batch": num_batch} if num_batch else None
     return OllamaClient(model, timeout=EVAL_TIMEOUT_S, load_options=load_options)
 
@@ -420,13 +425,15 @@ def main() -> int:
     parser.add_argument("--note", default="",
                         help="one line into the report header, for a re-run "
                              "whose figures are not comparable with the last")
-    parser.add_argument("--num-batch", type=int, default=None,
-                        help="pin the runner's batch size on every request. "
-                             "Left unset, the server picks 512 or 1024 by free "
-                             "memory at load time, and the 2026-09-23 probe "
-                             "showed the two settings plan 22 of 70 questions "
-                             "differently; a run meant to be compared with "
-                             "another should name its batch")
+    parser.add_argument("--num-batch", type=int, default=DEFAULT_NUM_BATCH,
+                        help="the runner's batch size, sent on every request. "
+                             "Defaults to 512 since 2026-09-25: left to the "
+                             "server, it is 512 or 1024 by free memory at load "
+                             "time, and the 2026-09-23 probe showed the two "
+                             "settings plan 22 of 70 questions differently. "
+                             "0 leaves the choice to the server, for a run "
+                             "that means to reproduce a reading made before "
+                             "the default")
     parser.add_argument("--plan-only", action="store_true",
                         help="score the plan without running the tools or the "
                              "synthesis call. Roughly halves the wall time and "

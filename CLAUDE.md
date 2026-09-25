@@ -831,8 +831,11 @@ move between sessions land 10-12 inside the 22 the forced-1024 loads moved
 but durations, and three server processes on one day plan identically on
 every 512 load; what pushes the knife-edge subset between days is below
 what the log shows. The rule is what matters: two arms on one load, batch
-pinned, load read back, 2 or fewer of 70 is the floor. The adjudication
-entry names what is not made.
+pinned, load read back, 2 or fewer of 70 is the floor. Since 2026-09-25
+`analysis_eval.py` pins `num_batch` 512 by default (`--num-batch 0` hands
+the choice back to the server); every published planner reading was a 512
+load, so the default is the setting they are comparable with. The
+adjudication entry names what is not made.
 
 **Every decision the store held before 2026-08-23 reads `unrecorded`** -- 9,140
 of them, in `model_digest` and now in `reviewer_auth` too, stamped by the

@@ -62,8 +62,9 @@ def test_the_reason_prompt_reads_the_same_switch(monkeypatch):
         f"{flow.SYSTEM_PROMPT}\n\n{i18n.LANGUAGE_NOTE_2026_08_30['zh-TW']}")
 
 
-def test_the_eval_pins_the_batch_only_when_told():
-    pinned = analysis_eval.eval_client("gpt-oss:20b", 512)
+def test_the_eval_pins_the_batch_by_default_and_frees_it_only_on_zero():
+    assert analysis_eval.DEFAULT_NUM_BATCH == 512
+    pinned = analysis_eval.eval_client("gpt-oss:20b", analysis_eval.DEFAULT_NUM_BATCH)
     assert pinned.load_options == {"num_batch": 512}
-    free = analysis_eval.eval_client("gpt-oss:20b", None)
+    free = analysis_eval.eval_client("gpt-oss:20b", 0)
     assert free.load_options == {}
