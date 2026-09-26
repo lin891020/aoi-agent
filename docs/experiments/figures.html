@@ -38,6 +38,13 @@ figcaption{margin-top:.6rem;display:grid;grid-template-columns:4.2em 1fr;gap:.25
 figcaption dt{font-family:var(--mono);font-size:.74rem;letter-spacing:.06em;color:var(--muted);padding-top:.25em}
 figcaption dd{margin:0}
 figcaption dd.choice{color:var(--ink);font-weight:500}
+.more{margin-top:.5rem;max-width:66ch}
+.more summary{cursor:pointer;font-family:var(--mono);font-size:.76rem;color:var(--accent);letter-spacing:.04em;width:max-content}
+.more summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.more-body{display:grid;grid-template-columns:4.2em 1fr;gap:.25rem .6rem;font-size:.9rem;color:var(--ink-2);margin:.5rem 0 0}
+.more-body dt{font-family:var(--mono);font-size:.74rem;letter-spacing:.06em;color:var(--muted);padding-top:.25em}
+.more-body dd{margin:0}
+.more-body dd.choice{color:var(--ink);font-weight:500}
 .src{font-family:var(--mono);font-size:.72rem;color:var(--muted);margin-top:.5rem}
 .note{background:var(--paper-2);border-left:3px solid var(--accent);padding:.8rem 1rem;margin:2rem 0;font-size:.93rem;color:var(--ink-2)}
 .glossary{font-size:.9rem;color:var(--ink-2);border-top:1px solid var(--rule);padding-top:1rem}
@@ -49,7 +56,7 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 <body>
 <main>
 <h1>AOI-Agent 實驗圖集</h1>
-<p class="lede">十四張圖，每一張是一個實驗、它看到的東西、以及因此做的選擇。所有數字來自 docs/benchmarks.md，圖上的每個點都能在條目裡找到同一個數字。</p>
+<p class="lede">十四張圖，每一張是一個實驗、它看到的東西、以及因此做的選擇。每張圖下面三行是重點，想知道細節再點「看細節」。所有數字來自 docs/benchmarks.md，圖上的每個點都能在條目裡找到同一個數字。</p>
 <p class="meta">2026-08-22 → 2026-09-25 · DeepPCB / HRIPCB / PCB-AoI · gpt-oss:20b · M5 Air 32 GB</p>
 
 <div class="note">怎麼讀：<b>實驗</b>是做了什麼，<b>看到</b>是數據說了什麼，<b>選擇</b>是專案因此走哪條路。橫軸上寫「≤0.5%」的地方都是同一個預算：漏掉的真缺陷不能超過千分之五。</div>
@@ -59,13 +66,18 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 <p class="chapter-q">問題：能省多少人工，代價漏多少真缺陷？以及這個數字可不可信。</p>
 
 <figure>
-<p class="fig-title"><b>圖 1</b>操作點曲線：省下的人工 vs 漏掉的真缺陷</p>
+<p class="fig-title"><b>圖 1</b>多省一點人工，要多漏多少真缺陷</p>
 <div class="chart" id="f1"></div>
 <figcaption>
+<dt>實驗</dt><dd>設六種「最多漏多少」的上限，看各能省多少人工。</dd>
+<dt>看到</dt><dd>0.5% 之後曲線變平：再放寬只多省一點，卻多漏很多。</dd>
+<dt>選擇</dt><dd class="choice">報整條曲線；門檻在別的資料上選。</dd>
+</figcaption>
+<details class="more"><summary>看細節</summary><dl class="more-body">
 <dt>實驗</dt><dd>同一個模型，設六種「最多能漏掉多少真缺陷」的上限，看每種上限下可以少看多少張警報。資料：3,018 個真缺陷、4,304 個假警報。白線的每一點是<b>理想值</b>：直接看測試集的答案，挑「剛好不超過上限、又省最多」的門檻，是最樂觀的數字，只能拿來比較模型。</dd>
 <dt>看到</dt><dd>上限放到 0.5% 之後曲線就平了：從 0.5% 放寬到 5%，只多省 8 個百分點的人工，漏掉的缺陷卻多十倍。原因是模型要多省，就得多放走警報，而剩下的假警報跟真缺陷長得太像，再多放一點就會連帶放走一大堆真缺陷。公司只規定一個上限（0.5%），所以只替它選了一次實際部署的門檻（橘點）：門檻在別的資料上選好，拿到測試集實際漏了 0.66%、省 55.6%。沒偷看答案，所以不會剛好壓在線上。</dd>
 <dt>選擇</dt><dd class="choice">永遠報「省多少、漏多少」這條曲線，不報單一個準確率；門檻一定在別的資料上選，並附上誤差範圍。</dd>
-</figcaption>
+</dl></details>
 <p class="src">benchmarks: Operating points (2026-08-31), scripts/report.py, scripts/threshold_cv.py</p>
 </figure>
 
@@ -73,10 +85,15 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 <p class="fig-title"><b>圖 2</b>重跑五次：落在 49%–56%，公布的 55.6% 是最好的那一次</p>
 <div class="chart" id="f2"></div>
 <figcaption>
+<dt>實驗</dt><dd>同一套做法，從頭重跑五次。</dd>
+<dt>看到</dt><dd>落在 49%–56%；公布的 55.6% 剛好是最好那次，一般約 51%。</dd>
+<dt>選擇</dt><dd class="choice">報中位數和範圍，不報單一次。</dd>
+</figcaption>
+<details class="more"><summary>看細節</summary><dl class="more-body">
 <dt>實驗</dt><dd>55.6% 是第一次訓練的結果，當時就公布了。之後為了知道這個數字可不可靠，同一套做法換了 4 個隨機起點（種子）各從頭重跑一次：重新訓練、重新選門檻、再測。</dd>
 <dt>看到</dt><dd>實際會用的數字（綠點）落在 49.0%–55.6%，中位數 50.9%；結果發現第一次剛好是五次裡最好的。不是刻意挑運氣好的那次，但老實的說法是「一般大約 51%」。灰點是直接看答案選門檻的理想值，只能拿來比較。散開的原因一半是模型本身，一半是門檻剛好選在曲線的哪裡。</dd>
 <dt>選擇</dt><dd class="choice">每個數字都註明是哪一次（哪個種子），並同時報中位數和範圍；只報單一次的誤差範圍不夠，重跑的散布也要報。</dd>
-</figcaption>
+</dl></details>
 <p class="src">benchmarks: Seed variance (2026-08-31), scripts/seed_variance.py</p>
 </figure>
 
@@ -84,10 +101,15 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 <p class="fig-title"><b>圖 3</b>一個預算、六個類別：漏的是不能漏的那兩類</p>
 <div class="chart" id="f3"></div>
 <figcaption>
+<dt>實驗</dt><dd>把漏掉的真缺陷按六類拆開。</dd>
+<dt>看到</dt><dd>只有斷路、短路超標，偏偏是規定一個都不能漏的兩類。</dd>
+<dt>選擇</dt><dd class="choice">調門檻救不了，交給電測補。</dd>
+</figcaption>
+<details class="more"><summary>看細節</summary><dl class="more-body">
 <dt>實驗</dt><dd>把漏掉的真缺陷按六種缺陷類型拆開，看每一類漏了多少比例（該類真缺陷裡被當成假警報放走的比例），對照每種缺陷的工作指導書怎麼規定。</dd>
 <dt>看到</dt><dd>超過 0.5% 預算的只有 open（斷路）1.16% 和 short（短路）1.77%，偏偏是指導書寫「只要確認一個就是嚴重」的兩類；其他四類都在預算內。試過「模型只要有一點懷疑是這兩類就送人看」：懷疑門檻要降到 5% 才多擋住 1 個，還少省 0.22% 的人工。因為模型漏掉它們時信心都在 94% 以上，是很有把握地判錯，門檻怎麼調都分不出來。</dd>
 <dt>選擇</dt><dd class="choice">不做「某一類一律送人看」的規則，改用第二種量測來補：電測同時檢查該通的有沒有通（抓斷路）和不該通的有沒有連在一起（抓短路），跟影像模型不會錯在同一個地方。另一條路是重新訓練時加重這兩類「有把握的錯」的懲罰，還沒試。報總漏率時一定附上這張拆解。</dd>
-</figcaption>
+</dl></details>
 <p class="src">benchmarks: Per-class escape (2026-09-08), scripts/class_escape_report.py</p>
 </figure>
 
@@ -95,10 +117,15 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 <p class="fig-title"><b>圖 4</b>盛行率：這個資料集 41% 是真缺陷，產線不是</p>
 <div class="chart" id="f4"></div>
 <figcaption>
+<dt>實驗</dt><dd>假設產線的真缺陷少很多，重新計算。</dd>
+<dt>看到</dt><dd>漏率不變；真缺陷越少，省的人工越多（最多 89%）。</dd>
+<dt>選擇</dt><dd class="choice">數字都附上假設，上線前用影子模式驗證。</dd>
+</figcaption>
+<details class="more"><summary>看細節</summary><dl class="more-body">
 <dt>實驗</dt><dd>不是另外做實驗，是用同一批測試資料<b>重新計算</b>：把真缺陷的權重調小，假裝它們只佔警報的 0.5%、1%、2%……，再算在漏率 0.5% 以內能省多少人工。為什麼不做實驗：要做就需要一條真實產線、而且已經標好答案的資料，目前沒有；從測試集抽掉大部分真缺陷來湊比例，結果跟直接算一模一樣，只是多了抽樣誤差。</dd>
 <dt>看到</dt><dd>這個資料集的警報有 41% 是真缺陷，真實產線通常少很多。<b>漏率</b>不受影響，這是數學上一定成立的：漏率只看「真缺陷裡漏了幾個」，跟真缺陷佔多少比例無關。<b>省下的人工</b>會變多：警報幾乎全是假的時候，省下的就等於模型放掉的假警報比例，大約 89%；52.8% 是最差的情況。但這一半要在「真實產線的假警報跟這個資料集的長得一樣」這個前提下才成立。另外，只看過 100 個缺陷的短期試跑，證明不了漏率在 0.5% 以內。</dd>
 <dt>選擇</dt><dd class="choice">每個「省多少人工」的數字都寫明假設的盛行率（警報裡真缺陷佔的比例）；上線前先跑「影子模式」（系統只判斷不動作，人照常檢查來比對），同時驗證上面那個前提，不靠短期試跑。</dd>
-</figcaption>
+</dl></details>
 <p class="src">benchmarks: Prevalence (2026-08-26), scripts/prevalence_report.py</p>
 </figure>
 
@@ -106,10 +133,15 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 <p class="fig-title"><b>圖 5</b>對位：修平移有效，旋轉修不了</p>
 <div class="chart" id="f5"></div>
 <figcaption>
+<dt>實驗</dt><dd>故意讓板子偏移，比較先對正再比對的前後。</dd>
+<dt>看到</dt><dd>平移修得回來（候選少 64%），旋轉修不回來。</dd>
+<dt>選擇</dt><dd class="choice">只修平移；修不了旋轉就明寫。</dd>
+</figcaption>
+<details class="more"><summary>看細節</summary><dl class="more-body">
 <dt>實驗</dt><dd>對 500 片板子故意加上偏移。<b>平移</b>：水平、垂直各抽一個隨機整數，「平移 4 px」代表左右和上下都在 −4 到 +4 像素之間，每片抽到的不一樣。<b>旋轉</b>：以畫面中心為軸，角度在 −1° 到 +1° 之間隨機抽，順時針、逆時針都有。因為偏移是我們自己加的，正確答案本來就知道。比較「先把影像對正再比對」（相位相關：拿兩張圖整張比，算出錯開多少）前後，每片冒出多少候選（疑似缺陷）、真缺陷有沒有照樣找到。</dd>
 <dt>看到</dt><dd><b>最有效的是修平移</b>：平移 4 px 時候選從 58.1 降到 20.7（少了 64%），找到的真缺陷從 90.8% 升到 97.6%。旋轉 1°：53.4 → 50.4，幾乎沒改善，因為這一步只會移動、不會轉回來。也試過「比一個像素還細的修正」，反而把 60 片本來就對齊的板子弄壞 17 片，所以不做。</dd>
 <dt>選擇</dt><dd class="choice">對正只修平移；三種情況直接拒絕修正（偏移不到一個像素、偏移超過畫面 5%、對不準的把握太低）。修不了旋轉就明寫，不假裝能處理。</dd>
-</figcaption>
+</dl></details>
 <p class="src">benchmarks: Registration (2026-08-24), src/aoi_agent/aoi/registration.py</p>
 </figure>
 
@@ -117,10 +149,15 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 <p class="fig-title"><b>圖 6</b>INT8：操作點不動，省的是記憶體不是時間</p>
 <div class="chart" id="f6"></div>
 <figcaption>
+<dt>實驗</dt><dd>把模型壓縮成 INT8。</dd>
+<dt>看到</dt><dd>準確度不變、記憶體少八成；1000 片板子只快 27 秒。</dd>
+<dt>選擇</dt><dd class="choice">不值得，留原版。</dd>
+</figcaption>
+<details class="more"><summary>看細節</summary><dl class="more-body">
 <dt>實驗</dt><dd>把同一個模型轉成較省資源的格式：ONNX，以及把數字精度從 32 位元降到 8 位元的 INT8（兩種做法）。比較能省的人工、佔用的記憶體，和在 CPU 上判斷一個候選要多久。</dd>
 <dt>看到</dt><dd>四個版本省的人工都在 52.5%–53.0%，差異跟丟硬幣一樣是運氣；記憶體從 389 MB 降到 74–81 MB。速度有變快：INT8 靜態每個候選 0.65 毫秒，原版 2.53 毫秒，快 3.9 倍。可是換算成產線（每片平均 14.6 個候選、每 10 秒一片）：1000 片板子原版模型只花 37 秒，INT8 花 9.5 秒，只省 27 秒，而這 1000 片本身要跑 2.8 小時，省下的不到 0.3%。</dd>
 <dt>選擇</dt><dd class="choice">不上線 INT8，照用原本的 32 位元版本：準確度沒變、速度本來就不是瓶頸，不值得多維護一個版本。量化的比較留在重新訓練的流程裡，因為這個結論只對這一組模型成立。</dd>
-</figcaption>
+</dl></details>
 <p class="src">benchmarks: Quantisation (2026-08-26), scripts/quantisation_report.py</p>
 </figure>
 
@@ -132,10 +169,15 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 <p class="fig-title"><b>圖 7</b>HRIPCB：「影像相減」在真實照片上，不是漏太多就是假警報太多</p>
 <div class="chart" id="f7"></div>
 <figcaption>
+<dt>實驗</dt><dd>在真實照片上用「影像相減」找缺陷。</dd>
+<dt>看到</dt><dd>門檻高就漏掉大半，門檻低就滿滿假警報。</dd>
+<dt>選擇</dt><dd class="choice">相減只適用黑白影像，改用偵測模型。</dd>
+</figcaption>
+<details class="more"><summary>看細節</summary><dl class="more-body">
 <dt>實驗</dt><dd>693 張對好位置的真實照片，試六種灰階門檻（兩張影像差多少才算「不一樣」），看能找到多少缺陷；再加上小擾動（偏 2 像素、雜訊、亮度變化），看每張會冒出多少假警報。</dd>
 <dt>看到</dt><dd>左圖：實際用的門檻 60 只找到 14% 的缺陷，要找到 92% 得把門檻降到 10。右圖：可是門檻 10 一遇到擾動，每張照片就冒出 860 個假警報。原本的資料集（DeepPCB）能過，是因為那些影像只有黑白兩色，缺陷和沒對齊的邊一樣明顯；真實照片上缺陷只差 36 個灰階，每條邊又都是漸層，分不開。</dd>
 <dt>選擇</dt><dd class="choice">寫明「影像相減」只適用黑白影像；不在這份資料上硬調，改用物件偵測模型（YOLO）當第一關。</dd>
-</figcaption>
+</dl></details>
 <p class="src">benchmarks: S0 gate on HRIPCB, Transfer (2026-08-26), scripts/gate_check.py --dataset hripcb</p>
 </figure>
 
@@ -143,10 +185,15 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 <p class="fig-title"><b>圖 8</b>照片裁切上的四種排序：沒有一個在預算內能省人工</p>
 <div class="chart" id="f8"></div>
 <figcaption>
+<dt>實驗</dt><dd>沒有標準板的照片上，試四種方法。</dd>
+<dt>看到</dt><dd>最好也只省個位數，差距可能只是運氣。</dd>
+<dt>選擇</dt><dd class="choice">沒有一個上線。</dd>
+</figcaption>
+<details class="more"><summary>看細節</summary><dl class="more-body">
 <dt>實驗</dt><dd>換一種資料（PCB-AoI：錫膏的照片，沒有標準板可以比對）。先用 YOLO 偵測模型框出可疑的位置，再用四種方法替這些框排序，看在漏率 0.5% 以內能省多少人工。每種方法跑三次，圖上的直線是三次的最低到最高，圓點是中位數（三次裡中間那一次）。都是直接看答案選門檻的理想值，也就是最樂觀的數字。</dd>
 <dt>看到</dt><dd>最好也只有個位數：偵測器自己的信心 0.3%；ResNet 0.3 / 1.2 / 2.8%；DINOv2 加一層簡單分類 0.7 / 1.0 / 1.0%；DINOv2 提示微調 4.3 / 0.7 / 3.8%。統計檢定顯示這些差距都可能只是運氣：測試圖只有 60 張，只看得出很大的差距。另外檢查過「訓練時的框有沒有偷看答案」，結果判斷不了：有兩次選到的門檻什麼都沒撿。</dd>
 <dt>選擇</dt><dd class="choice">沒有一個上線。結論寫成「光看外觀分不出假警報和真缺陷」，所以有標準板可以比對，不只是方便而已。</dd>
-</figcaption>
+</dl></details>
 <p class="src">benchmarks: Detector front end, Crop re-verifier, DINOv2 crops, VPT crops, fold adjudication (08-26 → 09-20)</p>
 </figure>
 
@@ -158,10 +205,15 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 <p class="fig-title"><b>圖 9</b>換成更大的模型 DINOv2：最好也只是追平 ResNet-18</p>
 <div class="chart" id="f9"></div>
 <figcaption>
+<dt>實驗</dt><dd>換成更大的預訓練模型 DINOv2。</dd>
+<dt>看到</dt><dd>最好只追平 ResNet-18，速度慢十倍以上。</dd>
+<dt>選擇</dt><dd class="choice">繼續用 ResNet-18。</dd>
+</figcaption>
+<details class="more"><summary>看細節</summary><dl class="more-body">
 <dt>實驗</dt><dd>把 ResNet-18 換成更大的預訓練模型 DINOv2，試兩種用法。<b>凍結</b>：DINOv2 本身一個參數都不改，只在後面加一層小分類器、只訓練那一層（三次）。<b>提示微調</b>：DINOv2 本身還是不改，但在每一層塞進少量可以學的「提示」參數（共 48,775 個），讓它稍微調整看東西的方式（三次）。對照組是整個模型都一起訓練的 ResNet-18（五次），和不用神經網路的手工特徵（三次，圖上畫三次的中位數）。每次都先寫好判定標準才跑。</dd>
 <dt>看到</dt><dd>只加一層分類更差（39.9%–42.0%）；提示微調 50.4%–51.6%，落在 ResNet 的 49.7%–52.8% 範圍內，只是追平。所以之前輸，是「只加一層」這個用法不夠，不是 DINOv2 本身不行。圖上都是直接看答案選門檻的理想值。</dd>
 <dt>選擇</dt><dd class="choice">繼續用 ResNet-18：DINOv2 只追平、沒有超過，速度卻慢十倍以上（一個候選 41 毫秒對 2.5 毫秒）。這條線結束。</dd>
-</figcaption>
+</dl></details>
 <p class="src">benchmarks: DINOv2 probe (09-15), VPT (09-17/18 rerun), scripts/dinov2_probe.py, scripts/dinov2_vpt.py</p>
 </figure>
 
@@ -173,10 +225,15 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 <p class="fig-title"><b>圖 10</b>中文理由的錯誤：三次修、三次量</p>
 <div class="chart" id="f10"></div>
 <figcaption>
+<dt>實驗</dt><dd>檢查模型寫的中文理由有沒有錯。</dd>
+<dt>看到</dt><dd>每加一句提示就少一類錯：20 → 45 → 55（滿分 60）。</dd>
+<dt>選擇</dt><dd class="choice">一個問題一句提示、一條檢查。</dd>
+</figcaption>
+<details class="more"><summary>看細節</summary><dl class="more-body">
 <dt>實驗</dt><dd>同樣 60 個候選，讓模型用中文和英文各寫一次判斷理由。用程式直接檢查（數字有沒有出處、引用的文件有沒有真的被找到），加上幾個固定的錯誤樣式，不用另一個模型來打分數。每改一次提示詞就量一次。</dd>
 <dt>看到</dt><dd>亂編數字一直是 0/120。左圖：中文完全沒被抓到問題的筆數，20/60 → 45/60（提示詞裡列出六種缺陷的中文名）→ 55/60（再加一句用詞說明）。右圖是一個具體的錯：把工作指導書 WI-201 的「電測導通就放行」寫成「電測開路就放行」，意思整個相反。沒加說明時 60 筆有 9 筆寫錯，加了之後 0 筆；英文兩邊都是 0。</dd>
 <dt>選擇</dt><dd class="choice">每修一個問題，就在提示詞加一句話、在檢查裡加一條規則。規劃器和整理答案用的提示詞不跟著改，因為它們的成績是在原本的句子下量的。</dd>
-</figcaption>
+</dl></details>
 <p class="src">benchmarks: rationale eval (09-01, 09-02, 09-22 two arms), scripts/rationale_eval.py</p>
 </figure>
 
@@ -184,10 +241,15 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 <p class="fig-title"><b>圖 11</b>解釋的延遲：中文從 32 秒降到 9 秒，靠的是提示詞</p>
 <div class="chart" id="f11"></div>
 <figcaption>
+<dt>實驗</dt><dd>量模型寫一段解釋要多久。</dd>
+<dt>看到</dt><dd>中文從 32 秒降到 9 秒，靠的是改提示詞。</dd>
+<dt>選擇</dt><dd class="choice">解釋最多等 60 秒；判定結果不等它。</dd>
+</figcaption>
+<details class="more"><summary>看細節</summary><dl class="more-body">
 <dt>實驗</dt><dd>真實呼叫 20 次，中英文各一組。長條是中位數（一般情況），上面的細線延伸到 p90（最慢的那 10% 從這裡開始）。只算模型寫字的時間。</dd>
 <dt>看到</dt><dd>第一版中文要 31.9 秒（最慢的 10% 超過 35.9 秒）：模型不知道判定用的門檻，每次都把兩種可能都寫一遍。把門檻寫進提示詞、要求只寫一段話後，降到 16.7 秒；09-17 再量是 9.0 秒。英文一直在 9–12 秒。60 秒上限內沒有一次超時。</dd>
 <dt>選擇</dt><dd class="choice">「寫解釋最多等 60 秒」和「判定結果 10 秒內要出來」分成兩個設定：判定由影像模型負責，只要 2.5 毫秒，不用等解釋，所以解釋的時間該跟 60 秒比，不是跟 10 秒比。缺了解釋就標成「沒有解釋」，不當成錯誤。延遲數字一律寫明是哪種語言。</dd>
-</figcaption>
+</dl></details>
 <p class="src">benchmarks: Agent-layer latency (08-29, 08-30, 09-17), scripts/latency_report.py</p>
 </figure>
 
@@ -195,10 +257,15 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 <p class="fig-title"><b>圖 14</b>Jev 判斷「這題能不能答」：線怎麼調都沒超過 gpt-oss，因為它拒絕太多</p>
 <div class="chart" id="f14"></div>
 <figcaption>
+<dt>實驗</dt><dd>用 Jev 判斷「這題能不能答」，跟 gpt-oss 比。</dd>
+<dt>看到</dt><dd>怎麼調都沒超過 gpt-oss：拒了 45 題，其中 24 題其實答得出來。</dd>
+<dt>選擇</dt><dd class="choice">不採用：快 14 倍，但錯拒補不回來。</dd>
+</figcaption>
+<details class="more"><summary>看細節</summary><dl class="more-body">
 <dt>實驗</dt><dd>TypeSafe 的決策模型 Jev（只回機率，不生成文字），70 題外部出題、每題問 3 次取平均；它說「能答」的機率低於判定線就算拒答。判定線 0.5 在跑之前就定好。</dd>
 <dt>看到</dt><dd>上圖：分數線從 0.1 調到 0.9，最高 0.67，只碰到 gpt-oss 最差那次，從來沒進到它的範圍上面；那個最高點是看完答案才挑的，換一批題目不會一樣好。下圖：在 0.5，Jev 拒絕 45 題，其中 24 題其實答得出來；gpt-oss 拒絕 25 題，錯拒 9 題。Jev 幾乎不會漏擋（23 題只漏 2），代價是把一半答得出來的問題也擋掉。</dd>
 <dt>選擇</dt><dd class="choice">不把 Jev 接到規劃器前面。它每題 0.65 秒、比 gpt-oss 規劃快約 14 倍，但錯拒的代價是使用者拿不到答案，快補不回來。</dd>
-</figcaption>
+</dl></details>
 <p class="src">benchmarks: Can Jev tell whether a question is answerable (09-25), Jev after the fact (09-25), scripts/jev_refusal_eval.py</p>
 </figure>
 
@@ -210,10 +277,15 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 <p class="fig-title"><b>圖 12</b>十次讀數：同一天內完全一樣，跨天會動</p>
 <div class="chart" id="f12"></div>
 <figcaption>
+<dt>實驗</dt><dd>同一份考題，在不同天考同一個模型。</dd>
+<dt>看到</dt><dd>同一天內完全一樣，換一天就在 23–28 之間跳。</dd>
+<dt>選擇</dt><dd class="choice">要比兩個版本，必須在同一次載入裡比。</dd>
+</figcaption>
+<details class="more"><summary>看細節</summary><dl class="more-body">
 <dt>實驗</dt><dd>同一份 70 題（42 題該答、28 題該拒答）、同一個模型、隨機性設成 0（照理每次答案都一樣），在不同日子測「該答的 42 題答對幾題」。</dd>
 <dt>看到</dt><dd>同一天內完全一樣：09-22 連續五次都是 25，錯的題目也一模一樣；09-23 兩次都是 27。但換一天就在 23–28 之間跳。所以變化不是每次提問時產生的，而是發生在模型「載入」的那一刻，或更外層。</dd>
 <dt>選擇</dt><dd class="choice">以前「差 3 題以內算正常」的標準作廢；要比兩個版本，必須在同一次載入裡比。</dd>
-</figcaption>
+</dl></details>
 <p class="src">benchmarks: 08-30, 09-17, 09-19, 09-22 five readings, 09-23 language-note run</p>
 </figure>
 
@@ -221,10 +293,15 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 <p class="fig-title"><b>圖 13</b>強制 batch：用 1024 的兩次，都翻了同樣 22 題；用 512 的全部是 0</p>
 <div class="chart" id="f13"></div>
 <figcaption>
+<dt>實驗</dt><dd>每一步指定設定重新載入模型，找出是什麼在變。</dd>
+<dt>看到</dt><dd>設定 1024 時同樣 22 題會翻，512 時都不動。</dd>
+<dt>選擇</dt><dd class="choice">評測固定用 512。</dd>
+</figcaption>
+<details class="more"><summary>看細節</summary><dl class="more-body">
 <dt>實驗</dt><dd>同一個時段內，每一步都先把模型卸下、用指定設定重新載入、測 70 題，再從 Ollama 的日誌讀回實際用的設定核對。這裡的設定是 batch：模型一次處理多少個字。順序是 512 → 1024 → 512 → 1024 → 512（關掉 mmap，一種讀檔方式）→ 512。判定規則先寫好。之前已經排除題目順序、中途打斷、卸載（各只動 0–1 題），也排除 09-02 加的那句提示詞（兩種寫法都是 27/42）。</dd>
 <dt>看到</dt><dd>Ollama 載入時如果剩餘記憶體有 18.6 GiB 以上，就自動用 1024，不然用 512，136 次沒有例外。用 1024 會改變電腦加總數字的順序，讓 22 題本來兩邊差不多的決定翻過來，兩次 1024 翻的是同樣 22 題。同一次載入內重跑只會差 0–2 題，所以判定線定在 3 題。跨天會變的 13–14 題裡有 10–12 題就在這 22 題裡（巧合的機率小於千分之一），但跨天那一次是什麼推動的，日誌裡找不到。</dd>
 <dt>選擇</dt><dd class="choice">評測一律固定用 512，每一步都從日誌核對；同一次載入內差 2 題以內視為相同。跨天的原因已經超出工具看得到的範圍，這個問題收掉。</dd>
-</figcaption>
+</dl></details>
 <p class="src">benchmarks: The runner as a controlled variable (09-23), closing adjudication (09-25), scripts/planner_session_probe.py</p>
 </figure>
 
