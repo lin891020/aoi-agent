@@ -192,14 +192,14 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 </figure>
 
 <figure>
-<p class="fig-title"><b>圖 14</b>Jev 判斷「這題能不能答」：判定線從 0.1 掃到 0.9</p>
+<p class="fig-title"><b>圖 14</b>Jev 判斷「這題能不能答」：線怎麼調都沒超過 gpt-oss，因為它拒絕太多</p>
 <div class="chart" id="f14"></div>
 <figcaption>
-<dt>實驗</dt><dd>TypeSafe 的決策模型 Jev（只回機率，不生成文字），70 題外部出題、每題問 3 次取平均；P(能答) 低於判定線就算拒答。判定線 0.5 與判定規則在跑之前寫死；這張圖是跑完之後把線整條掃過，是事後的探索，不是結論。</dd>
-<dt>看到</dt><dd>在事先定的 0.5，F1 0.62，低於 gpt-oss 的 0.67–0.71。整條掃過，最好的點在 0.25–0.30，F1 0.67，只碰到 gpt-oss 最差那次，沒有超過；而且是在同一批題目上挑的，換一批題目不會一樣好。遮掉題目（盲測）最高只有 0.49，所以它有在讀題，只是讀得不夠準。</dd>
-<dt>選擇</dt><dd class="choice">不把 Jev 接到規劃器前面；判定 no_better。</dd>
+<dt>實驗</dt><dd>TypeSafe 的決策模型 Jev（只回機率，不生成文字），70 題外部出題、每題問 3 次取平均；它說「能答」的機率低於判定線就算拒答。判定線 0.5 在跑之前就定好。</dd>
+<dt>看到</dt><dd>上圖：分數線從 0.1 調到 0.9，最高 0.67，只碰到 gpt-oss 最差那次，從來沒進到它的範圍上面；那個最高點是看完答案才挑的，換一批題目不會一樣好。下圖：在 0.5，Jev 拒絕 45 題，其中 24 題其實答得出來；gpt-oss 拒絕 25 題，錯拒 9 題。Jev 幾乎不會漏擋（23 題只漏 2），代價是把一半答得出來的問題也擋掉。</dd>
+<dt>選擇</dt><dd class="choice">不把 Jev 接到規劃器前面。它每題 0.65 秒、比 gpt-oss 規劃快約 14 倍，但錯拒的代價是使用者拿不到答案，快補不回來。</dd>
 </figcaption>
-<p class="src">benchmarks: Can Jev tell whether a question is answerable (09-25), scripts/jev_refusal_eval.py, models/jev_refusal_2026-09-25.json</p>
+<p class="src">benchmarks: Can Jev tell whether a question is answerable (09-25), Jev after the fact (09-25), scripts/jev_refusal_eval.py</p>
 </figure>
 
 <!-- ============ 第五章 ============ -->
@@ -434,36 +434,33 @@ const ink = () => C("--ink"), acc = () => C("--accent"), acc2 = () => C("--accen
 
 // ---------- 圖 14 Jev threshold sweep ----------
 (function(){
-  const W = 720, H = 372; const s = svg("f14", W, H);
+  const W = 720, H = 470; const s = svg("f14", W, H);
   const t  = [0.10,0.15,0.20,0.25,0.30,0.35,0.40,0.45,0.50,0.55,0.60,0.65,0.70,0.75,0.80,0.85,0.90];
   const f1 = [0.47,0.59,0.59,0.67,0.67,0.66,0.65,0.63,0.62,0.57,0.54,0.53,0.52,0.52,0.52,0.50,0.49];
-  const pr = [0.73,0.79,0.62,0.64,0.58,0.54,0.50,0.48,0.47,0.42,0.38,0.37,0.35,0.35,0.35,0.33,0.33];
-  const rc = [0.35,0.48,0.56,0.70,0.78,0.83,0.91,0.91,0.91,0.91,0.91,0.91,0.96,1.00,1.00,1.00,1.00];
-  const bl = [0.00,0.00,0.00,0.07,0.49,0.49,0.49,0.49,0.49,0.49,0.49,0.49,0.49,0.49,0.49,0.49,0.49];
-  const f = frame(s, {x0: 0.1, x1: 0.9, y0: 0, y1: 1, w: W, h: H, mb: 96, yTicks: [0, 0.25, 0.5, 0.75, 1], yFmt: v => v.toFixed(2), xTicks: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9], xFmt: v => v.toFixed(1), yLabel: "分數（裁決後標準，23 題該拒 / 47 題該答）"});
-  label(s, (52 + W - 16) / 2, H - 96 + 38, "判定線：P(能答) 低於它就拒答", C("--ink-2"), "middle");
+  // top panel: one line against one band
+  const f = frame(s, {x0: 0.1, x1: 0.9, y0: 0.4, y1: 0.8, w: W, h: 270, mt: 22, mb: 40, yTicks: [0.4, 0.5, 0.6, 0.7, 0.8], yFmt: v => v.toFixed(1), xTicks: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9], xFmt: v => v.toFixed(1), xLabel: "判定線：Jev 說「能答」的機率低於它，就算拒答", yLabel: "F1 分數（1 = 全對）"});
   el("rect", {x: f.sx(0.1), y: f.sy(0.71), width: f.sx(0.9) - f.sx(0.1), height: f.sy(0.67) - f.sy(0.71), fill: C("--band")}, s);
-  label(s, f.sx(0.9) - 4, f.sy(0.71) - 5, "gpt-oss 五次 F1 0.67–0.71", acc(), "end");
-  el("line", {x1: f.sx(0.5), x2: f.sx(0.5), y1: f.sy(0), y2: f.sy(1), stroke: mut(), "stroke-dasharray": "4 3"}, s);
-  label(s, f.sx(0.5) + 5, f.sy(1) + 12, "事先定的 0.5", mut());
-  const path = (ys, color, w, dash) => el("path", {d: ys.map((y, i) => (i ? "L" : "M") + f.sx(t[i]) + " " + f.sy(y)).join(" "), fill: "none", stroke: color, "stroke-width": w, "stroke-dasharray": dash || "", "stroke-linejoin": "round"}, s);
-  path(bl, mut(), 1.5, "5 4"); path(pr, acc(), 1.5); path(rc, acc2(), 1.5); path(f1, ink(), 2.5);
-  dot(s, f.sx(0.5), f.sy(0.62), ink()); label(s, f.sx(0.5) + 8, f.sy(0.62) + 16, "0.62", ink());
-  dot(s, f.sx(0.25), f.sy(0.67), ink()); label(s, f.sx(0.25) - 6, f.sy(0.67) - 10, "最高 0.67（事後挑）", ink(), "middle");
-  legend(s, [{shape: "line", color: ink(), text: "Jev F1"}, {shape: "line", color: acc(), text: "precision：說拒的真該拒"}], 60, H - 96 + 68);
-  legend(s, [{shape: "line", color: acc2(), text: "recall：該拒的有擋下"}, {shape: "line", color: mut(), dash: "5 4", text: "盲測 F1（題目遮掉）"}], 380, H - 96 + 68);
-  // hover: nearest threshold
-  const guide = el("line", {y1: f.sy(0), y2: f.sy(1), stroke: C("--rule"), visibility: "hidden"}, s);
-  const tip = el("text", {y: f.sy(0) - 8, fill: ink(), visibility: "hidden", "font-size": 11}, s);
-  const hit = el("rect", {x: f.sx(0.1), y: f.sy(1), width: f.sx(0.9) - f.sx(0.1), height: f.sy(0) - f.sy(1), fill: "transparent"}, s);
-  hit.addEventListener("pointermove", e => {
-    const pt = s.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY; const x = pt.matrixTransform(s.getScreenCTM().inverse()).x;
-    let i = 0; t.forEach((v, k) => { if (Math.abs(f.sx(v) - x) < Math.abs(f.sx(t[i]) - x)) i = k; });
-    guide.setAttribute("x1", f.sx(t[i])); guide.setAttribute("x2", f.sx(t[i])); guide.setAttribute("visibility", "visible");
-    tip.textContent = `線 ${t[i].toFixed(2)} · F1 ${f1[i].toFixed(2)} · P ${pr[i].toFixed(2)} · R ${rc[i].toFixed(2)} · 盲測 ${bl[i].toFixed(2)}`;
-    tip.setAttribute("x", Math.min(Math.max(f.sx(t[i]), 200), W - 200)); tip.setAttribute("text-anchor", "middle"); tip.setAttribute("visibility", "visible");
+  label(s, f.sx(0.9) - 4, f.sy(0.71) - 6, "gpt-oss 五次：0.67–0.71", acc(), "end");
+  el("line", {x1: f.sx(0.5), x2: f.sx(0.5), y1: f.sy(0.4), y2: f.sy(0.8), stroke: mut(), "stroke-dasharray": "4 3"}, s);
+  label(s, f.sx(0.5) + 5, f.sy(0.8) + 12, "事先定的 0.5", mut());
+  el("path", {d: f1.map((y, i) => (i ? "L" : "M") + f.sx(t[i]) + " " + f.sy(y)).join(" "), fill: "none", stroke: acc2(), "stroke-width": 2.5, "stroke-linejoin": "round"}, s);
+  label(s, f.sx(0.9) - 4, f.sy(0.49) - 8, "Jev", acc2(), "end");
+  dot(s, f.sx(0.5), f.sy(0.62), acc2()); label(s, f.sx(0.5) + 8, f.sy(0.62) + 16, "0.62", ink());
+  dot(s, f.sx(0.25), f.sy(0.67), acc2()); label(s, f.sx(0.25), f.sy(0.67) + 20, "最高 0.67（事後挑）", ink(), "middle");
+  // bottom panel: refusals at 0.5, right vs wrong
+  const y0 = 320, bh = 30, x0 = 150, per = (W - 16 - x0) / 50;
+  label(s, 12, y0 - 18, "在 0.5 這條線上，拒絕了幾題（23 題真的該拒）", C("--ink-2"));
+  [["Jev", 21, 24], ["gpt-oss（今天）", 16, 9]].forEach(([name, ok, bad], k) => {
+    const y = y0 + k * (bh + 22);
+    label(s, x0 - 10, y + bh / 2 + 4, name, ink(), "end");
+    el("rect", {x: x0, y, width: ok * per - 1, height: bh, fill: acc()}, s);
+    el("rect", {x: x0 + ok * per + 1, y, width: bad * per - 1, height: bh, fill: acc2()}, s);
+    label(s, x0 + ok * per / 2, y + bh / 2 + 4, ok + " 題該拒", C("--paper"), "middle");
+    label(s, x0 + ok * per + bad * per / 2, y + bh / 2 + 4, bad + " 題錯拒", C("--paper"), "middle");
+    label(s, x0 + (ok + bad) * per + 8, y + bh / 2 + 4, "共 " + (ok + bad), ink());
   });
-  hit.addEventListener("pointerleave", () => { guide.setAttribute("visibility", "hidden"); tip.setAttribute("visibility", "hidden"); });
+  el("line", {x1: x0 + 23 * per, x2: x0 + 23 * per, y1: y0 - 6, y2: y0 + 2 * bh + 28, stroke: ink(), "stroke-dasharray": "3 3"}, s);
+  label(s, x0 + 23 * per, y0 + 2 * bh + 42, "23：該拒的總數", ink(), "middle");
 })();
 })();
 </script>
