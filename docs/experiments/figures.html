@@ -9,16 +9,16 @@
 <style>
 :root{
   --paper:#f6f7f4; --paper-2:#eceee9; --ink:#1c2430; --ink-2:#45505e; --muted:#7a8494;
-  --rule:#d5d9d2; --accent:#0e6b6b; --accent-2:#b4552b; --grid:#e1e4de; --band:#0e6b6b22;
+  --rule:#d5d9d2; --accent:#0e6b6b; --accent-2:#b4552b; --grid:#e1e4de; --band:#0e6b6b22; --hl:#c0362c;
   --serif:"Noto Serif TC","Songti TC",serif; --sans:"Noto Sans TC","PingFang TC",sans-serif; --mono:"IBM Plex Mono",Menlo,monospace;
 }
 @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
   --paper:#161a1f; --paper-2:#1f242b; --ink:#e8eae6; --ink-2:#b9bfc7; --muted:#8a93a0;
-  --rule:#2f363f; --accent:#4fb8b2; --accent-2:#e2865a; --grid:#262c34; --band:#4fb8b222;
+  --rule:#2f363f; --accent:#4fb8b2; --accent-2:#e2865a; --grid:#262c34; --band:#4fb8b222; --hl:#ff6b5e;
 }}
 :root[data-theme="dark"]{
   --paper:#161a1f; --paper-2:#1f242b; --ink:#e8eae6; --ink-2:#b9bfc7; --muted:#8a93a0;
-  --rule:#2f363f; --accent:#4fb8b2; --accent-2:#e2865a; --grid:#262c34; --band:#4fb8b222;
+  --rule:#2f363f; --accent:#4fb8b2; --accent-2:#e2865a; --grid:#262c34; --band:#4fb8b222; --hl:#ff6b5e;
 }
 *{box-sizing:border-box}
 html,body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.7}
@@ -62,8 +62,8 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 <p class="fig-title"><b>圖 1</b>操作點曲線：省下的人工 vs 漏掉的真缺陷</p>
 <div class="chart" id="f1"></div>
 <figcaption>
-<dt>實驗</dt><dd>同一個模型，設六種「最多能漏掉多少真缺陷」的上限，看每種上限下可以少看多少張警報。資料：3,018 個真缺陷、4,304 個假警報。</dd>
-<dt>看到</dt><dd>上限放到 0.5% 之後曲線就平了：從 0.5% 放寬到 5%，只多省 8 個百分點的人工，漏掉的缺陷卻多十倍。白線是「直接看答案選門檻」的理想值；實際部署的門檻是在別的資料上先選好的（橘點），落在漏 0.66%、省 55.6%。</dd>
+<dt>實驗</dt><dd>同一個模型，設六種「最多能漏掉多少真缺陷」的上限，看每種上限下可以少看多少張警報。資料：3,018 個真缺陷、4,304 個假警報。白線的每一點是<b>理想值</b>：直接看測試集的答案，挑「剛好不超過上限、又省最多」的門檻，是最樂觀的數字，只能拿來比較模型。</dd>
+<dt>看到</dt><dd>上限放到 0.5% 之後曲線就平了：從 0.5% 放寬到 5%，只多省 8 個百分點的人工，漏掉的缺陷卻多十倍。原因是模型要多省，就得多放走警報，而剩下的假警報跟真缺陷長得太像，再多放一點就會連帶放走一大堆真缺陷。公司只規定一個上限（0.5%），所以只替它選了一次實際部署的門檻（橘點）：門檻在別的資料上選好，拿到測試集實際漏了 0.66%、省 55.6%。沒偷看答案，所以不會剛好壓在線上。</dd>
 <dt>選擇</dt><dd class="choice">永遠報「省多少、漏多少」這條曲線，不報單一個準確率；門檻一定在別的資料上選，並附上誤差範圍。</dd>
 </figcaption>
 <p class="src">benchmarks: Operating points (2026-08-31), scripts/report.py, scripts/threshold_cv.py</p>
@@ -73,8 +73,8 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 <p class="fig-title"><b>圖 2</b>重跑五次：落在 49%–56%，公布的 55.6% 是最好的那一次</p>
 <div class="chart" id="f2"></div>
 <figcaption>
-<dt>實驗</dt><dd>同一套做法，換五個隨機起點（種子）各從頭重跑一次：重新訓練、重新選門檻、再測。</dd>
-<dt>看到</dt><dd>實際會用的數字（綠點）落在 49.0%–55.6%，中位數 50.9%；我們公布的 55.6% 剛好是五次裡最好的一次。灰點是直接看答案選門檻的理想值，只能拿來比較模型。散開的原因一半是模型本身，一半是門檻剛好選在曲線的哪裡。</dd>
+<dt>實驗</dt><dd>55.6% 是第一次訓練的結果，當時就公布了。之後為了知道這個數字可不可靠，同一套做法換了 4 個隨機起點（種子）各從頭重跑一次：重新訓練、重新選門檻、再測。</dd>
+<dt>看到</dt><dd>實際會用的數字（綠點）落在 49.0%–55.6%，中位數 50.9%；結果發現第一次剛好是五次裡最好的。不是刻意挑運氣好的那次，但老實的說法是「一般大約 51%」。灰點是直接看答案選門檻的理想值，只能拿來比較。散開的原因一半是模型本身，一半是門檻剛好選在曲線的哪裡。</dd>
 <dt>選擇</dt><dd class="choice">每個數字都註明是哪一次（哪個種子），並同時報中位數和範圍；只報單一次的誤差範圍不夠，重跑的散布也要報。</dd>
 </figcaption>
 <p class="src">benchmarks: Seed variance (2026-08-31), scripts/seed_variance.py</p>
@@ -84,9 +84,9 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 <p class="fig-title"><b>圖 3</b>一個預算、六個類別：漏的是不能漏的那兩類</p>
 <div class="chart" id="f3"></div>
 <figcaption>
-<dt>實驗</dt><dd>把總漏率 0.66% 按六種缺陷拆開，對照每種缺陷的工作指導書怎麼規定。</dd>
-<dt>看到</dt><dd>超過 0.5% 預算的只有 open（斷路）1.16% 和 short（短路）1.77%，偏偏是指導書寫「只要確認一個就是嚴重」的兩類；其他四類都在預算內。試過「模型只要有一點懷疑是 short 就送人看」：懷疑門檻要降到 5% 才多擋住 1 個，還少省 0.22% 的人工。模型漏掉它們時是很有把握地判錯，不是猶豫。</dd>
-<dt>選擇</dt><dd class="choice">不做「某一類一律送人看」的規則；open 改用電測（另一種量測方式）來補；報總漏率時一定附上這張拆解。</dd>
+<dt>實驗</dt><dd>把漏掉的真缺陷按六種缺陷類型拆開，看每一類漏了多少比例（該類真缺陷裡被當成假警報放走的比例），對照每種缺陷的工作指導書怎麼規定。</dd>
+<dt>看到</dt><dd>超過 0.5% 預算的只有 open（斷路）1.16% 和 short（短路）1.77%，偏偏是指導書寫「只要確認一個就是嚴重」的兩類；其他四類都在預算內。試過「模型只要有一點懷疑是這兩類就送人看」：懷疑門檻要降到 5% 才多擋住 1 個，還少省 0.22% 的人工。因為模型漏掉它們時信心都在 94% 以上，是很有把握地判錯，門檻怎麼調都分不出來。</dd>
+<dt>選擇</dt><dd class="choice">不做「某一類一律送人看」的規則，改用第二種量測來補：電測同時檢查該通的有沒有通（抓斷路）和不該通的有沒有連在一起（抓短路），跟影像模型不會錯在同一個地方。另一條路是重新訓練時加重這兩類「有把握的錯」的懲罰，還沒試。報總漏率時一定附上這張拆解。</dd>
 </figcaption>
 <p class="src">benchmarks: Per-class escape (2026-09-08), scripts/class_escape_report.py</p>
 </figure>
@@ -95,9 +95,9 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 <p class="fig-title"><b>圖 4</b>盛行率：這個資料集 41% 是真缺陷，產線不是</p>
 <div class="chart" id="f4"></div>
 <figcaption>
-<dt>實驗</dt><dd>同一條曲線，假設警報裡真缺陷佔的比例（盛行率）不同，重新算在漏率 0.5% 以內能省多少人工。</dd>
-<dt>看到</dt><dd>這個資料集的警報有 41% 是真缺陷，真實產線通常少很多。產線越乾淨省越多：52.8% 是最差的情況，真缺陷只佔 0.5% 時能省 89%；漏率不受影響。但有一件事搬不過去：只看過 100 個缺陷的短期試跑，證明不了漏率在 0.5% 以內。</dd>
-<dt>選擇</dt><dd class="choice">每個「省多少人工」的數字都寫明假設的盛行率；上線前先跑「影子模式」（系統只判斷不動作，人照常檢查來比對），長期累積證據，不靠短期試跑。</dd>
+<dt>實驗</dt><dd>不是另外做實驗，是用同一批測試資料<b>重新計算</b>：把真缺陷的權重調小，假裝它們只佔警報的 0.5%、1%、2%……，再算在漏率 0.5% 以內能省多少人工。為什麼不做實驗：要做就需要一條真實產線、而且已經標好答案的資料，目前沒有；從測試集抽掉大部分真缺陷來湊比例，結果跟直接算一模一樣，只是多了抽樣誤差。</dd>
+<dt>看到</dt><dd>這個資料集的警報有 41% 是真缺陷，真實產線通常少很多。<b>漏率</b>不受影響，這是數學上一定成立的：漏率只看「真缺陷裡漏了幾個」，跟真缺陷佔多少比例無關。<b>省下的人工</b>會變多：警報幾乎全是假的時候，省下的就等於模型放掉的假警報比例，大約 89%；52.8% 是最差的情況。但這一半要在「真實產線的假警報跟這個資料集的長得一樣」這個前提下才成立。另外，只看過 100 個缺陷的短期試跑，證明不了漏率在 0.5% 以內。</dd>
+<dt>選擇</dt><dd class="choice">每個「省多少人工」的數字都寫明假設的盛行率（警報裡真缺陷佔的比例）；上線前先跑「影子模式」（系統只判斷不動作，人照常檢查來比對），同時驗證上面那個前提，不靠短期試跑。</dd>
 </figcaption>
 <p class="src">benchmarks: Prevalence (2026-08-26), scripts/prevalence_report.py</p>
 </figure>
@@ -106,8 +106,8 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 <p class="fig-title"><b>圖 5</b>對位：修平移有效，旋轉修不了</p>
 <div class="chart" id="f5"></div>
 <figcaption>
-<dt>實驗</dt><dd>對 500 片板子故意加上偏移（平移、旋轉、兩者都有），比較「先把影像對正再比對」前後，每片板子冒出多少個候選（疑似缺陷）。</dd>
-<dt>看到</dt><dd>平移 4 像素：候選從 58.1 降到 20.7，找到的真缺陷從 90.8% 升到 97.6%。旋轉 1°：53.4 → 50.4，幾乎沒改善。也試過「比一個像素還細的修正」，反而把 60 片本來就對齊的板子弄壞 17 片，所以不做。</dd>
+<dt>實驗</dt><dd>對 500 片板子故意加上偏移。<b>平移</b>：水平、垂直各抽一個隨機整數，「平移 4 px」代表左右和上下都在 −4 到 +4 像素之間，每片抽到的不一樣。<b>旋轉</b>：以畫面中心為軸，角度在 −1° 到 +1° 之間隨機抽，順時針、逆時針都有。因為偏移是我們自己加的，正確答案本來就知道。比較「先把影像對正再比對」（相位相關：拿兩張圖整張比，算出錯開多少）前後，每片冒出多少候選（疑似缺陷）、真缺陷有沒有照樣找到。</dd>
+<dt>看到</dt><dd><b>最有效的是修平移</b>：平移 4 px 時候選從 58.1 降到 20.7（少了 64%），找到的真缺陷從 90.8% 升到 97.6%。旋轉 1°：53.4 → 50.4，幾乎沒改善，因為這一步只會移動、不會轉回來。也試過「比一個像素還細的修正」，反而把 60 片本來就對齊的板子弄壞 17 片，所以不做。</dd>
 <dt>選擇</dt><dd class="choice">對正只修平移；三種情況直接拒絕修正（偏移不到一個像素、偏移超過畫面 5%、對不準的把握太低）。修不了旋轉就明寫，不假裝能處理。</dd>
 </figcaption>
 <p class="src">benchmarks: Registration (2026-08-24), src/aoi_agent/aoi/registration.py</p>
@@ -117,9 +117,9 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 <p class="fig-title"><b>圖 6</b>INT8：操作點不動，省的是記憶體不是時間</p>
 <div class="chart" id="f6"></div>
 <figcaption>
-<dt>實驗</dt><dd>把同一個模型轉成較省資源的格式：ONNX，以及把數字精度從 32 位元降到 8 位元的 INT8（兩種做法）。比較能省的人工和佔用的記憶體。</dd>
-<dt>看到</dt><dd>四個版本省的人工都在 52.5%–53.0%，差異跟丟硬幣一樣是運氣；記憶體從 389 MB 降到 74–81 MB。速度本來就不是問題：每個候選在 CPU 上只要 2.5 毫秒。</dd>
-<dt>選擇</dt><dd class="choice">不上線 INT8，照用原本的 32 位元版本。量化的比較留在重新訓練的流程裡，因為這個結論只對這一組模型成立。</dd>
+<dt>實驗</dt><dd>把同一個模型轉成較省資源的格式：ONNX，以及把數字精度從 32 位元降到 8 位元的 INT8（兩種做法）。比較能省的人工、佔用的記憶體，和在 CPU 上判斷一個候選要多久。</dd>
+<dt>看到</dt><dd>四個版本省的人工都在 52.5%–53.0%，差異跟丟硬幣一樣是運氣；記憶體從 389 MB 降到 74–81 MB。速度有變快：INT8 靜態每個候選 0.65 毫秒，原版 2.53 毫秒，快 3.9 倍。可是換算成產線（每片平均 14.6 個候選、每 10 秒一片）：1000 片板子原版模型只花 37 秒，INT8 花 9.5 秒，只省 27 秒，而這 1000 片本身要跑 2.8 小時，省下的不到 0.3%。</dd>
+<dt>選擇</dt><dd class="choice">不上線 INT8，照用原本的 32 位元版本：準確度沒變、速度本來就不是瓶頸，不值得多維護一個版本。量化的比較留在重新訓練的流程裡，因為這個結論只對這一組模型成立。</dd>
 </figcaption>
 <p class="src">benchmarks: Quantisation (2026-08-26), scripts/quantisation_report.py</p>
 </figure>
@@ -143,7 +143,7 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 <p class="fig-title"><b>圖 8</b>照片裁切上的四種排序：沒有一個在預算內能省人工</p>
 <div class="chart" id="f8"></div>
 <figcaption>
-<dt>實驗</dt><dd>換一種資料（PCB-AoI：錫膏的照片，沒有標準板可以比對）。先用 YOLO 偵測模型框出可疑的位置，再用四種方法替這些框排序，看在漏率 0.5% 以內能省多少人工。每種方法跑三次。圖上是直接看答案選門檻的理想值，也就是最樂觀的數字。</dd>
+<dt>實驗</dt><dd>換一種資料（PCB-AoI：錫膏的照片，沒有標準板可以比對）。先用 YOLO 偵測模型框出可疑的位置，再用四種方法替這些框排序，看在漏率 0.5% 以內能省多少人工。每種方法跑三次，圖上的直線是三次的最低到最高，圓點是中位數（三次裡中間那一次）。都是直接看答案選門檻的理想值，也就是最樂觀的數字。</dd>
 <dt>看到</dt><dd>最好也只有個位數：偵測器自己的信心 0.3%；ResNet 0.3 / 1.2 / 2.8%；DINOv2 加一層簡單分類 0.7 / 1.0 / 1.0%；DINOv2 提示微調 4.3 / 0.7 / 3.8%。統計檢定顯示這些差距都可能只是運氣：測試圖只有 60 張，只看得出很大的差距。另外檢查過「訓練時的框有沒有偷看答案」，結果判斷不了：有兩次選到的門檻什麼都沒撿。</dd>
 <dt>選擇</dt><dd class="choice">沒有一個上線。結論寫成「光看外觀分不出假警報和真缺陷」，所以有標準板可以比對，不只是方便而已。</dd>
 </figcaption>
@@ -158,7 +158,7 @@ figcaption dd.choice{color:var(--ink);font-weight:500}
 <p class="fig-title"><b>圖 9</b>換成更大的模型 DINOv2：最好也只是追平 ResNet-18</p>
 <div class="chart" id="f9"></div>
 <figcaption>
-<dt>實驗</dt><dd>把 ResNet-18 換成更大的預訓練模型 DINOv2，試兩種用法：凍結不動、只在後面加一層簡單分類（三次）；在模型每一層加少量可學的參數（提示微調，三次）。對照 ResNet-18 五次，和不用神經網路的手工特徵。每次都先寫好判定標準才跑。</dd>
+<dt>實驗</dt><dd>把 ResNet-18 換成更大的預訓練模型 DINOv2，試兩種用法。<b>凍結</b>：DINOv2 本身一個參數都不改，只在後面加一層小分類器、只訓練那一層（三次）。<b>提示微調</b>：DINOv2 本身還是不改，但在每一層塞進少量可以學的「提示」參數（共 48,775 個），讓它稍微調整看東西的方式（三次）。對照組是整個模型都一起訓練的 ResNet-18（五次），和不用神經網路的手工特徵（三次，圖上畫三次的中位數）。每次都先寫好判定標準才跑。</dd>
 <dt>看到</dt><dd>只加一層分類更差（39.9%–42.0%）；提示微調 50.4%–51.6%，落在 ResNet 的 49.7%–52.8% 範圍內，只是追平。所以之前輸，是「只加一層」這個用法不夠，不是 DINOv2 本身不行。圖上都是直接看答案選門檻的理想值。</dd>
 <dt>選擇</dt><dd class="choice">繼續用 ResNet-18：DINOv2 只追平、沒有超過，速度卻慢十倍以上（一個候選 41 毫秒對 2.5 毫秒）。這條線結束。</dd>
 </figcaption>
@@ -332,25 +332,31 @@ const ink = () => C("--ink"), acc = () => C("--accent"), acc2 = () => C("--accen
 
 // ---------- 圖 5 registration ----------
 (function(){
-  const W = 720, H = 290; const s = svg("f5", W, H);
+  const W = 720, H = 318; const s = svg("f5", W, H);
   const cats = ["已對齊", "平移 2 px", "平移 4 px", "旋轉 0.5°", "旋轉 1.0°", "平移 4 px\n+ 旋轉 1°"], before = [18.1, 43.9, 58.1, 39.8, 53.4, 60.9], after = [16.1, 19.3, 20.7, 37.1, 50.4, 50.5];
-  const f = catFrame(s, {cats, y0: 0, y1: 70, w: W, h: H, yTicks: [0, 20, 40, 60], yLabel: "每片板子的候選數（越少越好）", mb: 52});
+  const f = catFrame(s, {cats, y0: 0, y1: 70, w: W, h: H, yTicks: [0, 20, 40, 60], yLabel: "每片板子的候選數（越少越好）", mb: 80});
   cats.forEach((c, i) => { const bw = f.band * 0.28; el("rect", {x: f.sx(i) - bw - 2, y: f.sy(before[i]), width: bw, height: f.sy(0) - f.sy(before[i]), fill: mut()}, s); el("rect", {x: f.sx(i) + 2, y: f.sy(after[i]), width: bw, height: f.sy(0) - f.sy(after[i]), fill: i <= 2 ? acc() : acc2()}, s); label(s, f.sx(i) - bw / 2 - 2, f.sy(before[i]) - 5, before[i], mut(), "middle"); label(s, f.sx(i) + bw / 2 + 2, f.sy(after[i]) - 5, after[i], ink(), "middle"); });
   legend(s, [{shape: "dot", color: mut(), text: "對位前"}, {shape: "dot", color: acc(), text: "對位後：平移被修掉"}, {shape: "dot", color: acc2(), text: "對位後：旋轉幾乎沒動"}], 60, 40);
+  { const bw = f.band * 0.28, x = f.sx(2) + 2; el("rect", {x: x - 3, y: f.sy(20.7) - 3, width: bw + 6, height: f.sy(0) - f.sy(20.7) + 3, fill: "none", stroke: C("--hl"), "stroke-width": 2, rx: 3}, s);
+    el("text", {x: f.sx(2), y: H - 26, "text-anchor": "middle", fill: C("--hl"), "font-weight": 700}, s, "最有效：候選少 64%");
+    el("text", {x: f.sx(2), y: H - 12, "text-anchor": "middle", fill: C("--hl")}, s, "58.1 → 20.7"); }
 })();
 
 // ---------- 圖 6 INT8 ----------
 (function(){
-  const W = 720, H = 240; const s = svg("f6", W, H);
-  // two mini panels
-  const g1 = el("g", {}, s), g2 = el("g", {transform: "translate(380 0)"}, s);
-  const wrap = g => ({appendChild: n => g.appendChild(n), setAttribute(){}});
-  const cats = ["FP32\ntorch", "FP32\nONNX", "INT8\n動態", "INT8\n靜態"], v = [52.8, 52.8, 52.5, 53.0];
-  const f = catFrame(g1, {cats, y0: 50, y1: 55, w: 340, h: H, yTicks: [50, 52, 54], yFmt: v => v + "%", yLabel: "省下的人工 @ ≤0.5%", mb: 48});
-  cats.forEach((c, i) => { const bw = f.band * 0.5; el("rect", {x: f.sx(i) - bw / 2, y: f.sy(v[i]), width: bw, height: f.sy(50) - f.sy(v[i]), fill: i < 2 ? mut() : acc()}, g1); label(g1, f.sx(i), f.sy(v[i]) - 6, v[i] + "%", ink(), "middle"); });
-  const cats2 = ["FP32 torch", "INT8 動態", "INT8 靜態"], m = [389, 81, 74];
-  const f2 = catFrame(g2, {cats: cats2, y0: 0, y1: 420, w: 340, h: H, yTicks: [0, 100, 200, 300, 400], yFmt: v => v + " MB", yLabel: "常駐記憶體", ml: 64, mb: 48});
-  cats2.forEach((c, i) => { const bw = f2.band * 0.5; el("rect", {x: f2.sx(i) - bw / 2, y: f2.sy(m[i]), width: bw, height: f2.sy(0) - f2.sy(m[i]), fill: i ? acc() : mut()}, g2); label(g2, f2.sx(i), f2.sy(m[i]) - 6, m[i] + " MB", ink(), "middle"); });
+  const W = 720, H = 260; const s = svg("f6", W, H);
+  const g1 = el("g", {}, s), g2 = el("g", {transform: "translate(240 0)"}, s), g3 = el("g", {transform: "translate(480 0)"}, s);
+  const c1 = ["FP32\ntorch", "FP32\nONNX", "INT8\n動態", "INT8\n靜態"], v = [52.8, 52.8, 52.5, 53.0];
+  const f = catFrame(g1, {cats: c1, y0: 50, y1: 55, w: 235, h: H, yTicks: [50, 52, 54], yFmt: v => v + "%", yLabel: "省下的人工 @ ≤0.5%", mb: 48, ml: 44, mr: 8});
+  c1.forEach((c, i) => { const bw = f.band * 0.55; el("rect", {x: f.sx(i) - bw / 2, y: f.sy(v[i]), width: bw, height: f.sy(50) - f.sy(v[i]), fill: i < 2 ? mut() : acc()}, g1); label(g1, f.sx(i), f.sy(v[i]) - 6, v[i] + "%", ink(), "middle"); });
+  const c2 = ["FP32", "INT8\n動態", "INT8\n靜態"], m = [389, 81, 74];
+  const f2 = catFrame(g2, {cats: c2, y0: 0, y1: 420, w: 235, h: H, yTicks: [0, 200, 400], yFmt: v => v + " MB", yLabel: "常駐記憶體", ml: 58, mb: 48, mr: 8});
+  c2.forEach((c, i) => { const bw = f2.band * 0.55; el("rect", {x: f2.sx(i) - bw / 2, y: f2.sy(m[i]), width: bw, height: f2.sy(0) - f2.sy(m[i]), fill: i ? acc() : mut()}, g2); label(g2, f2.sx(i), f2.sy(m[i]) - 6, m[i] + " MB", ink(), "middle"); });
+  const c3 = ["FP32", "INT8\n動態", "INT8\n靜態"], t = [37.0, 28.3, 9.5];
+  const f3 = catFrame(g3, {cats: c3, y0: 0, y1: 40, w: 235, h: H, yTicks: [0, 20, 40], yFmt: v => v + " s", yLabel: "1000 片板子的模型時間", ml: 46, mb: 48, mr: 8});
+  c3.forEach((c, i) => { const bw = f3.band * 0.55; el("rect", {x: f3.sx(i) - bw / 2, y: f3.sy(t[i]), width: bw, height: f3.sy(0) - f3.sy(t[i]), fill: i ? acc() : mut()}, g3); label(g3, f3.sx(i), f3.sy(t[i]) - 6, t[i] + " s", ink(), "middle"); });
+  label(g3, 230, f3.sy(40) + 2, "只省 27 秒", C("--hl"), "end");
+  label(g3, 230, f3.sy(40) + 16, "（全程 2.8 小時）", C("--hl"), "end");
 })();
 
 // ---------- 圖 7 HRIPCB gate ----------
@@ -372,10 +378,16 @@ const ink = () => C("--ink"), acc = () => C("--accent"), acc2 = () => C("--accen
 // ---------- 圖 8 four orderings on crops ----------
 (function(){
   const W = 720, H = 280; const s = svg("f8", W, H);
-  const groups = [{n: "偵測器信心\n（1 種子）", v: [0.3]}, {n: "ResNet-18 裁切\n（3 種子）", v: [0.3, 1.2, 2.8]}, {n: "DINOv2 線性頭\n（3 種子）", v: [0.7, 1.0, 1.0]}, {n: "DINOv2 提示微調\n（3 種子）", v: [4.3, 0.7, 3.8]}];
+  const groups = [{n: "偵測器信心\n（1 次）", v: [0.3]}, {n: "ResNet-18 裁切\n（3 次）", v: [0.3, 1.2, 2.8]}, {n: "DINOv2 加一層分類\n（3 次）", v: [0.7, 1.0, 1.0]}, {n: "DINOv2 提示微調\n（3 次）", v: [4.3, 0.7, 3.8]}];
   const f = catFrame(s, {cats: groups.map(g => g.n), y0: 0, y1: 6, w: W, h: H, yTicks: [0, 2, 4, 6], yFmt: v => v + "%", yLabel: "省下的人工 @ ≤0.5%（理想值，PCB-AoI 60 張測試圖）", mb: 48});
-  label(s, W - 16, f.sy(6) - 5, "可省的上限是 22.3%（隊列裡只有 22.3% 是假警報），圖只畫到 6%", mut(), "end");
-  groups.forEach((g, i) => { const med = g.v.slice().sort((a, b) => a - b)[Math.floor(g.v.length / 2)]; el("line", {x1: f.sx(i) - 26, x2: f.sx(i) + 26, y1: f.sy(med), y2: f.sy(med), stroke: acc(), "stroke-width": 2}, s); g.v.forEach((val, k) => { const jitter = g.v.length > 1 ? (k - 1) * 14 : 0; dot(s, f.sx(i) + jitter, f.sy(val), ink()); label(s, f.sx(i) + jitter, f.sy(val) - 9 - (k % 2) * 12 - (g.v.length > 1 && Math.abs(val - med) < 0.35 ? 8 : 0), val + "%", ink(), "middle"); }); label(s, f.sx(i) + 32, f.sy(med) + 4, "中位 " + med + "%", acc()); });
+  label(s, W - 16, f.sy(6) - 16, "上限是 22.3%（隊列裡只有 22.3% 是假警報），圖只畫到 6%", mut(), "end");
+  groups.forEach((g, i) => {
+    const v = g.v.slice().sort((a, b) => a - b), med = v[Math.floor(v.length / 2)], lo = v[0], hi = v[v.length - 1];
+    if (v.length > 1) { el("line", {x1: f.sx(i), x2: f.sx(i), y1: f.sy(lo), y2: f.sy(hi), stroke: mut(), "stroke-width": 2}, s); [lo, hi].forEach(y => el("line", {x1: f.sx(i) - 8, x2: f.sx(i) + 8, y1: f.sy(y), y2: f.sy(y), stroke: mut(), "stroke-width": 2}, s)); }
+    dot(s, f.sx(i), f.sy(med), acc(), 6);
+    label(s, f.sx(i) + 12, f.sy(med) + 4, "中位 " + med + "%", acc());
+    if (v.length > 1 && hi !== med) label(s, f.sx(i) + 12, f.sy(hi) + 4, "最高 " + hi + "%", mut());
+  });
 })();
 
 // ---------- 圖 9 DeepPCB three features ----------
