@@ -204,7 +204,7 @@ Full report: [docs/benchmarks.md](docs/benchmarks.md), append-only, newest last.
 Six measurements contradicted an earlier claim or design decision; each
 changed the code. One row each below; the full account, with the figures
 before and after, is in [docs/findings.md](docs/findings.md).
-The same road written out to be read: [the study guide](docs/deck/study-guide.zh-TW.md) — every experiment as why / design / numbers / mistake / rule, with the questions an interviewer asks. It and the [slides](docs/deck/aoi-agent-journey.zh-TW.pptx) are built from `scripts/deck_content.py`, so a figure on a slide is a figure a document published.
+The same road written out to be read: [the study guide](docs/deck/study-guide.zh-TW.md) — every experiment as why / design / numbers / mistake / rule, with the questions a reader asks next. It and the [slides](docs/deck/aoi-agent-journey.zh-TW.pptx) are built from `scripts/deck_content.py`, so a figure on a slide is a figure a document published.
 
 | what was measured | what it said | what changed |
 |---|---|---|
@@ -632,7 +632,7 @@ the host, so the container has to be able to reach it.
 
 ## Known limits
 
-Measured, not hedged. Each is a reason this is a portfolio project rather than
+Measured, not hedged. Each is a reason this is a research project rather than
 something to put on a line tomorrow.
 
 **The measurement**
@@ -731,13 +731,12 @@ something to put on a line tomorrow.
 
 ## About
 
-A portfolio project, built between 2026-08-22 and 2026-09-08 for
-smart-manufacturing AI roles, which is why it is written to survive an
-interviewer's questions rather than only to run. Not accepting contributions,
+A personal research project, built between 2026-08-22 and 2026-09-08, and
+written to survive a sceptical reader's questions rather than only to run. Not accepting contributions,
 but questions and corrections are welcome as
 [issues](https://github.com/lin891020/aoi-agent/issues) — a figure here that
 cannot be traced to the script that produced it is a bug.
 
 Author: [Mike Lin](https://github.com/lin891020) · MIT licence, see
-[LICENSE](LICENSE) · the same road as a study guide with the questions an
-interviewer asks: [docs/deck/study-guide.zh-TW.md](docs/deck/study-guide.zh-TW.md)
+[LICENSE](LICENSE) · the same road as a study guide with the questions a
+reader asks next: [docs/deck/study-guide.zh-TW.md](docs/deck/study-guide.zh-TW.md)

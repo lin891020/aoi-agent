@@ -3,7 +3,7 @@
 The whole of user management, on purpose. A re-verification station serves a
 fixed set of people on a line, and the alternative -- registration, roles,
 password reset, an admin page -- is several hundred lines of surface area whose
-only customer is a portfolio screenshot. A supervisor runs this once per
+only customer is a screenshot. A supervisor runs this once per
 operator:
 
     uv run python scripts/add_operator.py mike

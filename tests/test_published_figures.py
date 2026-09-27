@@ -11,7 +11,7 @@ letter and the *code* was correct throughout. Only the documentation was left
 quoting the first run, and nothing anywhere compared the two.
 
 It was the fourth stale claim found that day and the worst-placed: the headline
-an interviewer reads first, unreproducible from the repository that carries it.
+a reader looks at first, unreproducible from the repository that carries it.
 
 The rule here is derived from `docs/benchmarks.md`, which is append-only and
 newest-last, so the file itself says which run is current:

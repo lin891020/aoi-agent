@@ -2,7 +2,7 @@
 
 The headline claim is that the re-verifier removes 50.2% of the manual review
 queue at a 0.25% escape budget. A number with no floor under it is not
-evidence: an interviewer's first question is what the queue would look like if
+evidence: a reviewer's first question is what the queue would look like if
 you skipped the network entirely and thresholded the difference image, which is
 what the AOI stage has already computed by the time a candidate exists.
 
@@ -98,7 +98,7 @@ def main() -> int:
         results.append(row(name, points, labels))
 
     # --- a second floor: dismiss nothing / dismiss everything are trivial, but
-    #     "predict the majority class" is the other thing an interviewer names ---
+    #     "predict the majority class" is the other thing a reviewer names ---
     prior = np.full(n, 0.5)
     results.append(row("constant score (no signal)",
                        sweep(prior, labels, false_call_index), labels))

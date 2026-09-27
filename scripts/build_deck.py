@@ -6,7 +6,7 @@
 Three outputs from one source, so they cannot disagree:
 
 * `docs/deck/aoi-agent-journey.zh-TW.pptx` -- 16:9, speaker notes on every
-  slide (a plain-language line, the script, and the interviewer's questions).
+  slide (a plain-language line, the script, and the follow-up questions).
 * `docs/deck/aoi-agent-journey.zh-TW.html` -- the same slides as a page: arrow
   keys to move, `q` for self-test mode (title and questions only), `a` to
   reveal the answers, `n` to fold the notes.
@@ -379,7 +379,7 @@ def _notes_text(slide: Slide) -> str:
         lines += ["頁面上只有圖；要點："] + [f"• {b}" for b in slide.bullets] + [""]
     lines += [f"講稿 {i}. {s}" for i, s in enumerate(slide.notes, 1)]
     if slide.questions:
-        lines += ["", "面試官會問："]
+        lines += ["", "常見追問："]
         for q, a in slide.questions:
             lines += [f"Q：{q}", f"A：{a}", ""]
     return "\n".join(lines).rstrip()
@@ -680,7 +680,7 @@ def build_html(target: Path, images: dict[str, Path]) -> Path:
             body += (f'<p class="link"><a href="{VIDEO_LINK}">影片（GitHub Release）</a></p>')
         qa = ""
         if s.questions:
-            qa = '<div class="qa"><h3>面試官會問</h3>' + "".join(
+            qa = '<div class="qa"><h3>常見追問</h3>' + "".join(
                 f'<div class="q"><p class="question">Q · {esc(q)}</p>'
                 f'<p class="answer">{esc(a)}</p></div>' for q, a in s.questions) + "</div>"
         notes = ('<details class="notes"><summary>講稿</summary><p class="plain">'
@@ -770,7 +770,7 @@ body.quiz .answer {{ visibility:hidden; }} body.quiz.reveal .answer {{ visibilit
 def build_study_guide(target: Path) -> Path:
     lines = ["# AOI 複判專案歷程：問答手冊", "",
              "從 `scripts/deck_content.py` 產生；和投影片、網頁版同一份內容。",
-             "每一頁：一句白話 → 為什麼做／怎麼設計／量到什麼／錯在哪／規則 → 面試官會問 → 講稿。", ""]
+             "每一頁：一句白話 → 為什麼做／怎麼設計／量到什麼／錯在哪／規則 → 常見追問 → 講稿。", ""]
     core = [s.title for s in sorted((s for s in SLIDES if s.core), key=lambda s: s.core)]
     lines += ["## 十分鐘主線（9 頁）", ""] + [f"{i}. {t}" for i, t in enumerate(core, 1)] + [""]
     for layer, slides in by_layer().items():
@@ -790,7 +790,7 @@ def build_study_guide(target: Path) -> Path:
             if s.bullets:
                 lines += [f"- {b}" for b in s.bullets] + [""]
             if s.questions:
-                lines += ["**面試官會問：**", ""]
+                lines += ["**常見追問：**", ""]
                 for q, a in s.questions:
                     lines += [f"- Q：{q}", f"  - A：{a}"]
                 lines += [""]

@@ -177,7 +177,7 @@ out-of-fold 選出——依影像五折、6,569 個缺陷支撐這個選擇，�
 
 六項量測推翻了先前的主張或設計決定，每一項都改了程式。下表每項一列；完整經過與
 改前改後的數字在 [docs/findings.zh-TW.md](docs/findings.zh-TW.md)。
-同一條路寫成可以直接讀的：[學習手冊](docs/deck/study-guide.zh-TW.md) —— 每個實驗的為什麼做／怎麼設計／量到什麼／錯在哪／規則，附面試官會問的題。它和[投影片](docs/deck/aoi-agent-journey.zh-TW.pptx)都從 `scripts/deck_content.py` 產生，投影片上的數字必須是文件裡發表過的。
+同一條路寫成可以直接讀的：[學習手冊](docs/deck/study-guide.zh-TW.md) —— 每個實驗的為什麼做／怎麼設計／量到什麼／錯在哪／規則，附常見追問。它和[投影片](docs/deck/aoi-agent-journey.zh-TW.pptx)都從 `scripts/deck_content.py` 產生，投影片上的數字必須是文件裡發表過的。
 
 | 量了什麼 | 量到什麼 | 改了什麼 |
 |---|---|---|
@@ -621,10 +621,10 @@ torch 的 CPU build——CUDA wheel 會為了這個專案從來沒有過的硬�
 
 ## 關於
 
-一個作品集專案，2026-08-22 到 2026-09-08 之間為智慧製造 AI 職缺而做，所以它是照
-「撐得住面試官追問」而不只是「跑得起來」寫的。不收 PR，但問題與更正歡迎開
+一個個人研究專案，2026-08-22 到 2026-09-08 之間做的，照「撐得住追問」而不只是
+「跑得起來」寫的。不收 PR，但問題與更正歡迎開
 [issue](https://github.com/lin891020/aoi-agent/issues)——這裡有任何一個數字追不回產生
 它的腳本，那就是一個 bug。
 
 作者：[Mike Lin](https://github.com/lin891020)・MIT 授權，見 [LICENSE](LICENSE)・
-同一條路寫成學習手冊、附面試官會問的問題：[docs/deck/study-guide.zh-TW.md](docs/deck/study-guide.zh-TW.md)
+同一條路寫成學習手冊、附常見追問：[docs/deck/study-guide.zh-TW.md](docs/deck/study-guide.zh-TW.md)

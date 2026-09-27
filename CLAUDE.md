@@ -5,8 +5,8 @@ recall and over-flags; every flagged region goes to a human today. This puts a
 vision model in front of that queue and an agent behind it for the cases the
 model cannot settle.
 
-Started 2026-08-22. Portfolio project aimed at smart-manufacturing AI roles, so
-the engineering has to hold up to an interviewer's questions, not just run.
+Started 2026-08-22. A personal research project, so the engineering has to
+hold up to a sceptical reader's questions, not just run.
 
 Over the 60-line cap in ~/Projects/CLAUDE.md on purpose (Mike, 2026-09-25): the
 rule titles stay here so every session sees them; the rest moved out verbatim.

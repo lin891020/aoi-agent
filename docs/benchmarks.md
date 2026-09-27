@@ -8178,7 +8178,7 @@ high `P(false_call)`, and handed to the same `operating_point.sweep` the model
 goes through. `scripts/model_free_baseline.py`.
 
 The script existed from 2026-08-26 and its result had never been written down,
-which is the reason for this entry: the first question an interviewer asks a
+which is the reason for this entry: the first question a reviewer asks a
 deep-learning claim is what the same job costs without the network, and until
 today this project could not answer it.
 

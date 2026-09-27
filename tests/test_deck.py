@@ -6,15 +6,15 @@ the study guide. Three rules over it:
 1. **A figure on a slide is a figure the project published.** Every string
    in a slide's `figures` appears in docs/benchmarks.md or in one of the four
    documents `test_published_figures.py` watches. A deck can otherwise carry a
-   number nobody measured, in the one place an interviewer reads it.
+   number nobody measured, in the one place a reader looks for it.
 2. **Every experiment slide states the decision it was.** The "why" cell is
    written as the question being answered and what would have counted as
    failure -- 「要回答的問題」 and a 「就算…」 clause both present. That is the
    difference between a design and an afterthought, and it is the author's
    own requirement.
-3. **Every experiment slide can be asked about.** At least two interviewer
+3. **Every experiment slide can be asked about.** At least two follow-up
    questions with answers, and at least one of the answers names a number --
-   an interviewer's "how do you know" is answered with a figure, while "why
+   a reader's "how do you know" is answered with a figure, while "why
    not a front-end framework" legitimately is not.
 """
 
