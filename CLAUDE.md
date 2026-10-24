@@ -78,3 +78,4 @@ Argued, measured and dated in [docs/invariants.md](docs/invariants.md) -- read t
 - Dataset (231MB), patches, models, the SQLite db and the Chroma index are all
   gitignored and rebuilt by scripts.
 
+- 做頁面前先讀 `DESIGN.md`（設計合約，數值為準；「決定」欄是 TODO 的還沒談定）。
