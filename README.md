@@ -11,6 +11,8 @@ budget — a budget this README shows is *not* met on the deployed reading, and
 says why. Every threshold cites the script that chose it; every figure names
 the run it came from.
 
+> **Status:** complete and archived (2026-11-07). Portfolio project; no further features planned. `docs/still-open.md` lists what was left open; `HANDOFF.md` says how to run it again.
+
 [![tests](https://github.com/lin891020/aoi-agent/actions/workflows/tests.yml/badge.svg)](https://github.com/lin891020/aoi-agent/actions/workflows/tests.yml)
 ![python 3.12](https://img.shields.io/badge/python-3.12-3776AB)
 ![PyTorch · LangGraph · MCP · FastAPI](https://img.shields.io/badge/PyTorch%20%C2%B7%20LangGraph%20%C2%B7%20MCP%20%C2%B7%20FastAPI-2d3142)
